@@ -1,0 +1,372 @@
+#include <math.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <time.h>
+#include <float.h>
+
+#include "global.h"
+#include "failinfo.h"
+#include "recover.h"
+#include "solvers.h"
+
+#include "gmres.h"
+
+static double norm_b;
+
+void solve_gmres( const int n, const void *A, const double *b, double *x, double thres, const int restart )
+{
+	double error;
+	int i, steps, failures = 0;
+
+	// not-restarted strategy : maximum n steps (NB. the algorithm can still restart before that sometimes, e.g. degenerate cases)
+	if( restart < 1 || restart > n )
+		steps = n;
+	else
+		steps = restart;
+
+	norm_b = sqrt(scalar_product(n, b, b));
+	start_measure();
+
+	do{
+		// its || b-Ax || / || b || that should be smaller than the threshold
+		restart_gmres(n, A, b, x, thres * norm_b, steps, &error);
+
+		error /= norm_b;
+
+		if( get_nb_failed_blocks() > 0 )
+		{
+			double y[n], old_err, new_err = 0, oldx[n];
+
+			int k, l, m, bs;
+			for(k=0; k<n; k++)
+			{
+				oldx[k] = x[k];
+			}
+
+			//debug
+			{
+				// do some checking before the recovery
+				mult(A, x, y);
+				for(i=0; i<n; i++)
+					new_err += (b[i] - y[i]) * (b[i] - y[i]);
+
+			}
+
+			failures += get_nb_failed_blocks();
+
+			// recover with least squares.
+			// Actually we could interpolate when the submatrix is full rank
+			// (but how do we know that efficiently ?)
+			recover_leastsquares( A, b, x , fault_strat );
+
+			//debug
+			{
+				fprintf(stderr, "Recovery error change : %e -> ", sqrt( new_err ) / norm_b );
+				old_err = new_err;
+
+				// do some checking on the recovery
+				new_err = 0;
+				mult(A, x, y);
+				for(i=0; i<n; i++)
+					new_err += (b[i] - y[i]) * (b[i] - y[i]);
+
+				fprintf(stderr, "%e", sqrt( new_err ) / norm_b );
+				if( old_err < new_err )
+					fprintf(stderr, " !!! INCREASE !!!");
+				fprintf(stderr, "\n");
+
+				//if( old_err < new_err )
+				{
+					fprintf(stderr, "error was on block(s) ");
+					for(k=0; k<get_nb_failed_blocks(); k++)
+					{
+						l = get_failed_block(k);
+						get_line_from_block(l, &m, &bs);
+						fprintf(stderr, " %d (%d;%d)", l, m, bs);
+					}
+					fprintf(stderr, "\nReplacements done were : \n");
+
+					for(k=0; k<n; k++)
+					{
+						if( oldx[k] != x[k] )
+							fprintf(stderr, "%d : %e -> %e\n", k, oldx[k], x[k]);
+					}
+				}
+			}
+		}
+		else if( error >= -thres && error <= thres )
+			printf("Converged\n%d failures in this run.\n\n", failures);
+		else
+			printf("Restart.\n");
+
+	}
+	while( error < -thres || error > thres );
+
+    printf("\nGMRES method finished in wall clock time %e usecs\n", stop_measure());
+}
+
+void restart_gmres( const int n, const void *A, const double *b, double *x, double thres, const int max_steps, double *error )
+{
+    int i, j, r;
+
+    double
+        // for Arnoldi iterations.
+        // !! since we use the column-vectors of each matrix, they are stocked in column-major
+        **q, **h,
+        // for the QR decomposition of h
+        **o, **p,
+        // contains the rhs of the "innermost" problem (thus also the error)
+        g[max_steps];
+
+	*error = DBL_MAX;
+
+	DenseMatrix mat_o, mat_q, mat_p, mat_h;
+
+	allocate_dense_matrix(max_steps, n, &mat_q);
+	allocate_dense_matrix(max_steps-1, max_steps, &mat_h);
+
+	allocate_dense_matrix(max_steps, max_steps, &mat_o);
+	allocate_dense_matrix(max_steps-1, max_steps, &mat_p);
+
+    q = mat_q.v;
+    h = mat_h.v;
+    o = mat_o.v;
+    p = mat_p.v;
+
+	// O initially identity, vector g zero
+    for(i=0; i<max_steps; i++)
+	{
+		o[i][i] = 1;
+        g[i] = 0;
+	}
+
+	// instead of setting b as the initial step of the algorithm
+	// set b - A * x where x is the iterate
+	// this is the same with initial guess x = 0 but changes when 
+	// x contains a better guess
+
+	double norm0;
+
+	{
+		double Ax[n];
+		mult((void*)A, x, Ax);
+
+		for(i=0; i<n; i++)
+			q[0][i] = b[i] - Ax[i];
+	}
+
+    norm0 = sqrt( scalar_product(n+1, q[0], q[0]) );
+
+    for(i=0; i<n; i++)
+		q[0][i] /= norm0;
+
+    // q_0 decomposition on dimension 1
+    g[0] = norm0;
+
+    for(r=1; (*error > thres || *error < -thres) && r < max_steps; r++)
+    {
+		start_iteration();
+		
+        // build next vector of q as Arnoldi iteration
+        // expand Krylov subspace through multiplying by A
+        mult((void*)A, q[r-1], q[r]);
+
+        // get values of h, which will be used to orthonormalize q_r
+		mgs(n, r, q[r], h[r-1], (const double**)q);
+
+        // degenerate case ! better to use a threshold, e.g. h[r-1][r] / norm < e-14 ?
+		// the right thing to do here is to compute the iterate x
+		// and restart the method with this iterate as initial guess
+        if( h[r-1][r] == 0 )
+            break;
+
+        // normalize
+        for(j=0; j<n; j++)
+            q[r][j] /= h[r-1][r];
+
+        // update the QR decomposition of H with a Givens rotation
+        double cos, sin, norm;
+
+        // p's new last column is h's last column (left-)multiplied by o, with a 1 on (r,r)
+        mult_dense(&mat_o, h[r-1], p[r-1]); // rank-limited multiplication ? e.g. set mat_o.n = mat_o.m = r ?
+
+        // define the givens rotation to get the neat triangular form on p
+        cos = p[r-1][r-1];
+        sin = p[r-1][r];
+        norm = sqrt( cos * cos + sin * sin );
+
+        cos /= norm;
+        sin /= norm;
+
+        // update the new last column of p, after givens rotation
+        p[r-1][r-1] = norm;
+        p[r-1][r] = 0;
+
+        // apply givens rotation to o
+        // (or alternatively save the values {r,cos,sin} for later)
+		givens_rotate(r+1, o[r-1], o[r], cos, sin);
+
+        // rotate the vector g also
+		givens_rotate(1, &g[r-1], &g[r], cos, sin);
+
+        // now we have applied our rotation to all the elements of
+        // || H_r * y_r - |b| e_1 || which is after all the successive rotations
+        // || p_r * y_r - g_r || with p upper triangular of size r-1 ²
+        // thus the minimum is obtained at y_r = p_r^(-1) * g
+
+        *error = g[r];
+
+		stop_iteration();
+		int failures = get_nb_failed_blocks();
+
+		// cleaner looks
+		if( *error < 0 )
+			*error = - *error;
+		printf("%e %d\n", (*error)/norm_b, failures);
+
+		if( failures )
+			break;
+    }
+
+
+	double y[max_steps];
+	int s;
+	{
+		// check where we can start (should be r-1 except on degenerate cases r-2)
+		s = r;
+		while( s >= 0 && (s >= max_steps-1 || p[s][s] == 0) )
+			s--;
+
+		// really this hould never happen
+		if( s < 0 )
+		{
+			printf("BAD STUFF\n");
+			exit(1);
+			return;
+		}
+
+		for(i=s+1; i<max_steps; i++)
+			y[i] = 0;
+
+		// x = q * y = q * (p^-1 * g)
+		for(i=s; i>=0; i--)
+		{
+			y[i] = g[i];
+
+			for(j=i+1; j<s; j++)
+				y[i] -= p[j][i] * y[j];
+
+			y[i] /= p[i][i];
+		}
+	}
+
+    // get q in row-major and multiply into z, then add to x
+	double z[n];
+    mult_dense_transposed(&mat_q, y, z);
+
+	for(i=0; i<n; i++)
+		x[i] += z[i];
+	
+		// Everything we could possibly want to debug. Remember that we use row-majro representation
+		// so for ease of use let's transpose all the matrices.
+		/*
+		DenseMatrix test, H, P, O;
+		allocate_dense_matrix(mat_o.m, mat_o.n, &test);
+		allocate_dense_matrix(mat_o.m, mat_o.n, &O);
+		allocate_dense_matrix(mat_p.m, mat_p.n, &P);
+		allocate_dense_matrix(mat_h.m, mat_h.n, &H);
+		transpose_dense_matrix(&mat_h, &H);
+		transpose_dense_matrix(&mat_p, &P);
+		transpose_dense_matrix(&mat_o, &O);
+
+		fprintf(stderr, "Some Verifications. P is :\n");
+		print_dense(&P);
+		fprintf(stderr, "H is :\n");
+		print_dense(&H);
+		fprintf(stderr, "O * P is :\n");
+		mult_dense_matrix(&O, &P, &test);
+		print_dense(&test);
+		fprintf(stderr, "t(O) * O is :\n");
+		mult_dense_matrix(&mat_o, &O, &test);
+		for(i=0; i<max_steps*max_steps; i++)
+			if( test.v[0][i] < 1e-15 )
+				test.v[0][i] = 0;
+		print_dense(&test);
+
+		double verif[max_steps], verif_err = 0;
+		mult_dense(&P, y, verif);
+		for(i=0; i<s; i++)
+			verif_err += (g[i] - verif[i]) * (g[i] - verif[i]);
+
+		fprintf(stderr, "After end of the GMRES(m), real error is %e :\ng =", sqrt(verif_err));
+		for(i=0; i<s; i++)
+			fprintf(stderr, " % 1.2e", g[i]);
+		fprintf(stderr, "\nv =");
+		for(i=0; i<s; i++)
+			fprintf(stderr, " % 1.2e", verif[i]);
+		fprintf(stderr, "\n");
+
+		mult_dense(&H, y, verif);
+		verif_err = (verif[0] - norm_b) * (verif[0] - norm_b);
+		for(i=1; i<s+1; i++)
+			verif_err += verif[i] * verif[i];
+
+		fprintf(stderr, "After end of the GMRES(m), real error is %e :\ng =", sqrt(verif_err));
+		for(i=0; i<s+1; i++)
+			fprintf(stderr, " % 1.2e", i==0 ? norm_b : 0.0);
+		fprintf(stderr, "\nv =");
+		for(i=0; i<s+1; i++)
+			fprintf(stderr, " % 1.2e", verif[i]);
+		fprintf(stderr, "\n");
+
+		deallocate_dense_matrix(&test);
+		deallocate_dense_matrix(&O);
+		deallocate_dense_matrix(&P);
+		deallocate_dense_matrix(&H);
+		// */
+
+
+	deallocate_dense_matrix(&mat_q);
+	deallocate_dense_matrix(&mat_h);
+	deallocate_dense_matrix(&mat_o);
+	deallocate_dense_matrix(&mat_p);
+}
+
+// takes two rows of length n, and returns them with {r1,r2} = {cos*r1+sin*r2n, -sin*r1+cos*r2}
+//#pragma omp task in(cos,sin) inout([n]r1, [n]r2)
+void givens_rotate( const int n, double *r1, double *r2, const double cos, const double sin )
+{
+	int i;
+    double r1_i;
+
+    for(i=0; i<n; i++)
+    {
+        r1_i = cos * r1[i] + sin * r2[i];
+        r2[i] = - sin * r1[i] + cos * r2[i];
+        r1[i] = r1_i;
+    }
+}
+
+//#pragma omp task inout([n+1]q_r) out([n+1]h)
+void mgs(const int n, const int r, double *q_r, double *h, const double **q)
+{
+	int i, j;
+
+	for(i=0; i<r; i++)
+	{
+		h[i] = scalar_product(n+1, q[i], q_r);
+		// update q_r as we go, which is mathematically identical
+		// to removing all the h_i*q_i at the end since all the q_i
+		// are orthogonal, but yields smaller rounding errors
+		// (modified gram-schmidt)
+		// Better lagorithm for block-parallelization of orthogonalizing a vector ? Householder ? Givens ?
+		for(j=0; j<n; j++)
+			q_r[j] -= h[i] * q[i][j];
+	}
+
+	// norm of the orthogonal vector in h_r,r-1
+	h[r] = sqrt( scalar_product(n+1, q_r, q_r) );
+
+}
+
+
