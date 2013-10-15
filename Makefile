@@ -9,7 +9,7 @@ OPTS = -lm
 DBG_OPTS = -Wall -g
 RLS_OPTS = -O3
 CC_OPTS = -Wno-unknown-pragmas -fdiagnostics-show-option #has to come after Wall
-MCC_OPTS =  --keep-all-files --ompss --output-dir=.mercurium 
+MCC_OPTS =  --keep-all-files --ompss --output-dir=.mercurium  --instrumentation
 
 actual : plaindebug
 all : release debug
