@@ -5,6 +5,7 @@
 #include <float.h>
 
 #include "global.h"
+#include "debug.h"
 
 #include "failinfo.h"
 
@@ -90,10 +91,10 @@ void start_iteration()
 void stop_iteration()
 {
 	gettimeofday( &stop, NULL );
-	double incDuration = (1000000 * (stop.tv_sec - start.tv_sec)) + stop.tv_usec - start.tv_usec;
+	double incDuration = (1e6 * (stop.tv_sec - start.tv_sec)) + stop.tv_usec - start.tv_usec;
 
 	if( sf )
-		fprintf(stderr, "[%e usecs]  ", iterationDuration[0]);
+		log_err("[%e usecs]  ", iterationDuration[0]);
 
 	nb_failed_block = 0;
 
@@ -110,7 +111,7 @@ void stop_iteration()
 			failed_block[0] = (int)((double)rand() / RAND_MAX * nb_blocks);
 			nb_failed_block = 1;
 
-			fprintf(stderr, "\nFault (on block %d), next fault in %e usecs\n", failed_block[0], nextFault[0]);
+			log_err("\nFault (on block %d), next fault in %e usecs\n", failed_block[0], nextFault[0]);
 		}
 	}
 
@@ -131,7 +132,7 @@ void stop_iteration()
 				failed_block[ nb_failed_block ] = i;
 
 				nb_failed_block++;
-				fprintf(stderr, "\nNext fault on block %d in %e usecs\n", failed_block[0], nextFault[0]);
+				log_err("\nNext fault on block %d in %e usecs\n", failed_block[0], nextFault[0]);
 			}
 		}
 	}

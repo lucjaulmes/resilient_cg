@@ -5,10 +5,9 @@
 #include "global.h"
 #include "failinfo.h"
 #include "recover.h"
+#include "debug.h"
 
 #include "cg.h"
-
-static double norm_b;
 
 // debug methods, quantifying conjugacy or orthogonality between vectors
 double ort(const int n, const double *v, const double *w)
@@ -34,58 +33,42 @@ double conjug(const int n, const void *A, const double *v, const double *w)
 
 void solve_cg( const int n, const void *A, const double *b, double *iterate, double thres )
 {
-	double err = 0;
-	int i, failures = 0;
+	double error, norm_b, time, comp_thres;
+	int it, total_it = 0, failures = 0;
 
-	for(i=0; i<n; i++)
-		iterate[i] = 0;
+	norm_b = scalar_product(n, b, b);
+	comp_thres = thres * thres * norm_b;
+	log_out("Error shown is ||Ax-b||², you should plot ||Ax-b||/||b||. (||b||² = %e)\n", norm_b);
+	norm_b = sqrt(norm_b);
 
-	norm_b = sqrt(scalar_product(n, b, b));
+	start_measure();
 
 	do{
-		restart_cg(n, A, b, iterate, thres, &err);
+		restart_cg(n, A, b, iterate, comp_thres, &error, &it);
 
 		if( get_nb_failed_blocks() > 0 )
 		{
-			{
-				// do some checking on the recovery
-				double y[n], new_err;
-				mult(A, iterate, y);
-				new_err = 0;
-				for(i=0; i<n; i++)
-					new_err += (b[i] - y[i]) * (b[i] - y[i]);
-
-				fprintf(stderr, "Before recovery error is %e\n", sqrt( new_err ) / norm_b );
-			}
-
 			failures += get_nb_failed_blocks();
 
 			// recover by interpolation since our submatrix is always spd
 			recover_interpolation( A, b, iterate, &solve_cholesky, fault_strat );
-
-			{
-				// do some checking on the recovery
-				double y[n], new_err;
-				mult(A, iterate, y);
-				new_err = 0;
-				for(i=0; i<n; i++)
-					new_err += (b[i] - y[i]) * (b[i] - y[i]);
-
-				fprintf(stderr, "Recovery changed error to %e\n", sqrt( new_err ) / norm_b );
-			}
 		}
-		else if( err >= -thres && err <= thres )
-			printf("Converged\n%d failures in this run.\n\n", failures);
-		else
-			printf("Restart.\n");
+		else if( error > comp_thres )
+			log_out("Restart.\n");
 
-	} while( err > thres );
+		total_it += it;
+	}
+	while( error > comp_thres );
+
+	time = stop_measure();
+
+    printf("\nCG method finished in wall clock time %e usecs with %d failures (%d iterations, error %e)\n", time, failures, total_it, sqrt(error)/norm_b);
 }
 
-void restart_cg( const int n, const void *A, const double *b, double *iterate, double thres, double *err )
+void restart_cg( const int n, const void *A, const double *b, double *iterate, double thres_sq, double *error, int *rank_converged )
 {
     int r, i;
-    double p[n], Ap[n], normA_p_sq, gradient[n], thres_sq = thres * thres, err_sq, old_err_sq = DBL_MAX;
+    double p[n], Ap[n], normA_p_sq, gradient[n], err_sq, old_err_sq = DBL_MAX;
 
 	// initialize first direction and iterate
 	// direction vector is b when iterate is 0, since gradient is b - A * it
@@ -96,7 +79,7 @@ void restart_cg( const int n, const void *A, const double *b, double *iterate, d
 
 	err_sq = scalar_product(n, gradient, gradient);
 
-    for(r=0; err_sq > thres_sq && r < 10*n ; r++)
+    for(r=0; err_sq > thres_sq && r < 500*n ; r++)
 	{
 		start_iteration();
 
@@ -145,69 +128,18 @@ void restart_cg( const int n, const void *A, const double *b, double *iterate, d
         // finally, compute (squared) error
 		old_err_sq = err_sq;
         err_sq = scalar_product(n, gradient, gradient);
-		*err = sqrt(err_sq);
 
-		//printf("\nAt step %d, Euclidian norm of the error : %e\n", r, *err);
-		
 		stop_iteration();
+
 		int failures = get_nb_failed_blocks();
 
-		printf("%e %d\n", (*err)/norm_b, failures);
+		log_out("%e %d\n", err_sq, failures);
 
 		if( failures )
 			break;
     }
-}
 
-
-
-double estimate_cg_condition_number( const DenseMatrix *A )
-{
-	// this gets us a norm on A
-	double max_sum_row = 0, sum_row, max_in_row, smallest_max_in_row = DBL_MAX;
-	int i, j;
-
-	for (i = 0; i < A->n; i++)
-	{
-		sum_row = 0;
-		max_in_row = 0;
-		for (j = 0; j < A->m; j++)
-		{
-			double A_ij = A->v[i][j];
-			if( A_ij < 0 )
-				A_ij = -A_ij;
-
-			if( A_ij == 0 )
-				continue;
-
-			sum_row += A_ij;
-
-			if( A_ij > max_in_row )
-				max_in_row = A_ij;
-		}
-
-		if( sum_row > max_sum_row )
-			max_sum_row = sum_row;
-
-		// or we could decide to keep the number k of this row
-		// and then solve the problem for A x = e_k, then we would have 
-		// A^-1 's colum, number k in x
-		if( smallest_max_in_row > max_in_row && max_in_row > 0 )
-			smallest_max_in_row = max_in_row ;
-	}
-	
-	double cond_num = max_sum_row / smallest_max_in_row;
-
-	printf("||A|| = %e and ||A^-1|| >= %e\n", max_sum_row, 1/smallest_max_in_row);
-
-	if(cond_num > 100)
-		printf("Matrix is ILL-CONDITIONED\n");
-	if(cond_num < 10)
-		printf("Matrix is well conditioned\n");
-	
-
-	printf("The condition number is >= %e\n\n", cond_num);
-
-	return cond_num;
+	*error = err_sq;
+	*rank_converged = r;
 }
 

@@ -4,7 +4,7 @@
 #include "global.h"
 
 void solve_gmres( const int n, const void *A, const double *b, double *x, double thres, const int restart );
-void restart_gmres( const int n, const void *A, const double *b, double *x, double thres, const int max_steps, double *err );
+void restart_gmres( const int n, const void *A, const double *b, double *x, double thres, const int max_steps, double *error, int *it );
 
 void givens_rotate( const int n, double *r1, double *r2, const double cos, const double sin );
 

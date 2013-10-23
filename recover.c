@@ -5,6 +5,7 @@
 #include "matrix.h"
 #include "failinfo.h"
 #include "solvers.h"
+#include "debug.h"
 
 #include "recover.h"
 
@@ -231,7 +232,7 @@ void do_interpolation( const void *A, const double *b, double *x, const int nb_l
 		// check the what we got from solver
 		mult_dense(&recup, interpolated, a);
 
-		fprintf(stderr, "Error of the inner solver is %e, relative error %e\n", sqrt( error_ls ),
+		log_err("Error of the inner solver is %e, relative error %e\n", sqrt( error_ls ),
 			sqrt(error_ls/scalar_product(total_lost, rhs, rhs)));
 	}
 

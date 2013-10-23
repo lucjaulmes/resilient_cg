@@ -8,15 +8,14 @@
 #include "failinfo.h"
 #include "recover.h"
 #include "solvers.h"
+#include "debug.h"
 
 #include "gmres.h"
 
-static double norm_b;
-
 void solve_gmres( const int n, const void *A, const double *b, double *x, double thres, const int restart )
 {
-	double error;
-	int i, steps, failures = 0;
+	double error, norm_b, time, comp_thres;
+	int it, total_it = 0, steps, failures = 0;
 
 	// not-restarted strategy : maximum n steps (NB. the algorithm can still restart before that sometimes, e.g. degenerate cases)
 	if( restart < 1 || restart > n )
@@ -25,87 +24,35 @@ void solve_gmres( const int n, const void *A, const double *b, double *x, double
 		steps = restart;
 
 	norm_b = sqrt(scalar_product(n, b, b));
+	comp_thres = thres * norm_b;
+	log_out("Error shown is ||Ax-b||, you should plot ||Ax-b||/||b||. (||b|| = %e)\n", norm_b);
+
 	start_measure();
 
 	do{
 		// its || b-Ax || / || b || that should be smaller than the threshold
-		restart_gmres(n, A, b, x, thres * norm_b, steps, &error);
-
-		error /= norm_b;
+		restart_gmres(n, A, b, x, comp_thres, steps, &error, &it);
 
 		if( get_nb_failed_blocks() > 0 )
 		{
-			double y[n], old_err, new_err = 0, oldx[n];
-
-			int k, l, m, bs;
-			for(k=0; k<n; k++)
-			{
-				oldx[k] = x[k];
-			}
-
-			//debug
-			{
-				// do some checking before the recovery
-				mult(A, x, y);
-				for(i=0; i<n; i++)
-					new_err += (b[i] - y[i]) * (b[i] - y[i]);
-
-			}
-
 			failures += get_nb_failed_blocks();
 
 			// recover with least squares.
-			// Actually we could interpolate when the submatrix is full rank
-			// (but how do we know that efficiently ?)
+			// NB : Actually we could interpolate when the submatrix is full rank, but how to know that efficiently ?
 			recover_leastsquares( A, b, x , fault_strat );
-
-			//debug
-			{
-				fprintf(stderr, "Recovery error change : %e -> ", sqrt( new_err ) / norm_b );
-				old_err = new_err;
-
-				// do some checking on the recovery
-				new_err = 0;
-				mult(A, x, y);
-				for(i=0; i<n; i++)
-					new_err += (b[i] - y[i]) * (b[i] - y[i]);
-
-				fprintf(stderr, "%e", sqrt( new_err ) / norm_b );
-				if( old_err < new_err )
-					fprintf(stderr, " !!! INCREASE !!!");
-				fprintf(stderr, "\n");
-
-				//if( old_err < new_err )
-				{
-					fprintf(stderr, "error was on block(s) ");
-					for(k=0; k<get_nb_failed_blocks(); k++)
-					{
-						l = get_failed_block(k);
-						get_line_from_block(l, &m, &bs);
-						fprintf(stderr, " %d (%d;%d)", l, m, bs);
-					}
-					fprintf(stderr, "\nReplacements done were : \n");
-
-					for(k=0; k<n; k++)
-					{
-						if( oldx[k] != x[k] )
-							fprintf(stderr, "%d : %e -> %e\n", k, oldx[k], x[k]);
-					}
-				}
-			}
 		}
-		else if( error >= -thres && error <= thres )
-			printf("Converged\n%d failures in this run.\n\n", failures);
-		else
-			printf("Restart.\n");
+		else if( error >= comp_thres || error <= -comp_thres )
+			log_out("Restart.\n");
 
+		total_it += it;
 	}
-	while( error < -thres || error > thres );
+	while( error < -comp_thres || error > comp_thres );
 
-    printf("\nGMRES method finished in wall clock time %e usecs\n", stop_measure());
+	time = stop_measure();
+    printf("\nGMRES method finished in wall clock time %e usecs with %d failures (%d iterations, error %e)\n", time, failures, total_it, error / norm_b);
 }
 
-void restart_gmres( const int n, const void *A, const double *b, double *x, double thres, const int max_steps, double *error )
+void restart_gmres( const int n, const void *A, const double *b, double *x, double thres, const int max_steps, double *error, int *rank_converged )
 {
     int i, j, r;
 
@@ -222,7 +169,8 @@ void restart_gmres( const int n, const void *A, const double *b, double *x, doub
 		// cleaner looks
 		if( *error < 0 )
 			*error = - *error;
-		printf("%e %d\n", (*error)/norm_b, failures);
+
+		log_out("%e %d\n", *error, failures);
 
 		if( failures )
 			break;
@@ -240,7 +188,7 @@ void restart_gmres( const int n, const void *A, const double *b, double *x, doub
 		// really this hould never happen
 		if( s < 0 )
 		{
-			printf("BAD STUFF\n");
+			log_out("BAD STUFF : s = %d, r = %d, rank_converged = %d, max_steps-1 = %d\n", s, r, rank_converged, max_steps-1);
 			exit(1);
 			return;
 		}
@@ -267,9 +215,9 @@ void restart_gmres( const int n, const void *A, const double *b, double *x, doub
 	for(i=0; i<n; i++)
 		x[i] += z[i];
 	
-		// Everything we could possibly want to debug. Remember that we use row-majro representation
+	#if defined VERBOSE && VERBOSE > FULLL_VERBOSE
+		// Everything we could possibly want to debug. Remember that we use row-major representation
 		// so for ease of use let's transpose all the matrices.
-		/*
 		DenseMatrix test, H, P, O;
 		allocate_dense_matrix(mat_o.m, mat_o.n, &test);
 		allocate_dense_matrix(mat_o.m, mat_o.n, &O);
@@ -279,14 +227,14 @@ void restart_gmres( const int n, const void *A, const double *b, double *x, doub
 		transpose_dense_matrix(&mat_p, &P);
 		transpose_dense_matrix(&mat_o, &O);
 
-		fprintf(stderr, "Some Verifications. P is :\n");
+		log_err("Some Verifications. P is :\n");
 		print_dense(&P);
-		fprintf(stderr, "H is :\n");
+		log_err("H is :\n");
 		print_dense(&H);
-		fprintf(stderr, "O * P is :\n");
+		log_err("O * P is :\n");
 		mult_dense_matrix(&O, &P, &test);
 		print_dense(&test);
-		fprintf(stderr, "t(O) * O is :\n");
+		log_err("t(O) * O is :\n");
 		mult_dense_matrix(&mat_o, &O, &test);
 		for(i=0; i<max_steps*max_steps; i++)
 			if( test.v[0][i] < 1e-15 )
@@ -298,32 +246,34 @@ void restart_gmres( const int n, const void *A, const double *b, double *x, doub
 		for(i=0; i<s; i++)
 			verif_err += (g[i] - verif[i]) * (g[i] - verif[i]);
 
-		fprintf(stderr, "After end of the GMRES(m), real error is %e :\ng =", sqrt(verif_err));
+		log_err("After end of the GMRES(m), real error is %e :\ng =", sqrt(verif_err));
 		for(i=0; i<s; i++)
-			fprintf(stderr, " % 1.2e", g[i]);
-		fprintf(stderr, "\nv =");
+			log_err(" % 1.2e", g[i]);
+		log_err("\nv =");
 		for(i=0; i<s; i++)
-			fprintf(stderr, " % 1.2e", verif[i]);
-		fprintf(stderr, "\n");
+			log_err(" % 1.2e", verif[i]);
+		log_err("\n");
 
+		double norm_b = sqrt(scalar_product(n, b, b));
 		mult_dense(&H, y, verif);
 		verif_err = (verif[0] - norm_b) * (verif[0] - norm_b);
 		for(i=1; i<s+1; i++)
 			verif_err += verif[i] * verif[i];
 
-		fprintf(stderr, "After end of the GMRES(m), real error is %e :\ng =", sqrt(verif_err));
+		log_err("After end of the GMRES(m), real error is %e :\ng =", sqrt(verif_err));
 		for(i=0; i<s+1; i++)
-			fprintf(stderr, " % 1.2e", i==0 ? norm_b : 0.0);
-		fprintf(stderr, "\nv =");
+			log_err(" % 1.2e", i==0 ? norm_b : 0.0);
+		log_err("\nv =");
 		for(i=0; i<s+1; i++)
-			fprintf(stderr, " % 1.2e", verif[i]);
-		fprintf(stderr, "\n");
+			log_err(" % 1.2e", verif[i]);
+		log_err("\n");
 
 		deallocate_dense_matrix(&test);
 		deallocate_dense_matrix(&O);
 		deallocate_dense_matrix(&P);
 		deallocate_dense_matrix(&H);
-		// */
+		
+	#endif
 
 
 	deallocate_dense_matrix(&mat_q);

@@ -9,7 +9,7 @@ OPTS = -lm
 DBG_OPTS = -Wall -g
 RLS_OPTS = -O3
 CC_OPTS = -Wno-unknown-pragmas -fdiagnostics-show-option #has to come after Wall
-MCC_OPTS =  --keep-all-files --ompss --output-dir=.mercurium  --instrumentation
+MCC_OPTS = -L/usr/local/lib64/instrumentation --keep-all-files --ompss --output-dir=.mercurium --instrumentation
 
 actual : plaindebug
 all : release debug
@@ -31,7 +31,7 @@ ompssrelease : $(SRC) $(HEADERS)
 	$(MCC) $(OPTS) $(RLS_OPTS) $(MCC_OPTS) $(SRC) -o rls/ompss
 
 clean : 
-	@rm -r plain ompss mcc_* *.o dbg/* rls/* .mercurium/*
+	@rm -r plain ompss mcc_* *.o rls/* .mercurium/*
 
 print : 
 	@echo $(SRC)

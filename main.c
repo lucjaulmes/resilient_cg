@@ -11,6 +11,7 @@
 #include "mmio.h"
 #include "failinfo.h"
 #include "recover.h"
+#include "debug.h"
 
 // pointers to functions
 MultFunction mult;
@@ -46,17 +47,17 @@ double stop_measure()
 // some self-explanatory text functions
 void usage(char* arg0)
 {
-	fprintf(stderr, "Usage: %s [options] <matrix-market-filename> [, ...] \n"
-					"Possible options are : \n"
-					"  -l lambda         Number (double), meaning 1/mtbf in usec.\n"
-					"  -sf               Forcing faults to happen no more than one at a time (default).\n"
-					"  -mf strategy      Enabling multiple faults to happen.\n "
-					"                   'strategy' must be one of global, uncorrelated, decorrelated.\n"
-					"  -bs blocksize     size of the blocks in block-row operations ;\n"
-					"                    also size of lost data on failure.\n"
-					"  -r restart        number of steps for the restarted gmres.\n"
-					"                   0 means standard gmres, without restarting (default).\n\n"
-					"Options apply to all following input files. You may re-specify them for each file.", arg0);
+	printf("Usage: %s [options] <matrix-market-filename> [, ...] \n"
+			"Possible options are : \n"
+			"  -l lambda         Number (double), meaning 1/mtbf in usec.\n"
+			"  -sf               Forcing faults to happen no more than one at a time (default).\n"
+			"  -mf strategy      Enabling multiple faults to happen.\n "
+			"                   'strategy' must be one of global, uncorrelated, decorrelated.\n"
+			"  -bs blocksize     size of the blocks in block-row operations ;\n"
+			"                    also size of lost data on failure.\n"
+			"  -r restart        number of steps for the restarted gmres.\n"
+			"                   0 means standard gmres, without restarting (default).\n\n"
+			"Options apply to all following input files. You may re-specify them for each file.", arg0);
 	exit(1);
 }
 
@@ -191,10 +192,21 @@ int main(int argc, char* argv[])
 
 			int m, n, nnz, symmetric = mm_is_symmetric(matcode);
 
-			if( mm_read_mtx_crd_size(input_file, &m, &n, &nnz) != 0 || m != n )
+			
+			if( !mm_is_array(matcode) && ( mm_read_mtx_crd_size(input_file, &m, &n, &nnz) != 0 || m != n ) )
 			{
 				printf("Sorry, this application does not support this matrix");
 				continue;
+			}
+			else if( mm_is_array(matcode) )
+			{
+				if( mm_read_mtx_array_size(input_file, &m, &n) != 0 || m != n )
+				{
+					printf("Sorry, this application does not support this matrix");
+					continue;
+				}
+
+				nnz = m*n;
 			}
 
 			printf("problem size : %d ;  ", n);
@@ -217,8 +229,6 @@ int main(int argc, char* argv[])
 			//dA.m = 12;
 			//mm_set_dense(&matcode);
 			//
-			//if(symmetric)
-			//	estimate_cg_condition_number(&dA);
 			//ENDEBUG
 
 
@@ -301,11 +311,11 @@ int main(int argc, char* argv[])
 				deallocate_dense_matrix(&dA);
 
 			// do displays (solution, error)
-			fprintf(stderr, "\nsolution : \n\n(  ");
+			log_err("\nsolution : \n\n(  ");
 
 			for(i=0; i < n; i++)
-				fprintf(stderr, "%.2e\t", x[i]);
-			fprintf(stderr, ")\n");
+				log_err("%.2e\t", x[i]);
+			log_err(")\n");
 
 			double err = 0, norm_b = scalar_product(n, b, b);
 			for(i=0; i < n; i++)
@@ -314,7 +324,7 @@ int main(int argc, char* argv[])
 				err += e_i * e_i;
 			}
 
-			fprintf(stderr, "euclidian distance to solution ||Ax-b||^2 = %e , ||Ax-b||/||b|| = %e\n", err, sqrt(err/norm_b));
+			printf("Verification : euclidian distance to solution ||Ax-b||^2 = %e , ||Ax-b||/||b|| = %e\n", err, sqrt(err/norm_b));
 		}
 
     return 0;

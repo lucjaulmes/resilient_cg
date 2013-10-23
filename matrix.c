@@ -1,6 +1,8 @@
 #include <stdlib.h>
 #include <stdio.h>
 
+#include "debug.h"
+
 #include "matrix.h"
 
 // matrix-vector multiplication, row major ( W = A x V )
@@ -152,15 +154,15 @@ void print_dense( const DenseMatrix *A )
     int i, j;
     for(i=0; i < A->n; i++)
     {
-        fprintf(stderr, "| ");
+        log_out("| ");
 
         for(j=0; j < A->m; j++)
 			if( A->v[i][j] == 0 )
-				fprintf(stderr, "  0        " );
+				log_out("  0        " );
 			else
-				fprintf(stderr, " % 1.2e ", A->v[i][j] );
+				log_out(" % 1.2e ", A->v[i][j] );
 
-        fprintf(stderr, " |\n");
+        log_out(" |\n");
     }
 }
 
@@ -169,7 +171,7 @@ void print_sparse( const SparseMatrix *A )
     int i, j;
     for(i=0; i < A->n; i++)
     {
-        fprintf(stderr, "| ");
+        log_out("| ");
 
         int k = A->r[i];
 
@@ -180,12 +182,12 @@ void print_sparse( const SparseMatrix *A )
                 p = A->v[k++];
 
 			if( p == 0 )
-				fprintf(stderr, "  0        " );
+				log_out("  0        " );
 			else
-				fprintf(stderr, " % 1.2e ", p );
+				log_out(" % 1.2e ", p );
         }
 
-        fprintf(stderr, " |\n");
+        log_out(" |\n");
     }
 }
 
