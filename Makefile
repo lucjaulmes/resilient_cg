@@ -6,7 +6,7 @@ OBJECTS = $(SRC:.c=.o)
 HEADERS = $(shell ls *.h)
 
 OPTS = -lm
-DBG_OPTS = -Wall -g -DVERBOSE=1
+DBG_OPTS = -Wall -g #-DVERBOSE=1
 RLS_OPTS = -O3 -DPERFORMANCE
 CC_OPTS = -Wno-unknown-pragmas -fdiagnostics-show-option #has to come after Wall
 MCC_OPTS = --keep-all-files --ompss --output-dir=.mercurium
