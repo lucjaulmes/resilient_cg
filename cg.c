@@ -38,7 +38,7 @@ void solve_cg( const int n, const void *A, const double *b, double *iterate, dou
 
 	norm_b = scalar_product(n, b, b);
 	comp_thres = thres * thres * norm_b;
-	log_out("Error shown is ||Ax-b||², you should plot ||Ax-b||/||b||. (||b||² = %e)\n", norm_b);
+	log_out("Error shown is ||Ax-b||^2, you should plot ||Ax-b||/||b||. (||b||^2 = %e)\n", norm_b);
 	norm_b = sqrt(norm_b);
 
 	start_measure();
@@ -133,7 +133,7 @@ void restart_cg( const int n, const void *A, const double *b, double *iterate, d
 
 		int failures = get_nb_failed_blocks();
 
-		log_out("%e %d\n", err_sq, failures);
+		log_out("%      d %e %d\n", r, err_sq, failures);
 
 		if( failures )
 			break;

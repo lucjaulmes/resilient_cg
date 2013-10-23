@@ -170,7 +170,7 @@ void restart_gmres( const int n, const void *A, const double *b, double *x, doub
 		if( *error < 0 )
 			*error = - *error;
 
-		log_out("%e %d\n", *error, failures);
+		log_out("%      d, %e %d\n", r, *error, failures);
 
 		if( failures )
 			break;
