@@ -89,13 +89,13 @@ int mm_is_valid(MM_typecode matcode);		/* too complex for a macro */
 
    MM_matrix_typecode: 4-character sequence
 
-					ojbect 		sparse/   	data        storage 
-						  		dense	 	type        scheme
+					ojbect 		sparse/   	data	    storage 
+						  		dense	 	type	    scheme
 
-   string position:	 [0]	    [1]			[2]         [3]
+   string position:	 [0]		[1]			[2]         [3]
 
    Matrix typecode:  M(atrix)  C(oord)		R(eal)   	G(eneral)
-							    A(array)	C(omplex)   H(ermitian)
+								A(array)	C(omplex)   H(ermitian)
 											P(attern)   S(ymmetric)
 											I(nteger)	K(kew)
 
@@ -126,7 +126,7 @@ int mm_read_mtx_crd_entry(FILE *f, int *I, int *J, double *real, double *img,
 			MM_typecode matcode);
 
 int mm_read_unsymmetric_sparse(const char *fname, int *M_, int *N_, int *nz_,
-	            double **val_, int **I_, int **J_);
+		        double **val_, int **I_, int **J_);
 
 
 

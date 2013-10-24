@@ -22,10 +22,10 @@ void mult_dense ( const void *mat, const double *V, double *W )
 
 	for(i=0; i < A->n; i++)
 	{
-	    W[i] = 0;
+		W[i] = 0;
 
-	    for(j=0; j < A->m; j++)
-	        W[i] += A->v[i][j] * V[j];
+		for(j=0; j < A->m; j++)
+		    W[i] += A->v[i][j] * V[j];
 	}
 }
 
@@ -38,10 +38,10 @@ void mult_sparse ( const void *mat, const double *V, double *W )
 
 	for(i=0; i < A->n; i++)
 	{
-	    W[i] = 0;
+		W[i] = 0;
 
-	    for(j=A->r[i]; j < A->r[i+1]; j++)
-	        W[i] += A->v[j] * V[ A->c[j] ];
+		for(j=A->r[i]; j < A->r[i+1]; j++)
+		    W[i] += A->v[j] * V[ A->c[j] ];
 	}
 }
 
@@ -53,9 +53,9 @@ void mult_dense_transposed ( const void *mat, const double *V, double *W )
 
 	for(i=0; i < A->m; i++)
 	{
-	    W[i] = 0;
-	    for(j=0; j < A->n; j++)
-	        W[i] += A->v[j][i] * V[j];
+		W[i] = 0;
+		for(j=0; j < A->n; j++)
+		    W[i] += A->v[j][i] * V[j];
 	}
 }
 
@@ -66,16 +66,16 @@ void mult_sparse_transposed ( const void *mat, const double *V, double *W )
 	int i, j, col;
 
 	for(i=0; i < A->m; i++)
-	    W[i] = 0;
+		W[i] = 0;
 
 	for(i=0; i < A->n; i++)
 	{
-	    for(j=A->r[i]; j < A->r[i+1]; j++)
-	    {
-	        col = A->c[j];
+		for(j=A->r[i]; j < A->r[i+1]; j++)
+		{
+		    col = A->c[j];
 
-	        W[col] += A->v[j] * V[ col ];
-	    }
+		    W[col] += A->v[j] * V[ col ];
+		}
 	}
 }
 
@@ -88,23 +88,23 @@ void read_dense_Matrix( const int n, const int m, const int nnz, const int symme
 	A->m = m;
 
 	for (i=0; i<n; i++)
-	    for (j=0; j<m; j++)
-	        A->v[i][j] = 0;
+		for (j=0; j<m; j++)
+		    A->v[i][j] = 0;
 
 	for (i=0; i<nnz; i++)
 	{
-	    fscanf(input_file, "%d %d %lg\n", &X, &Y, &val);
-	    X--;  /* adjust from 1-based to 0-based */
-	    Y--;
+		fscanf(input_file, "%d %d %lg\n", &X, &Y, &val);
+		X--;  /* adjust from 1-based to 0-based */
+		Y--;
 
-	    // for debug purposes
-	    if( X >= n || Y >= m )
-	        continue;
+		// for debug purposes
+		if( X >= n || Y >= m )
+		    continue;
 
-	    A->v[X][Y] = val;
+		A->v[X][Y] = val;
 
-	    if(symmetric && X != Y)
-	        A->v[Y][X] = val;
+		if(symmetric && X != Y)
+		    A->v[Y][X] = val;
 	}
 }
 
@@ -114,15 +114,15 @@ void dense_to_sparse_Matrix( const DenseMatrix *B, SparseMatrix *A )
 
 	for(i=0; i<B->n; i++)
 	{
-	    A->r[i] = pos;
+		A->r[i] = pos;
 
-	    for(j=0; j<B->n; j++)
-	        if(B->v[i][j] != 0)
-	        {
-	            A->v[pos] = B->v[i][j];
-	            A->c[pos] = j;
-	            pos++;
-	        }
+		for(j=0; j<B->n; j++)
+		    if(B->v[i][j] != 0)
+		    {
+		        A->v[pos] = B->v[i][j];
+		        A->c[pos] = j;
+		        pos++;
+		    }
 	}
 
 	A->n = B->n;
@@ -140,12 +140,12 @@ void mult_dense_matrix ( const DenseMatrix *A, const DenseMatrix *B, DenseMatrix
 
 	int i, j, k;
 	for(i=0; i < C->n; i++)
-	    for(j=0; j < C->m; j++)
-	    {
-	        C->v[i][j] = 0;
-	        for(k=0; k<A->m; k++)
-	            C->v[i][j] += A->v[i][k] * B->v[k][j];
-	    }
+		for(j=0; j < C->m; j++)
+		{
+		    C->v[i][j] = 0;
+		    for(k=0; k<A->m; k++)
+		        C->v[i][j] += A->v[i][k] * B->v[k][j];
+		}
 }
 
 // matrix multiplication
@@ -156,8 +156,8 @@ void transpose_dense_matrix ( const DenseMatrix *A, DenseMatrix *B )
 
 	int i, j;
 	for(i=0; i < A->n; i++)
-	    for(j=0; j < A->m; j++)
-	        B->v[j][i] = A->v[i][j];
+		for(j=0; j < A->m; j++)
+		    B->v[j][i] = A->v[i][j];
 }
 
 void print_dense( const DenseMatrix *A )
@@ -165,15 +165,15 @@ void print_dense( const DenseMatrix *A )
 	int i, j;
 	for(i=0; i < A->n; i++)
 	{
-	    log_out("| ");
+		log_out("| ");
 
-	    for(j=0; j < A->m; j++)
+		for(j=0; j < A->m; j++)
 			if( A->v[i][j] == 0 )
-				log_out("  0	    " );
+				log_out("  0		" );
 			else
 				log_out(" % 1.2e ", A->v[i][j] );
 
-	    log_out(" |\n");
+		log_out(" |\n");
 	}
 }
 
@@ -182,23 +182,23 @@ void print_sparse( const SparseMatrix *A )
 	int i, j;
 	for(i=0; i < A->n; i++)
 	{
-	    log_out("| ");
+		log_out("| ");
 
-	    int k = A->r[i];
+		int k = A->r[i];
 
-	    for(j=0; j < A->m; j++)
-	    {
+		for(j=0; j < A->m; j++)
+		{
 			double p = 0;
-	        if( k < A->r[i+1] && j == A->c[k] )
-	            p = A->v[k++];
+		    if( k < A->r[i+1] && j == A->c[k] )
+		        p = A->v[k++];
 
 			if( p == 0 )
-				log_out("  0	    " );
+				log_out("  0		" );
 			else
 				log_out(" % 1.2e ", p );
-	    }
+		}
 
-	    log_out(" |\n");
+		log_out(" |\n");
 	}
 }
 
@@ -214,7 +214,7 @@ void allocate_dense_matrix(const int n, const int m, DenseMatrix *A)
 
 	int i;
 	for(i=1; i<n; i++)
-	    A->v[i] = A->v[0] + i * m ;
+		A->v[i] = A->v[0] + i * m ;
 }
 
 void deallocate_dense_matrix(DenseMatrix *A)
@@ -297,9 +297,9 @@ void submatrix_sparse_to_dense( const void *mat, int *rows, int *cols, DenseMatr
 			continue;
 
 		l = 0;
-	    for(j=A->r[i]; j < A->r[i+1]; j++)
-	    {
-	        col_A = A->c[j];
+		for(j=A->r[i]; j < A->r[i+1]; j++)
+		{
+		    col_A = A->c[j];
 
 			// advance in cols until cols_l >= col_A
 			while( l < B->m && cols[l] < col_A )
@@ -316,7 +316,7 @@ void submatrix_sparse_to_dense( const void *mat, int *rows, int *cols, DenseMatr
 				B->v[k][l] = A->v[j];
 				l++;
 			}
-	    }
+		}
 	}
 }
 
@@ -352,7 +352,7 @@ void submatrix_sparse( const void *mat, int *rows, int *cols, SparseMatrix *B )
 
 		B->r[ map_row[i] ] = k;
 
-	    for(j=A->r[i]; j < A->r[i+1]; j++)
+		for(j=A->r[i]; j < A->r[i+1]; j++)
 			if( map_col[ A->c[j] ] >= 0 )
 			{
 				B->v[ k ] = A->v[j];

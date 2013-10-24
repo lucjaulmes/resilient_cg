@@ -97,21 +97,21 @@ void restart_cg( const int n, const void *A, const double *b, double *iterate, d
 
 		double alpha;
 
-	    // store A*p_r
-	    mult((void*)A, p, Ap);
+		// store A*p_r
+		mult((void*)A, p, Ap);
 
-	    // get the norm for A of this new direction vector
-	    normA_p_sq = scalar_product(n, p, Ap);
+		// get the norm for A of this new direction vector
+		normA_p_sq = scalar_product(n, p, Ap);
 
 		{
 			alpha = err_sq / normA_p_sq ;
 			old_err_sq = err_sq;
 		}
 
-	    // update iterate with contribution along new direction
+		// update iterate with contribution along new direction
 		daxpy(n, alpha, p, iterate, iterate);
 
-	    // update gradient to solution (a.k.a. error) : b - A * it
+		// update gradient to solution (a.k.a. error) : b - A * it
 		// every now and then, recompute properly to remove rounding errors
 		if( (r+1) % 50)
 			daxpy(n, -alpha, Ap, gradient, gradient);

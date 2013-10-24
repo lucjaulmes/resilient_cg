@@ -27,7 +27,7 @@ double scalar_product( const int n, const double *v, const double *w )
 	double r = 0;
 
 	for(i=0; i<n; i++)
-	    r += v[i] * w[i];
+		r += v[i] * w[i];
 
 	return r;
 }
@@ -49,14 +49,14 @@ void usage(char* arg0)
 {
 	printf("Usage: %s [options] <matrix-market-filename> [, ...] \n"
 			"Possible options are : \n"
-			"  -l lambda	     Number (double), meaning 1/mtbf in usec.\n"
-			"  -sf	           Forcing faults to happen no more than one at a time (default).\n"
+			"  -l lambda		 Number (double), meaning 1/mtbf in usec.\n"
+			"  -sf		       Forcing faults to happen no more than one at a time (default).\n"
 			"  -mf strategy	  Enabling multiple faults to happen.\n "
-			"	               'strategy' must be one of global, uncorrelated, decorrelated.\n"
+			"		           'strategy' must be one of global, uncorrelated, decorrelated.\n"
 			"  -bs blocksize	 size of the blocks in block-row operations ;\n"
-			"	                also size of lost data on failure.\n"
-			"  -r restart	    number of steps for the restarted gmres.\n"
-			"	               0 means standard gmres, without restarting (default).\n\n"
+			"		            also size of lost data on failure.\n"
+			"  -r restart		number of steps for the restarted gmres.\n"
+			"		           0 means standard gmres, without restarting (default).\n\n"
 			"Options apply to all following input files. You may re-specify them for each file.", arg0);
 	exit(1);
 }

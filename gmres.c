@@ -56,13 +56,13 @@ void restart_gmres( const int n, const void *A, const double *b, double *x, doub
 	*rank_converged = -1;
 
 	double
-	    // for Arnoldi iterations.
-	    // !! since we use the column-vectors of each matrix, they are stocked in column-major
-	    **q, **h,
-	    // for the QR decomposition of h
-	    **o, **p,
-	    // contains the rhs of the "innermost" problem (thus also the error)
-	    g[max_steps];
+		// for Arnoldi iterations.
+		// !! since we use the column-vectors of each matrix, they are stocked in column-major
+		**q, **h,
+		// for the QR decomposition of h
+		**o, **p,
+		// contains the rhs of the "innermost" problem (thus also the error)
+		g[max_steps];
 
 	*error = DBL_MAX;
 
@@ -83,7 +83,7 @@ void restart_gmres( const int n, const void *A, const double *b, double *x, doub
 	for(i=0; i<max_steps; i++)
 	{
 		o[i][i] = 1;
-	    g[i] = 0;
+		g[i] = 0;
 	}
 
 	// instead of setting b as the initial step of the algorithm
@@ -112,14 +112,14 @@ void restart_gmres( const int n, const void *A, const double *b, double *x, doub
 	{
 		start_iteration();
 		
-	    // build next vector of q as Arnoldi iteration
-	    // expand Krylov subspace through multiplying by A
-	    mult((void*)A, q[r-1], q[r]);
+		// build next vector of q as Arnoldi iteration
+		// expand Krylov subspace through multiplying by A
+		mult((void*)A, q[r-1], q[r]);
 
-	    // get values of h, which will be used to orthonormalize q_r
+		// get values of h, which will be used to orthonormalize q_r
 		mgs(n, r, q[r], h[r-1], (const double**)q);
 
-	    // degenerate case ! better to use a threshold, e.g. h[r-1][r] / norm < e-14 ?
+		// degenerate case ! better to use a threshold, e.g. h[r-1][r] / norm < e-14 ?
 		// the right thing to do here is to compute the iterate x
 		// and restart the method with this iterate as initial guess
 		{
@@ -135,13 +135,13 @@ void restart_gmres( const int n, const void *A, const double *b, double *x, doub
 					q[r][j] /= h[r-1][r];
 		}
 
-	    // update the QR decomposition of H with a Givens rotation
-	    double cos, sin, norm;
+		// update the QR decomposition of H with a Givens rotation
+		double cos, sin, norm;
 
 		// p's new last column is h's last column (left-)multiplied by o, with a 1 on (r,r)
 		mult_dense(&mat_o, h[r-1], p[r-1]); // rank-limited multiplication ? e.g. set mat_o.n = mat_o.m = r ?
 
-	    // define the givens rotation to get the neat triangular form on p
+		// define the givens rotation to get the neat triangular form on p
 		{
 			cos = p[r-1][r-1];
 			sin = p[r-1][r];
@@ -155,8 +155,8 @@ void restart_gmres( const int n, const void *A, const double *b, double *x, doub
 			p[r-1][r] = 0;
 		}
 
-	    // apply givens rotation to o
-	    // (or alternatively save the values {r,cos,sin} for later)
+		// apply givens rotation to o
+		// (or alternatively save the values {r,cos,sin} for later)
 		givens_rotate(r+1, o[r-1], o[r], cos, sin);
 
 		{
@@ -319,9 +319,9 @@ void givens_rotate( const int n, double *r1, double *r2, const double cos, const
 
 	for(i=0; i<n; i++)
 	{
-	    r1_i = cos * r1[i] + sin * r2[i];
-	    r2[i] = - sin * r1[i] + cos * r2[i];
-	    r1[i] = r1_i;
+		r1_i = cos * r1[i] + sin * r2[i];
+		r2[i] = - sin * r1[i] + cos * r2[i];
+		r1[i] = r1_i;
 	}
 }
 
