@@ -55,6 +55,7 @@ void solve_gmres( const int n, const void *A, const double *b, double *x, double
 void restart_gmres( const int n, const void *A, const double *b, double *x, double thres, const int max_steps, double *error, int *rank_converged )
 {
     int i, j, r;
+	*rank_converged = -1;
 
     double
         // for Arnoldi iterations.
@@ -95,22 +96,21 @@ void restart_gmres( const int n, const void *A, const double *b, double *x, doub
 	double norm0;
 
 	{
-		double Ax[n];
-		mult((void*)A, x, Ax);
+		mult((void*)A, x, q[0]);
+
+		// q_0 <- b - q_0 = b - A * it
+		daxpy(n, -1.0, q[0], b, q[0]);
+
+		norm0 = sqrt( scalar_product(n+1, q[0], q[0]) );
 
 		for(i=0; i<n; i++)
-			q[0][i] = b[i] - Ax[i];
+			q[0][i] /= norm0;
+
+		// q_0 decomposition on dimension 1
+		g[0] = norm0;
 	}
 
-    norm0 = sqrt( scalar_product(n+1, q[0], q[0]) );
-
-    for(i=0; i<n; i++)
-		q[0][i] /= norm0;
-
-    // q_0 decomposition on dimension 1
-    g[0] = norm0;
-
-    for(r=1; (*error > thres || *error < -thres) && r < max_steps; r++)
+    for(r=1; *rank_converged < 0 && r < max_steps; r++)
     {
 		start_iteration();
 		
@@ -124,12 +124,18 @@ void restart_gmres( const int n, const void *A, const double *b, double *x, doub
         // degenerate case ! better to use a threshold, e.g. h[r-1][r] / norm < e-14 ?
 		// the right thing to do here is to compute the iterate x
 		// and restart the method with this iterate as initial guess
-        if( h[r-1][r] == 0 )
-            break;
-
-        // normalize
-        for(j=0; j<n; j++)
-            q[r][j] /= h[r-1][r];
+		{
+			if( h[r-1][r] == 0 )
+			{
+				log_out("\n\n------\nDegenerate case at rank %d (with error %e) : solve-restart needed\n------\n\n", r, *error);
+				#pragma omp critical
+					*rank_converged = r+1;
+			}
+			else
+				// normalize
+				for(j=0; j<n; j++)
+					q[r][j] /= h[r-1][r];
+		}
 
         // update the QR decomposition of H with a Givens rotation
         double cos, sin, norm;
@@ -138,42 +144,53 @@ void restart_gmres( const int n, const void *A, const double *b, double *x, doub
         mult_dense(&mat_o, h[r-1], p[r-1]); // rank-limited multiplication ? e.g. set mat_o.n = mat_o.m = r ?
 
         // define the givens rotation to get the neat triangular form on p
-        cos = p[r-1][r-1];
-        sin = p[r-1][r];
-        norm = sqrt( cos * cos + sin * sin );
+		{
+			cos = p[r-1][r-1];
+			sin = p[r-1][r];
+			norm = sqrt( cos * cos + sin * sin );
 
-        cos /= norm;
-        sin /= norm;
+			cos /= norm;
+			sin /= norm;
 
-        // update the new last column of p, after givens rotation
-        p[r-1][r-1] = norm;
-        p[r-1][r] = 0;
+			// update the new last column of p, after givens rotation
+			p[r-1][r-1] = norm;
+			p[r-1][r] = 0;
+		}
 
         // apply givens rotation to o
         // (or alternatively save the values {r,cos,sin} for later)
 		givens_rotate(r+1, o[r-1], o[r], cos, sin);
 
-        // rotate the vector g also
-		givens_rotate(1, &g[r-1], &g[r], cos, sin);
+		{
+			// rotate the vector g also
+			givens_rotate(1, &g[r-1], &g[r], cos, sin);
+			*error = g[r];
 
-        // now we have applied our rotation to all the elements of
-        // || H_r * y_r - |b| e_1 || which is after all the successive rotations
-        // || p_r * y_r - g_r || with p upper triangular of size r-1 ²
-        // thus the minimum is obtained at y_r = p_r^(-1) * g
+			stop_iteration();
+			int failures = 0;
+			failures = get_nb_failed_blocks();
 
-        *error = g[r];
+			char stop_here = (*error <= thres && *error >= -thres) || (failures > 0);
 
-		stop_iteration();
-		int failures = get_nb_failed_blocks();
+			#pragma omp critical
+			{
+				if( stop_here && *rank_converged < 0 )
+					*rank_converged = r;
+			}
 
-		// cleaner looks
-		if( *error < 0 )
-			*error = - *error;
+			log_out("% e %d\n", *error, failures);
+			if(*rank_converged == r )
+				log_out("\n\n------\nConverged at rank %d (with error %e)\n------\n\n", r, *error);
+		}
 
-		log_out("%      d, %e %d\n", r, *error, failures);
+		if( r == max_steps )
+		{
+			log_out("\n\n------\nMaximum number of steps %d reached in restarted gmres (with error %e) :"
+					"solve-restart programmed\n------\n\n", r, *error);
+			#pragma omp critical
+				*rank_converged = r;
+		}
 
-		if( failures )
-			break;
     }
 
 
@@ -188,7 +205,7 @@ void restart_gmres( const int n, const void *A, const double *b, double *x, doub
 		// really this hould never happen
 		if( s < 0 )
 		{
-			log_out("BAD STUFF : s = %d, r = %d, rank_converged = %d, max_steps-1 = %d\n", s, r, rank_converged, max_steps-1);
+			log_out("BAD STUFF : s = %d, r = %d, rank_converged = %d, max_steps-1 = %d\n", s, r, *rank_converged, max_steps-1);
 			exit(1);
 			return;
 		}
@@ -212,14 +229,13 @@ void restart_gmres( const int n, const void *A, const double *b, double *x, doub
 	double z[n];
     mult_dense_transposed(&mat_q, y, z);
 
-	for(i=0; i<n; i++)
-		x[i] += z[i];
+	daxpy(n, 1.0, z, x, x);
 	
-	#if defined VERBOSE && VERBOSE > FULLL_VERBOSE
+	#if defined VERBOSE && VERBOSE > FULL_VERBOSE
 		// Everything we could possibly want to debug. Remember that we use row-major representation
 		// so for ease of use let's transpose all the matrices.
 		DenseMatrix test, H, P, O;
-		allocate_dense_matrix(mat_o.m, mat_o.n, &test);
+		allocate_dense_matrix(max_steps+1, max_steps+1, &test);
 		allocate_dense_matrix(mat_o.m, mat_o.n, &O);
 		allocate_dense_matrix(mat_p.m, mat_p.n, &P);
 		allocate_dense_matrix(mat_h.m, mat_h.n, &H);
@@ -229,19 +245,30 @@ void restart_gmres( const int n, const void *A, const double *b, double *x, doub
 
 		log_err("Some Verifications. P is :\n");
 		print_dense(&P);
+
 		log_err("H is :\n");
 		print_dense(&H);
+
 		log_err("O * P is :\n");
+		test.m = P.m;
+		test.n = O.n;
 		mult_dense_matrix(&O, &P, &test);
 		print_dense(&test);
+
 		log_err("t(O) * O is :\n");
+		test.m = O.m;
+		test.n = O.n;
 		mult_dense_matrix(&mat_o, &O, &test);
-		for(i=0; i<max_steps*max_steps; i++)
-			if( test.v[0][i] < 1e-15 )
-				test.v[0][i] = 0;
+
+		for(i=0; i<max_steps+1; i++)
+			for(j=0; j<max_steps+1; j++)
+				if( test.v[i][j] < 1e-15 )
+					test.v[i][j] = 0;
 		print_dense(&test);
 
 		double verif[max_steps], verif_err = 0;
+		if(s > *rank_converged)
+			s = *rank_converged;
 		mult_dense(&P, y, verif);
 		for(i=0; i<s; i++)
 			verif_err += (g[i] - verif[i]) * (g[i] - verif[i]);
@@ -280,6 +307,8 @@ void restart_gmres( const int n, const void *A, const double *b, double *x, doub
 	deallocate_dense_matrix(&mat_h);
 	deallocate_dense_matrix(&mat_o);
 	deallocate_dense_matrix(&mat_p);
+
+    log_out("stop inner loop after %d steps, error = %e whereas threshold = %e\n", r, *error, thres);
 }
 
 // takes two rows of length n, and returns them with {r1,r2} = {cos*r1+sin*r2n, -sin*r1+cos*r2}

@@ -6,14 +6,14 @@ OBJECTS = $(SRC:.c=.o)
 HEADERS = $(shell ls *.h)
 
 OPTS = -lm
-DBG_OPTS = -Wall -g #-DVERBOSE=1
+DBG_OPTS = -Wall -g -DVERBOSE=1
 RLS_OPTS = -O3 -DPERFORMANCE
 CC_OPTS = -Wno-unknown-pragmas -fdiagnostics-show-option #has to come after Wall
 MCC_OPTS = --keep-all-files --ompss --output-dir=.mercurium
 M_D_OPTS = -L/usr/local/lib64/instrumentation  --instrumentation
 M_R_OPTS = -L/usr/local/lib64/performance
 
-actual : plaindebug
+actual : debug
 all : release debug
 release : plainrelease ompssrelease
 debug : plaindebug ompssdebug
@@ -33,7 +33,7 @@ ompssrelease : $(SRC) $(HEADERS)
 	$(MCC) $(OPTS) $(RLS_OPTS) $(MCC_OPTS) $(M_R_OPTS) $(SRC) -o rls/ompss
 
 clean : 
-	@rm -r plain ompss mcc_* *.o rls/* .mercurium/*
+	@rm -r plain ompss .mercurium/mcc_* *.o rls/* .mercurium/*
 
 print : 
 	@echo $(SRC)

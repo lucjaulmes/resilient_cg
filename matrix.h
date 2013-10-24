@@ -19,6 +19,8 @@ typedef struct SparseMatrix
 
 typedef void (*MultFunction)(const void*, const double*, double*);
 
+void daxpy( const int n, const double a, const double *x, const double *y, double *z);
+
 // matrix-vector multiplication, row major ( W = A x V )
 void mult_dense ( const void *mat, const double *V, double *W );
 void mult_sparse ( const void *mat, const double *V, double *W );

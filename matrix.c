@@ -5,6 +5,13 @@
 
 #include "matrix.h"
 
+void daxpy( const int n, const double a, const double *x, const double *y, double *z)
+{
+	int i;
+	for(i=0; i<n; i++)
+		z[i] = a * x[i] + y[i];
+}
+
 // matrix-vector multiplication, row major ( W = A x V )
 void mult_dense ( const void *mat, const double *V, double *W )
 {
@@ -138,6 +145,7 @@ void mult_dense_matrix ( const DenseMatrix *A, const DenseMatrix *B, DenseMatrix
         }
 }
 
+// matrix multiplication
 void transpose_dense_matrix ( const DenseMatrix *A, DenseMatrix *B )
 {
 	// A->m == B->n
