@@ -1,7 +1,6 @@
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <time.h>
 #include <float.h>
 
 #include "global.h"
@@ -30,7 +29,6 @@ void solve_gmres( const int n, const void *A, const double *b, double *x, double
 	start_measure();
 
 	do{
-		// its || b-Ax || / || b || that should be smaller than the threshold
 		restart_gmres(n, A, b, x, comp_thres, steps, &error, &it);
 
 		if( get_nb_failed_blocks() > 0 )
@@ -49,22 +47,22 @@ void solve_gmres( const int n, const void *A, const double *b, double *x, double
 	while( error < -comp_thres || error > comp_thres );
 
 	time = stop_measure();
-    printf("\nGMRES method finished in wall clock time %e usecs with %d failures (%d iterations, error %e)\n", time, failures, total_it, error / norm_b);
+	printf("\nGMRES method finished in wall clock time %e usecs with %d failures (%d iterations, error %e)\n", time, failures, total_it, error / norm_b);
 }
 
 void restart_gmres( const int n, const void *A, const double *b, double *x, double thres, const int max_steps, double *error, int *rank_converged )
 {
-    int i, j, r;
+	int i, j, r;
 	*rank_converged = -1;
 
-    double
-        // for Arnoldi iterations.
-        // !! since we use the column-vectors of each matrix, they are stocked in column-major
-        **q, **h,
-        // for the QR decomposition of h
-        **o, **p,
-        // contains the rhs of the "innermost" problem (thus also the error)
-        g[max_steps];
+	double
+	    // for Arnoldi iterations.
+	    // !! since we use the column-vectors of each matrix, they are stocked in column-major
+	    **q, **h,
+	    // for the QR decomposition of h
+	    **o, **p,
+	    // contains the rhs of the "innermost" problem (thus also the error)
+	    g[max_steps];
 
 	*error = DBL_MAX;
 
@@ -76,16 +74,16 @@ void restart_gmres( const int n, const void *A, const double *b, double *x, doub
 	allocate_dense_matrix(max_steps, max_steps, &mat_o);
 	allocate_dense_matrix(max_steps-1, max_steps, &mat_p);
 
-    q = mat_q.v;
-    h = mat_h.v;
-    o = mat_o.v;
-    p = mat_p.v;
+	q = mat_q.v;
+	h = mat_h.v;
+	o = mat_o.v;
+	p = mat_p.v;
 
 	// O initially identity, vector g zero
-    for(i=0; i<max_steps; i++)
+	for(i=0; i<max_steps; i++)
 	{
 		o[i][i] = 1;
-        g[i] = 0;
+	    g[i] = 0;
 	}
 
 	// instead of setting b as the initial step of the algorithm
@@ -110,18 +108,18 @@ void restart_gmres( const int n, const void *A, const double *b, double *x, doub
 		g[0] = norm0;
 	}
 
-    for(r=1; *rank_converged < 0 && r < max_steps; r++)
-    {
+	for(r=1; *rank_converged < 0 && r < max_steps; r++)
+	{
 		start_iteration();
 		
-        // build next vector of q as Arnoldi iteration
-        // expand Krylov subspace through multiplying by A
-        mult((void*)A, q[r-1], q[r]);
+	    // build next vector of q as Arnoldi iteration
+	    // expand Krylov subspace through multiplying by A
+	    mult((void*)A, q[r-1], q[r]);
 
-        // get values of h, which will be used to orthonormalize q_r
+	    // get values of h, which will be used to orthonormalize q_r
 		mgs(n, r, q[r], h[r-1], (const double**)q);
 
-        // degenerate case ! better to use a threshold, e.g. h[r-1][r] / norm < e-14 ?
+	    // degenerate case ! better to use a threshold, e.g. h[r-1][r] / norm < e-14 ?
 		// the right thing to do here is to compute the iterate x
 		// and restart the method with this iterate as initial guess
 		{
@@ -137,13 +135,13 @@ void restart_gmres( const int n, const void *A, const double *b, double *x, doub
 					q[r][j] /= h[r-1][r];
 		}
 
-        // update the QR decomposition of H with a Givens rotation
-        double cos, sin, norm;
+	    // update the QR decomposition of H with a Givens rotation
+	    double cos, sin, norm;
 
-        // p's new last column is h's last column (left-)multiplied by o, with a 1 on (r,r)
-        mult_dense(&mat_o, h[r-1], p[r-1]); // rank-limited multiplication ? e.g. set mat_o.n = mat_o.m = r ?
+		// p's new last column is h's last column (left-)multiplied by o, with a 1 on (r,r)
+		mult_dense(&mat_o, h[r-1], p[r-1]); // rank-limited multiplication ? e.g. set mat_o.n = mat_o.m = r ?
 
-        // define the givens rotation to get the neat triangular form on p
+	    // define the givens rotation to get the neat triangular form on p
 		{
 			cos = p[r-1][r-1];
 			sin = p[r-1][r];
@@ -157,17 +155,18 @@ void restart_gmres( const int n, const void *A, const double *b, double *x, doub
 			p[r-1][r] = 0;
 		}
 
-        // apply givens rotation to o
-        // (or alternatively save the values {r,cos,sin} for later)
+	    // apply givens rotation to o
+	    // (or alternatively save the values {r,cos,sin} for later)
 		givens_rotate(r+1, o[r-1], o[r], cos, sin);
 
 		{
+			int failures = 0;
+
 			// rotate the vector g also
 			givens_rotate(1, &g[r-1], &g[r], cos, sin);
 			*error = g[r];
 
 			stop_iteration();
-			int failures = 0;
 			failures = get_nb_failed_blocks();
 
 			char stop_here = (*error <= thres && *error >= -thres) || (failures > 0);
@@ -191,14 +190,14 @@ void restart_gmres( const int n, const void *A, const double *b, double *x, doub
 				*rank_converged = r;
 		}
 
-    }
+	}
 
 
 	double y[max_steps];
-	int s;
+	int s = 0;
 	{
 		// check where we can start (should be r-1 except on degenerate cases r-2)
-		s = r;
+		s = *rank_converged;
 		while( s >= 0 && (s >= max_steps-1 || p[s][s] == 0) )
 			s--;
 
@@ -225,9 +224,9 @@ void restart_gmres( const int n, const void *A, const double *b, double *x, doub
 		}
 	}
 
-    // get q in row-major and multiply into z, then add to x
+	// get q in row-major and multiply into z, then add to x
 	double z[n];
-    mult_dense_transposed(&mat_q, y, z);
+	mult_dense_transposed(&mat_q, y, z);
 
 	daxpy(n, 1.0, z, x, x);
 	
@@ -308,7 +307,7 @@ void restart_gmres( const int n, const void *A, const double *b, double *x, doub
 	deallocate_dense_matrix(&mat_o);
 	deallocate_dense_matrix(&mat_p);
 
-    log_out("stop inner loop after %d steps, error = %e whereas threshold = %e\n", r, *error, thres);
+	log_out("stop inner loop after %d steps, error = %e whereas threshold = %e\n", r, *error, thres);
 }
 
 // takes two rows of length n, and returns them with {r1,r2} = {cos*r1+sin*r2n, -sin*r1+cos*r2}
@@ -316,14 +315,14 @@ void restart_gmres( const int n, const void *A, const double *b, double *x, doub
 void givens_rotate( const int n, double *r1, double *r2, const double cos, const double sin )
 {
 	int i;
-    double r1_i;
+	double r1_i;
 
-    for(i=0; i<n; i++)
-    {
-        r1_i = cos * r1[i] + sin * r2[i];
-        r2[i] = - sin * r1[i] + cos * r2[i];
-        r1[i] = r1_i;
-    }
+	for(i=0; i<n; i++)
+	{
+	    r1_i = cos * r1[i] + sin * r2[i];
+	    r2[i] = - sin * r1[i] + cos * r2[i];
+	    r1[i] = r1_i;
+	}
 }
 
 //#pragma omp task inout([n+1]q_r) out([n+1]h)

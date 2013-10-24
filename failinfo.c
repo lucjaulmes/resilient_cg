@@ -13,7 +13,7 @@
 
 struct timeval start, stop;
 double *iterationDuration, *nextFault, lambda = 1000, k = 0.7;
-int size, bs, nb_blocks;
+int size, BS, nb_blocks;
 int *failed_block, nb_failed_block;
 char **neighbours, *neighbour_data, sf;
 
@@ -34,8 +34,8 @@ double weibull(const double x)
 void setup(const int n, const int blocksize, const double lambda_bis, const double k_bis, const char fault_strat)
 {
 	size = n;
-	bs = blocksize;
-	nb_blocks = (n+bs-1)/bs;
+	BS = blocksize;
+	nb_blocks = (n+BS-1)/BS;
 
 	lambda = lambda_bis;
 	k = k_bis;
@@ -217,27 +217,27 @@ void get_line_from_block(const int b, int *start, int *blocksize)
 	if( b == 0 )
 	{
 		*start = 0;
-		*blocksize = (size % bs) ? (size % bs) : bs;
+		*blocksize = (size % BS) ? (size % BS) : BS;
 	}
-	else if( size % bs )
+	else if( size % BS )
 	{
-		*start = bs * (b - 1) + (size % bs);
-		*blocksize = bs;
+		*start = BS * (b - 1) + (size % BS);
+		*blocksize = BS;
 	}
 	else
 	{
-		*start = bs * b;
-		*blocksize = bs;
+		*start = BS * b;
+		*blocksize = BS;
 	}
 }
 
-void compute_neighbourhoods_dense(const DenseMatrix *mat, const int bs)
+void compute_neighbourhoods_dense(const DenseMatrix *mat, const int BS)
 {
-	int i, ii, j, k, block_j, off = mat->n % bs, n = mat->n;
+	int i, ii, j, k, block_j, off = mat->n % BS, n = mat->n;
 
-	// suppose they are all zero, thus block-diagonal matrix for block size bs (was calloc'd)
-	//for( i=0; i < (n+bs-1)/bs; i++ )
-	//	for( j=0; j < (n+bs-1)/bs; j++ )
+	// suppose they are all zero, thus block-diagonal matrix for block size BS (was calloc'd)
+	//for( i=0; i < (n+BS-1)/BS; i++ )
+	//	for( j=0; j < (n+BS-1)/BS; j++ )
 	//		neighbours[i][j] = 0;
 
 	// for the first row-block that is not necessarily of the same size as the others
@@ -245,7 +245,7 @@ void compute_neighbourhoods_dense(const DenseMatrix *mat, const int bs)
 		for( j=0; j<n; j++ )
 			if( mat->v[k][j] != 0 )
 			{
-				block_j = (j+bs-off)/bs;
+				block_j = (j+BS-off)/BS;
 				if( off == 0 )
 					block_j--;
 
@@ -253,12 +253,12 @@ void compute_neighbourhoods_dense(const DenseMatrix *mat, const int bs)
 			}
 
 	// for each row-block i, and within it each row k, we go through the columns j
-	for( i=off, ii = (off ? 1 : 0); i < n; i+=bs, ii++ )
-		for( k=0; k<bs; k++ )
+	for( i=off, ii = (off ? 1 : 0); i < n; i+=BS, ii++ )
+		for( k=0; k<BS; k++ )
 			for( j=0; j<mat->n; j++ )
 				if( mat->v[i+k][j] != 0 )
 				{
-					block_j = (j+bs-off)/bs;
+					block_j = (j+BS-off)/BS;
 					if( off == 0 )
 						block_j--;
 
@@ -266,20 +266,20 @@ void compute_neighbourhoods_dense(const DenseMatrix *mat, const int bs)
 				}
 }
 
-void compute_neighbourhoods_sparse(const SparseMatrix *mat, const int bs)
+void compute_neighbourhoods_sparse(const SparseMatrix *mat, const int BS)
 {
-	int i, ii, k, block_col, off = mat->n % bs, n = mat->n;
+	int i, ii, k, block_col, off = mat->n % BS, n = mat->n;
 
-	// suppose they are all zero, thus block-diagonal matrix for block size bs (was calloc'd)
-	//for( i=0; i < (n+bs-1)/bs; i++ )
-	//	for( j=0; j < (n+bs-1)/bs; j++ )
+	// suppose they are all zero, thus block-diagonal matrix for block size BS (was calloc'd)
+	//for( i=0; i < (n+BS-1)/BS; i++ )
+	//	for( j=0; j < (n+BS-1)/BS; j++ )
 	//		neighbours[i][j] = 0;
 	
 	// for the first row-block that is not necessarily of the same size as the others
 	for( k=0; k<mat->r[off+1]; k++ )
 		if( mat->v[k] != 0 )
 		{
-			block_col = (mat->c[k]+bs-off)/bs;
+			block_col = (mat->c[k]+BS-off)/BS;
 			if( off == 0 )
 				block_col--;
 
@@ -287,11 +287,11 @@ void compute_neighbourhoods_sparse(const SparseMatrix *mat, const int bs)
 		}
 
 	// for each row-block i, and each element k within this row-block, we go through the columns j
-	for( i=off, ii = (off ? 1 : 0); i < n; i+=bs, ii++ )
-		for( k = mat->r[i] ; k < mat->r[i+bs] ; k++ )
+	for( i=off, ii = (off ? 1 : 0); i < n; i+=BS, ii++ )
+		for( k = mat->r[i] ; k < mat->r[i+BS] ; k++ )
 			if( mat->v[k] != 0 )
 			{
-				block_col = (mat->c[k]+bs-off)/bs;
+				block_col = (mat->c[k]+BS-off)/BS;
 				if( off == 0 )
 					block_col--;
 

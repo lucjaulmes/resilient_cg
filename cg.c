@@ -61,14 +61,14 @@ void solve_cg( const int n, const void *A, const double *b, double *iterate, dou
 	while( error > comp_thres );
 
 	time = stop_measure();
-    printf("\nCG method finished in wall clock time %e usecs with %d failures (%d iterations, error %e)\n", time, failures, total_it, sqrt(error)/norm_b);
+	printf("\nCG method finished in wall clock time %e usecs with %d failures (%d iterations, error %e)\n", time, failures, total_it, sqrt(error)/norm_b);
 }
 
 void restart_cg( const int n, const void *A, const double *b, double *iterate, double thres_sq, double *error, int *rank_converged )
 {
-    int r;
+	int r;
 	*rank_converged = -1;
-    double p[n], Ap[n], normA_p_sq, gradient[n], err_sq, coeff = 0.0;
+	double p[n], Ap[n], normA_p_sq, gradient[n], err_sq, old_err_sq, coeff = 0.0;
 
 	// initialize first direction and iterate
 	// direction vector is b when iterate is 0, since gradient is b - A * it
@@ -81,7 +81,7 @@ void restart_cg( const int n, const void *A, const double *b, double *iterate, d
 
 	err_sq = scalar_product(n, gradient, gradient);
 
-    for(r=0; *rank_converged < 0 && r < 500*n ; r++)
+	for(r=0; *rank_converged < 0 && r < 500*n ; r++)
 	{
 		start_iteration();
 
@@ -89,24 +89,29 @@ void restart_cg( const int n, const void *A, const double *b, double *iterate, d
 		// make it orthogonal to the last direction (it already is to all the previous ones)
 
 		// Initially coeff is 0 and p unimportant : p <- gradient
-		#pragma omp task in(gradient, coeff) inout(p) firstprivate(n) 
-			daxpy(n, coeff, p, gradient, p);
+		if( r > 0 )
+			coeff = err_sq / old_err_sq;
+
+		daxpy(n, coeff, p, gradient, p);
 
 
 		double alpha;
 
-        // store A*p_r
-        mult((void*)A, p, Ap);
+	    // store A*p_r
+	    mult((void*)A, p, Ap);
 
-        // get the norm for A of this new direction vector
-        normA_p_sq = scalar_product(n, p, Ap);
+	    // get the norm for A of this new direction vector
+	    normA_p_sq = scalar_product(n, p, Ap);
 
-        alpha = err_sq / normA_p_sq ;
+		{
+			alpha = err_sq / normA_p_sq ;
+			old_err_sq = err_sq;
+		}
 
-        // update iterate with contribution along new direction
-        // update gradient to solution (a.k.a. error) : b - A * it
+	    // update iterate with contribution along new direction
 		daxpy(n, alpha, p, iterate, iterate);
 
+	    // update gradient to solution (a.k.a. error) : b - A * it
 		// every now and then, recompute properly to remove rounding errors
 		if( (r+1) % 50)
 			daxpy(n, -alpha, Ap, gradient, gradient);
@@ -116,15 +121,13 @@ void restart_cg( const int n, const void *A, const double *b, double *iterate, d
 			daxpy(n, -1.0, gradient, b, gradient);
 		}
 
-        // finally, compute (squared) error
-		{
-			double old_err_sq = err_sq;
-			err_sq = scalar_product(n, gradient, gradient);
+		err_sq = scalar_product(n, gradient, gradient);
 
-			coeff = err_sq / old_err_sq;
+		// finally, compute (squared) error
+		{
+			int failures = 0;
 
 			stop_iteration();
-			int failures = 0;
 			failures = get_nb_failed_blocks();
 
 			char stop_here = (err_sq <= thres_sq) || (failures > 0);
@@ -135,11 +138,11 @@ void restart_cg( const int n, const void *A, const double *b, double *iterate, d
 					*rank_converged = r;
 			}
 
-            log_out("% e %d\n", err_sq, failures);
+			log_out("% e %d\n", err_sq, failures);
 			if( *rank_converged == r )
 				log_out("\n\n------\nConverged at rank %d\n------\n\n", r);
 		}
-    }
+	}
 
 	*error = err_sq;
 }

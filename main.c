@@ -23,13 +23,13 @@ char fault_strat;
 // useful vector functions
 double scalar_product( const int n, const double *v, const double *w )
 {
-    int i;
-    double r = 0;
+	int i;
+	double r = 0;
 
-    for(i=0; i<n; i++)
-        r += v[i] * w[i];
+	for(i=0; i<n; i++)
+	    r += v[i] * w[i];
 
-    return r;
+	return r;
 }
 
 struct timeval start, stop;
@@ -49,14 +49,14 @@ void usage(char* arg0)
 {
 	printf("Usage: %s [options] <matrix-market-filename> [, ...] \n"
 			"Possible options are : \n"
-			"  -l lambda         Number (double), meaning 1/mtbf in usec.\n"
-			"  -sf               Forcing faults to happen no more than one at a time (default).\n"
-			"  -mf strategy      Enabling multiple faults to happen.\n "
-			"                   'strategy' must be one of global, uncorrelated, decorrelated.\n"
-			"  -bs blocksize     size of the blocks in block-row operations ;\n"
-			"                    also size of lost data on failure.\n"
-			"  -r restart        number of steps for the restarted gmres.\n"
-			"                   0 means standard gmres, without restarting (default).\n\n"
+			"  -l lambda	     Number (double), meaning 1/mtbf in usec.\n"
+			"  -sf	           Forcing faults to happen no more than one at a time (default).\n"
+			"  -mf strategy	  Enabling multiple faults to happen.\n "
+			"	               'strategy' must be one of global, uncorrelated, decorrelated.\n"
+			"  -bs blocksize	 size of the blocks in block-row operations ;\n"
+			"	                also size of lost data on failure.\n"
+			"  -r restart	    number of steps for the restarted gmres.\n"
+			"	               0 means standard gmres, without restarting (default).\n\n"
 			"Options apply to all following input files. You may re-specify them for each file.", arg0);
 	exit(1);
 }
@@ -80,19 +80,19 @@ int main(int argc, char* argv[])
 {
 	setbuf(stdout, NULL);
 
-    if(argc < 2)
+	if(argc < 2)
 		usage(argv[0]);
 
-    int i, f;
-    //srand(time(NULL));
-    srand(0);
+	int i, f;
+	//srand(time(NULL));
+	srand(0);
 
 	double lambda = 500;
 	int block_size = 8, restart = 0;
 	fault_strat = SINGLEFAULT;
 
-    // Iterate over parameters (usually open files)
-    for(f=1; f<argc; f++)
+	// Iterate over parameters (usually open files)
+	for(f=1; f<argc; f++)
 		if( strcmp(argv[f], "-l") == 0 )
 		{
 			// we want at least the double and a matrix market file after
@@ -319,6 +319,6 @@ int main(int argc, char* argv[])
 			printf("Verification : euclidian distance to solution ||Ax-b||^2 = %e , ||Ax-b||/||b|| = %e\n", err, sqrt(err/norm_b));
 		}
 
-    return 0;
+	return 0;
 }
 
