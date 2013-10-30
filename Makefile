@@ -32,8 +32,11 @@ ompssdebug : $(SRC) $(HEADERS)
 ompssrelease : $(SRC) $(HEADERS)
 	$(MCC) $(OPTS) $(RLS_OPTS) $(MCC_OPTS) $(M_R_OPTS) $(SRC) -o rls/ompss
 
+graph : graph.dot
+	dot -Tpdf graph.dot -o graph.pdf
+
 clean : 
-	@rm -r plain ompss *.o rls/* .mercurium/*
+	@rm -r plain ompss *.o rls/* .mercurium/* graph.dot
 
 print : 
 	@echo $(SRC)
