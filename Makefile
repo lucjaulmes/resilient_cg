@@ -6,37 +6,35 @@ OBJECTS = $(SRC:.c=.o)
 HEADERS = $(shell ls *.h)
 
 OPTS = -lm
-DBG_OPTS = -Wall -g #-DVERBOSE=1
+DBG_OPTS = -Wall -g -DVERBOSE=2
 RLS_OPTS = -O3 -DPERFORMANCE
 CC_OPTS = -Wno-unknown-pragmas -fdiagnostics-show-option #has to come after Wall
 MCC_OPTS = --keep-all-files --ompss --output-dir=.mercurium
 M_D_OPTS = -L/usr/local/lib64/instrumentation  --instrumentation
 M_R_OPTS = -L/usr/local/lib64/performance
+DENSE_OPTS = -DMATRIX_DENSE
 
-actual : plaindebug
+actual : debug
 all : release debug
-release : plainrelease ompssrelease
-debug : plaindebug ompssdebug
-allplain : plaindebug plainrelease
-allompss : ompssdebug ompssrelease
+release : sparserelease denserelease
+debug : sparsedebug densedebug
+dense : densedebug denserelease
+sparse : sparsedebug sparserelease
 
-plaindebug : $(SRC) $(HEADERS)
-	$(CC) $(OPTS) $(DBG_OPTS) $(CC_OPTS) $(SRC) -o plain
+densedebug : $(SRC) $(HEADERS)
+	$(CC) $(DENSE_OPTS) $(OPTS) $(DBG_OPTS) $(CC_OPTS) $(SRC) -o dense
 
-plainrelease : $(SRC) $(HEADERS)
-	$(CC) $(OPTS) $(RLS_OPTS) $(CC_OPTS) $(SRC) -o rls/plain
+denserelease : $(SRC) $(HEADERS)
+	$(CC) $(DENSE_OPTS) $(OPTS) $(RLS_OPTS) $(CC_OPTS) $(SRC) -o rls/dense
 
-ompssdebug : $(SRC) $(HEADERS)
-	$(MCC) $(OPTS) $(DBG_OPTS) $(MCC_OPTS) $(M_D_OPTS) $(SRC) -o ompss
+sparsedebug : $(SRC) $(HEADERS)
+	$(CC) $(OPTS) $(DBG_OPTS) $(CC_OPTS) $(SRC) -o sparse
 
-ompssrelease : $(SRC) $(HEADERS)
-	$(MCC) $(OPTS) $(RLS_OPTS) $(MCC_OPTS) $(M_R_OPTS) $(SRC) -o rls/ompss
-
-graph : graph.dot
-	dot -Tpdf graph.dot -o graph.pdf
+sparserelease : $(SRC) $(HEADERS)
+	$(CC) $(OPTS) $(RLS_OPTS) $(CC_OPTS) $(SRC) -o rls/sparse
 
 clean : 
-	@rm -r plain ompss *.o rls/* .mercurium/* graph.dot
+	@rm -r sparse dense *.o rls/* .mercurium/* graph.dot
 
 print : 
 	@echo $(SRC)

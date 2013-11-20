@@ -3,6 +3,8 @@
 
 #include <stdio.h>
 
+#include "global.h"
+
 // just matrix stuff, should be blackbox
 
 // types we are going to use
@@ -23,12 +25,12 @@ typedef void (*MultFunction)(const void*, const double*, double*);
 void daxpy( const int n, const double a, const double *x, const double *y, double *z);
 
 // general matrix-vector multiplication, row major ( W = A x V )
-void mult_dense ( const void *mat, const double *V, double *W );
-void mult_sparse ( const void *mat, const double *V, double *W );
+void mult_dense ( const DenseMatrix *A, const double *V, double *W );
+void mult_sparse ( const SparseMatrix *A, const double *V, double *W );
 
 // transposed versions W = t(A) * V
-void mult_dense_transposed ( const void *mat, const double *V, double *W );
-void mult_sparse_transposed ( const void *mat, const double *V, double *W );
+void mult_dense_transposed ( const DenseMatrix *A, const double *V, double *W );
+void mult_sparse_transposed ( const SparseMatrix *A, const double *V, double *W );
 
 // matrix-matrix multiplication
 void mult_dense_matrix ( const DenseMatrix *A, const DenseMatrix *B, DenseMatrix *C );
@@ -40,6 +42,7 @@ void print_sparse( const SparseMatrix *A );
 void transpose_dense_matrix ( const DenseMatrix *A, DenseMatrix *B );
 
 // read the matrix data from a Matrix Market file (header already parsed)
+void read_sparse_Matrix( const int n, const int m, const int nnz, const int symmetric, SparseMatrix *A, FILE* input_file );
 void read_dense_Matrix( const int n, const int m, const int nnz, const int symmetric, DenseMatrix *A, FILE* input_file );
 
 // transform a dense matrix into a sparse matrix
@@ -53,11 +56,9 @@ void deallocate_dense_matrix(DenseMatrix *A);
 void deallocate_sparse_matrix(SparseMatrix *A);
 
 // get the submatrix with rows 'rows', with all columns but 'cols'
-void submatrix_dense( const void *A, int *rows, int *cols, DenseMatrix *B );
-void submatrix_sparse_to_dense( const void *A, int *rows, int *cols, DenseMatrix *B );
-void submatrix_sparse( const void *A, int *rows, int *cols, SparseMatrix *B );
-
-typedef void (*SubmatrixFunction)(const void*, int*, int*, DenseMatrix*);
+void submatrix_dense( const DenseMatrix *A, int *rows, int *cols, DenseMatrix *B );
+void submatrix_sparse_to_dense( const SparseMatrix *A, int *rows, int *cols, DenseMatrix *B );
+void submatrix_sparse( const SparseMatrix *A, int *rows, int *cols, SparseMatrix *B );
 
 #endif // MATRIX_H_INCLUDED
 

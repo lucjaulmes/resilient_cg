@@ -242,19 +242,19 @@ void restart_gmres( const int n, const void *A, const double *b, double *x, doub
 		transpose_dense_matrix(&mat_p, &P);
 		transpose_dense_matrix(&mat_o, &O);
 
-		log_err("Some Verifications. P is :\n");
+		log_err(FULL_VERBOSE, "Some Verifications. P is :\n");
 		print_dense(&P);
 
-		log_err("H is :\n");
+		log_err(FULL_VERBOSE, "H is :\n");
 		print_dense(&H);
 
-		log_err("O * P is :\n");
+		log_err(FULL_VERBOSE, "O * P is :\n");
 		test.m = P.m;
 		test.n = O.n;
 		mult_dense_matrix(&O, &P, &test);
 		print_dense(&test);
 
-		log_err("t(O) * O is :\n");
+		log_err(FULL_VERBOSE, "t(O) * O is :\n");
 		test.m = O.m;
 		test.n = O.n;
 		mult_dense_matrix(&mat_o, &O, &test);
@@ -272,13 +272,13 @@ void restart_gmres( const int n, const void *A, const double *b, double *x, doub
 		for(i=0; i<s; i++)
 			verif_err += (g[i] - verif[i]) * (g[i] - verif[i]);
 
-		log_err("After end of the GMRES(m), real error is %e :\ng =", sqrt(verif_err));
+		log_err(FULL_VERBOSE, "After end of the GMRES(m), real error is %e :\ng =", sqrt(verif_err));
 		for(i=0; i<s; i++)
-			log_err(" % 1.2e", g[i]);
-		log_err("\nv =");
+			log_err(FULL_VERBOSE, " % 1.2e", g[i]);
+		log_err(FULL_VERBOSE, "\nv =");
 		for(i=0; i<s; i++)
-			log_err(" % 1.2e", verif[i]);
-		log_err("\n");
+			log_err(FULL_VERBOSE, " % 1.2e", verif[i]);
+		log_err(FULL_VERBOSE, "\n");
 
 		double norm_b = sqrt(scalar_product(n, b, b));
 		mult_dense(&H, y, verif);
@@ -286,13 +286,13 @@ void restart_gmres( const int n, const void *A, const double *b, double *x, doub
 		for(i=1; i<s+1; i++)
 			verif_err += verif[i] * verif[i];
 
-		log_err("After end of the GMRES(m), real error is %e :\ng =", sqrt(verif_err));
+		log_err(FULL_VERBOSE, "After end of the GMRES(m), real error is %e :\ng =", sqrt(verif_err));
 		for(i=0; i<s+1; i++)
-			log_err(" % 1.2e", i==0 ? norm_b : 0.0);
-		log_err("\nv =");
+			log_err(FULL_VERBOSE, " % 1.2e", i==0 ? norm_b : 0.0);
+		log_err(FULL_VERBOSE, "\nv =");
 		for(i=0; i<s+1; i++)
-			log_err(" % 1.2e", verif[i]);
-		log_err("\n");
+			log_err(FULL_VERBOSE, " % 1.2e", verif[i]);
+		log_err(FULL_VERBOSE, "\n");
 
 		deallocate_dense_matrix(&test);
 		deallocate_dense_matrix(&O);

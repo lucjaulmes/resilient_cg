@@ -14,10 +14,8 @@ void daxpy( const int n, const double a, const double *x, const double *y, doubl
 }
 
 // matrix-vector multiplication, row major ( W = A x V )
-void mult_dense ( const void *mat, const double *V, double *W )
+void mult_dense ( const DenseMatrix *A , const double *V, double *W )
 {
-	DenseMatrix *A = (DenseMatrix*)mat;
-
 	int i, j;
 
 	for(i=0; i < A->n; i++)
@@ -30,10 +28,8 @@ void mult_dense ( const void *mat, const double *V, double *W )
 }
 
 // matrix-vector multiplication, row major ( W = A x V )
-void mult_sparse ( const void *mat, const double *V, double *W )
+void mult_sparse ( const SparseMatrix *A , const double *V, double *W )
 {
-	SparseMatrix *A = (SparseMatrix*)mat;
-
 	int i, j;
 
 	for(i=0; i < A->n; i++)
@@ -46,9 +42,8 @@ void mult_sparse ( const void *mat, const double *V, double *W )
 }
 
 // matrix-vector multiplication ( W = t(V) x A = t( t(A) x V ) )
-void mult_dense_transposed ( const void *mat, const double *V, double *W )
+void mult_dense_transposed ( const DenseMatrix *A , const double *V, double *W )
 {
-	DenseMatrix *A = (DenseMatrix*)mat;
 	int i, j;
 
 	for(i=0; i < A->m; i++)
@@ -60,9 +55,8 @@ void mult_dense_transposed ( const void *mat, const double *V, double *W )
 }
 
 // matrix-vector multiplication ( W = t(V) x A = t( t(A) x V ) )
-void mult_sparse_transposed ( const void *mat, const double *V, double *W )
+void mult_sparse_transposed ( const SparseMatrix *A , const double *V, double *W )
 {
-	SparseMatrix *A = (SparseMatrix*)mat;
 	int i, j, col;
 
 	for(i=0; i < A->m; i++)
@@ -78,6 +72,147 @@ void mult_sparse_transposed ( const void *mat, const double *V, double *W )
 		}
 	}
 }
+
+void reorder_sparse_mat( const int n, int *rows, int *cols, double *vals, int *rows_cp, int *cols_cp, double *vals_cp )
+{
+	if( n <= 1 )
+		return;
+	else if( n == 2 )
+	{
+		if( rows[1] < rows[0] || (rows[0] == rows[1] && cols[1] < cols[0] ) )
+		{
+			int s;
+			s = rows[0];
+			rows[0] = rows[1];
+			rows[1] = s;
+
+			s = cols[0];
+			cols[0] = cols[1];
+			cols[1] = s;
+
+			double t;
+			t = vals[0];
+			vals[0] = vals[1];
+			vals[1] = t;
+		}
+		return ;
+	}
+
+	// two Halves, one rounded Up and one rounded Down
+	int hu = (n+1)/2, hd=n/2;
+	
+	reorder_sparse_mat( hu, rows, cols, vals, rows_cp, cols_cp, vals_cp );
+	reorder_sparse_mat( hd, &rows[hu], &cols[hu], &vals[hu] , &rows_cp[hu], &cols_cp[hu], &vals_cp[hu] );
+
+	// since both halves are sorted and we risk to have lots of near-sorted things, let's make this shortcut :
+	if( rows[hu-1] < rows[hu] || (rows[hu-1] == rows[hu] && cols[hu-1] < cols[hu]) )
+		return;
+
+
+	int i = 0, j = hu, k;
+
+	// copy the first half into *_cp
+	for(k=0; k<hu; k++)
+	{
+		rows_cp[k] = rows[k];
+		cols_cp[k] = cols[k];
+		vals_cp[k] = vals[k];
+	}
+	
+	for(k=0; k<n && k<j; k++)
+	{
+		// if some i are left and row_i,col_i is before row_j,col_j or all j are finished
+		if( i < hu && (j == n || rows_cp[i] < rows[j] || (rows_cp[i] == rows[j] && cols_cp[i] < cols[j])) )
+		{
+			rows[k] = rows_cp[i];
+			cols[k] = cols_cp[i];
+			vals[k] = vals_cp[i];
+			i++;
+		}
+		else
+		{
+			rows[k] = rows[j];
+			cols[k] = cols[j];
+			vals[k] = vals[j];
+			j++;
+		}
+	}
+}
+
+// sometimes we can't do any other way : a dense matrix would be too big
+void read_sparse_Matrix( const int n, const int m, const int nnz, const int symmetric, SparseMatrix *A, FILE* input_file )
+{
+	int X, Y, i, *rows, *cols, *rows_cp, *cols_cp, pos = 0;
+	double val, *vals, *vals_cp;
+
+	rows = (int*)malloc( nnz * (1+symmetric) * sizeof(int) );
+	cols = (int*)malloc( nnz * (1+symmetric) * sizeof(int) );
+	vals = (double*)malloc( nnz * (1+symmetric) * sizeof(double) );
+
+	A->n = n;
+	A->m = m;
+
+	for (i=0; i<nnz; i++)
+	{
+		fscanf(input_file, "%d %d %lg\n", &X, &Y, &val);
+		X--;  /* adjust from 1-based to 0-based */
+		Y--;
+
+		// for debug purposes
+		if( X >= n || Y >= m )
+			continue;
+
+		vals[pos] = val;
+		cols[pos] = Y;
+		rows[pos] = X;
+		pos ++;
+
+		if(symmetric && X != Y)
+		{
+			vals[pos] = val;
+			cols[pos] = X;
+			rows[pos] = Y;
+			pos++;
+		}
+	}
+
+	A->nnz = pos;
+
+	rows_cp = (int*)malloc( A->nnz * sizeof(int) );
+	cols_cp = (int*)malloc( A->nnz * sizeof(int) );
+	vals_cp = (double*)malloc( A->nnz * sizeof(double) );
+
+	// but no ordering is implied in MM format, plus symmetric values are not repeated so never appear at the right moment
+	// -> let's reorder it all
+	reorder_sparse_mat(A->nnz, rows, cols, vals, rows_cp, cols_cp, vals_cp);
+	int row_num = 0;
+	pos = 0;
+
+	A->r[row_num] = pos;
+
+	for (i=0; i<A->nnz; i++)
+	{
+		if( rows[i] > row_num )
+			A->r[++row_num] = pos;
+
+		if( rows[i] > row_num )
+			log_out("!!!!!!!!! ERROR Empty row %d !\n", i);
+
+		A->v[pos] = vals[i];
+		A->c[pos] = cols[i];
+		pos++;
+	}
+
+	A->r[row_num+1] = pos;
+
+	free(rows);
+	free(cols);
+	free(vals);
+	free(rows_cp);
+	free(cols_cp);
+	free(vals_cp);
+}
+
 
 void read_dense_Matrix( const int n, const int m, const int nnz, const int symmetric, DenseMatrix *A, FILE* input_file )
 {
@@ -243,10 +378,8 @@ void deallocate_sparse_matrix(SparseMatrix *A)
 	free(A->v);
 }
 
-void submatrix_dense( const void *mat, int *rows, int *cols, DenseMatrix *B )
+void submatrix_dense( const DenseMatrix *A, int *rows, int *cols, DenseMatrix *B )
 {
-	DenseMatrix *A = (DenseMatrix*)mat;
-
 	int i, j, k = 0, l = 0;
 
 	for(i=0; i < A->n && k < B->n; i++)
@@ -277,10 +410,8 @@ void submatrix_dense( const void *mat, int *rows, int *cols, DenseMatrix *B )
 	}
 }
 
-void submatrix_sparse_to_dense( const void *mat, int *rows, int *cols, DenseMatrix *B )
+void submatrix_sparse_to_dense( const SparseMatrix *A, int *rows, int *cols, DenseMatrix *B )
 {
-	SparseMatrix *A = (SparseMatrix*) mat;
-
 	int i, j, col_A, k = 0, l = 0;
 
 	for(i=0; i < A->n; i++)
@@ -320,10 +451,8 @@ void submatrix_sparse_to_dense( const void *mat, int *rows, int *cols, DenseMatr
 	}
 }
 
-void submatrix_sparse( const void *mat, int *rows, int *cols, SparseMatrix *B )
+void submatrix_sparse( const SparseMatrix *A, int *rows, int *cols, SparseMatrix *B )
 {
-	SparseMatrix *A = (SparseMatrix*) mat;
-
 	int i, j, k;
 
 	// alrighty let's just write it all down so it'll be clearer...

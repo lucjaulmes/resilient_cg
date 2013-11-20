@@ -38,19 +38,19 @@ void prepare_x_uncorrelated( double *x, const double *initial_x )
 }
 
 
-void recover_interpolation( const void *A, const double *b, double *x, SolveFunction solver, const int strategy )
+void recover_interpolation( const Matrix *A, const double *b, double *x, SolveFunction solver, const int strategy )
 {
 	recover( A, b, x, solver, 1, strategy );
 }
 
 
-void recover_leastsquares( const void *A, const double *b, double *x, const int strategy )
+void recover_leastsquares( const Matrix *A, const double *b, double *x, const int strategy )
 {
 	recover( A, b, x, NULL, 0, strategy );
 }
 
 
-void recover( const void *A, const double *b, double *x, SolveFunction solver, const char A_full_rank, const int strategy )
+void recover( const Matrix *A, const double *b, double *x, SolveFunction solver, const char A_full_rank, const int strategy )
 {
 	int block, id;
 
@@ -130,7 +130,7 @@ void recover( const void *A, const double *b, double *x, SolveFunction solver, c
 }
 
 
-void do_leastsquares( const void *A, const double *b, double *x, const int nb_lost, const int *lost_blocks )
+void do_leastsquares( const Matrix *A, const double *b, double *x, const int nb_lost, const int *lost_blocks )
 {
 	int i, j, k, total_lost = 0, nb = get_nb_blocks(), total_neighbours = 0;
 	int max_items = (nb>nb_lost ? nb : nb_lost), startpoints[max_items], bs[max_items];
@@ -193,7 +193,7 @@ void do_leastsquares( const void *A, const double *b, double *x, const int nb_lo
 }
 
 
-void do_interpolation( const void *A, const double *b, double *x, const int nb_lost, const int *lost_blocks, SolveFunction solver )
+void do_interpolation( const Matrix *A, const double *b, double *x, const int nb_lost, const int *lost_blocks, SolveFunction solver )
 {
 	int i, j, total_lost = 0, startpoints[nb_lost], bs[nb_lost];
 
@@ -232,7 +232,7 @@ void do_interpolation( const void *A, const double *b, double *x, const int nb_l
 		// check the what we got from solver
 		mult_dense(&recup, interpolated, a);
 
-		log_err("Error of the inner solver is %e, relative error %e\n", sqrt( error_ls ),
+		log_err(SHOW_FAILINFO, "Error of the inner solver is %e, relative error %e\n", sqrt( error_ls ),
 			sqrt(error_ls/scalar_product(total_lost, rhs, rhs)));
 	}
 
@@ -244,7 +244,7 @@ void do_interpolation( const void *A, const double *b, double *x, const int nb_l
 }
 
 // give rows to but in rhs, and cols to avoid
-void rhs_dense(const int n, const int *rows, const int m, const int *except_cols, const void *mat, const double *b, const double *x, double *rhs)
+void get_rhs_dense(const int n, const int *rows, const int m, const int *except_cols, const DenseMatrix *mat, const double *b, const double *x, double *rhs)
 {
 	int i, j, k;
 	DenseMatrix *A = (DenseMatrix*) mat;
@@ -270,7 +270,7 @@ void rhs_dense(const int n, const int *rows, const int m, const int *except_cols
 	}
 }
 
-void rhs_sparse(const int n, const int *rows, const int m, const int *except_cols, const void *mat, const double *b, const double *x, double *rhs)
+void get_rhs_sparse(const int n, const int *rows, const int m, const int *except_cols, const SparseMatrix *mat, const double *b, const double *x, double *rhs)
 {
 	int i, j, k;
 	SparseMatrix *A = (SparseMatrix*) mat;

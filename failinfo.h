@@ -16,7 +16,7 @@ void get_failed_neighbourset(const int block, int *set, int *num);
 
 
 // setup methods, called before anything happens
-void setup(const int n, const int blocksize, const double lambda, const double k, const char fault_strat);
+void setup(const int n, const double lambda, const double k);
 void compute_neighbourhoods_dense(const DenseMatrix *mat, const int bs);
 void compute_neighbourhoods_sparse(const SparseMatrix *mat, const int bs);
 void unset();

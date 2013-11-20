@@ -9,28 +9,6 @@
 
 #include "cg.h"
 
-// debug methods, quantifying conjugacy or orthogonality between vectors
-double ort(const int n, const double *v, const double *w)
-{
-	double sp = scalar_product(n, v, w),
-		norm2_v = scalar_product(n, v, v),
-		norm2_w = scalar_product(n, w, w);
-
-	return sp / sqrt( norm2_v * norm2_w );
-}
-
-double conjug(const int n, const void *A, const double *v, const double *w)
-{
-	double Aw[n], Av[n];
-	mult(A, v, Av);
-	mult(A, w, Aw);
-	double sp = scalar_product(n, v, Aw),
-		norm2_v = scalar_product(n, v, Av),
-		norm2_w = scalar_product(n, w, Aw);
-
-	return sp / sqrt( norm2_v * norm2_w );
-}
-
 void solve_cg( const int n, const void *A, const double *b, double *iterate, double thres )
 {
 	double error, norm_b, time, comp_thres;
@@ -66,47 +44,63 @@ void solve_cg( const int n, const void *A, const double *b, double *iterate, dou
 
 void restart_cg( const int n, const void *A, const double *b, double *iterate, double thres_sq, double *error, int *rank_converged )
 {
-	int r;
+	int r, failures;
 	*rank_converged = -1;
-	double p[n], Ap[n], normA_p_sq, gradient[n], err_sq, old_err_sq, coeff = 0.0;
+	double *p, *Ap, normA_p_sq, *gradient, err_sq, old_err_sq, beta = 0.0;
+
+	p = (double*)calloc( n, sizeof(double) );
+	Ap = (double*)malloc( n * sizeof(double) );
+	gradient = (double*)malloc( n * sizeof(double) );
+
+	double *p2 = (double*)calloc( n, sizeof(double) );
 
 	// initialize first direction and iterate
 	// direction vector is b when iterate is 0, since gradient is b - A * it
-	{
-		mult(A, iterate, gradient);
+	mult(A, iterate, gradient);
 
-		// gradient <- -1 * gradient + b 
-		daxpy(n, -1.0, gradient, b, gradient);
-	}
+	// gradient <- -1 * gradient + b 
+	daxpy(n, -1.0, gradient, b, gradient);
 
 	err_sq = scalar_product(n, gradient, gradient);
 
-	for(r=0; *rank_converged < 0 && r < 500*n ; r++)
+	for(r=0; r < 500*n ; r++)
 	{
 		start_iteration();
 
 		// we've got the gradient to get next direction (= error vector)
 		// make it orthogonal to the last direction (it already is to all the previous ones)
 
-		// Initially coeff is 0 and p unimportant : p <- gradient
+		// Initially beta is 0 and p unimportant : p <- gradient
 		if( r > 0 )
-			coeff = err_sq / old_err_sq;
+			beta = err_sq / old_err_sq;
 
-		daxpy(n, coeff, p, gradient, p);
+		daxpy(n, beta, p, gradient, p2);
+
+		int i;
+		double *swap = p2, norm_p_p2 = sqrt( scalar_product(n, p, p) * scalar_product(n, p2, p2) );
+		if( r > 0 )
+		{
+			log_err(FULL_VERBOSE, "\nbeta = %e => cos(p_%d,p_%d) = %e\n", beta, r, r-1, scalar_product(n, p, p2) / norm_p_p2);
+
+			log_err(FULL_VERBOSE, "\np_%d\t\tp_%d\n", r-1, r);
+			for(i=0; i<n; i++)
+				log_err(FULL_VERBOSE, "%1.2e\t%1.2e\n", p[i], p2[i]);
+		}
+		p2 = p;
+		p = swap;
 
 
 		double alpha;
 
 		// store A*p_r
-		mult((void*)A, p, Ap);
+		mult(A, p, Ap);
 
 		// get the norm for A of this new direction vector
 		normA_p_sq = scalar_product(n, p, Ap);
 
-		{
-			alpha = err_sq / normA_p_sq ;
-			old_err_sq = err_sq;
-		}
+		alpha = err_sq / normA_p_sq ;
+
+		log_err(FULL_VERBOSE, "||p_%d||_A = %e ; alpha = %e \n", r, normA_p_sq, alpha );
 
 		// update iterate with contribution along new direction
 		daxpy(n, alpha, p, iterate, iterate);
@@ -121,29 +115,29 @@ void restart_cg( const int n, const void *A, const double *b, double *iterate, d
 			daxpy(n, -1.0, gradient, b, gradient);
 		}
 
+		old_err_sq = err_sq;
 		err_sq = scalar_product(n, gradient, gradient);
 
-		// finally, compute (squared) error
+		// this to break when we have errors
 		{
-			int failures = 0;
-
 			stop_iteration();
 			failures = get_nb_failed_blocks();
 
-			char stop_here = (err_sq <= thres_sq) || (failures > 0);
-
-			#pragma omp critical
-			{
-				if( stop_here && *rank_converged < 0 )
-					*rank_converged = r;
-			}
-
 			log_out("% e %d\n", err_sq, failures);
-			if( *rank_converged == r )
-				log_out("\n\n------\nConverged at rank %d\n------\n\n", r);
+
+			if ((err_sq <= thres_sq) || (failures > 0))
+				break;
 		}
 	}
 
+	log_out("\n\n------\nConverged at rank %d\n------\n\n", r);
+
 	*error = err_sq;
+	*rank_converged = r;
+
+	free(p);
+	free(p2);
+	free(Ap);
+	free(gradient);
 }
 

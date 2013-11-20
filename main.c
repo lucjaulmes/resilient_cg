@@ -14,11 +14,8 @@
 #include "debug.h"
 
 // pointers to functions
-MultFunction mult;
-RhsFunction get_rhs;
-SubmatrixFunction get_submatrix;
-
 char fault_strat;
+int BS;
 
 // useful vector functions
 double scalar_product( const int n, const double *v, const double *w )
@@ -49,21 +46,28 @@ void usage(char* arg0)
 {
 	printf("Usage: %s [options] <matrix-market-filename> [, ...] \n"
 			"Possible options are : \n"
-			"  -l lambda		 Number (double), meaning 1/mtbf in usec.\n"
-			"  -sf		       Forcing faults to happen no more than one at a time (default).\n"
-			"  -mf strategy	  Enabling multiple faults to happen.\n "
-			"		           'strategy' must be one of global, uncorrelated, decorrelated.\n"
-			"  -bs blocksize	 size of the blocks in block-row operations ;\n"
-			"		            also size of lost data on failure.\n"
-			"  -r restart		number of steps for the restarted gmres.\n"
-			"		           0 means standard gmres, without restarting (default).\n\n"
-			"Options apply to all following input files. You may re-specify them for each file.", arg0);
+			"  -l   lambda       Number (double), meaning 1/mtbf in usec.\n"
+			"  -nf               Disabling faults simulation (default).\n"
+			"  -sf               Forcing faults to happen no more than one at a time.\n"
+			"  -mf  strategy     Enabling multiple faults to happen.\n "
+			"                   'strategy' must be one of global, uncorrelated, decorrelated.\n"
+			"                    Note : the options -nf, -sf and -mf are mutually exclusive.\n"
+			"  -bs  blocksize    force size of the blocks in block-row operations ;\n"
+			"                    also size of lost data on failure.\n"
+			"  -nb  blocks       Defines the number of blocks in which to divide operations ;\n"
+			"                    their size will depdend on the matrix' size.\n"
+			"                    Note : the options -bs and -nb are mutually exclusive.\n"
+			"  -r   restart      number of steps for the restarted gmres.\n"
+			"                    0 means standard gmres, without restarting (default).\n\n"
+			"Options apply to all following input files. You may re-specify them for each file.\n\n", arg0);
 	exit(1);
 }
 
 void name_strategy(const char n, char* name)
 {
-	if( n == SINGLEFAULT )
+	if( n == NOFAULT )
+		strcpy(name, "no_fault");	
+	else if( n == SINGLEFAULT )
 		strcpy(name, "single_fault");	
 	else if( n == MULTFAULTS_GLOBAL )
 		strcpy(name, "multiple_faults_global_recovery");	
@@ -84,12 +88,13 @@ int main(int argc, char* argv[])
 		usage(argv[0]);
 
 	int i, f;
-	//srand(time(NULL));
-	srand(0);
+	srand(time(NULL));
 
-	double lambda = 500;
-	int block_size = 8, restart = 0;
-	fault_strat = SINGLEFAULT;
+	double lambda = 100;
+	int restart = 0, blocks = 0;
+	BS = 64; // educated guess ? could we get something from a like of omp_get_num_threads() ?
+	fault_strat = NOFAULT;
+	char BS_defined = 0;
 
 	// Iterate over parameters (usually open files)
 	for(f=1; f<argc; f++)
@@ -101,24 +106,40 @@ int main(int argc, char* argv[])
 
 			lambda = strtod(argv[f+1], NULL);
 
-			if( lambda == 0 )
+			if( lambda <= 0 )
 				usage(argv[0]);
 
 			f++;
 			continue;
 		}
-		else if( strcmp(argv[f], "-bs") == 0 )
+		else if( strcmp(argv[f], "-nb") == 0 )
 		{
 			// we want at least the integer and a matrix market file after
-			if( f+2 >= argc )
+			if( f+2 >= argc || BS_defined )
 				usage(argv[0]);
 
-			block_size = (int) strtol(argv[f+1], NULL, 10);
+			blocks = (int) strtol(argv[f+1], NULL, 10);
 
-			if( block_size == 0 )
+			if( blocks <= 0 )
 				usage(argv[0]);
 
 			f++;
+			BS_defined = 1;
+			continue;
+		}
+		else if( strcmp(argv[f], "-bs") == 0 )
+		{
+			// we want at least the integer and a matrix market file after
+			if( f+2 >= argc || BS_defined )
+				usage(argv[0]);
+
+			BS = (int) strtol(argv[f+1], NULL, 10);
+
+			if( BS <= 0 )
+				usage(argv[0]);
+
+			f++;
+			BS_defined = 1;
 			continue;
 		}
 		else if( strcmp(argv[f], "-r") == 0 )
@@ -192,46 +213,64 @@ int main(int argc, char* argv[])
 
 			int m, n, nnz, symmetric = mm_is_symmetric(matcode);
 
-			
+
 			if( !mm_is_array(matcode) && ( mm_read_mtx_crd_size(input_file, &m, &n, &nnz) != 0 || m != n ) )
 			{
-				printf("Sorry, this application does not support this matrix");
+				printf("Sorry, this application does not support this matrix\n");
 				continue;
 			}
 			else if( mm_is_array(matcode) )
 			{
 				if( mm_read_mtx_array_size(input_file, &m, &n) != 0 || m != n )
 				{
-					printf("Sorry, this application does not support this matrix");
+					printf("Sorry, this application does not support this matrix\n");
 					continue;
 				}
 
 				nnz = m*n;
 			}
 
+			// compute now we have n, and reset for next matrix
+			if( BS_defined )
+			{
+				BS_defined = 0;
+				if( blocks > 0 )
+					BS = (n+blocks-1) / blocks;
+			}
+			else
+				printf("WARNING : block size way be unadapted.\n");
+
 			// DEBUG TO MODIFY PROBLEM
-			// n = m = 15;
-			//mm_set_dense(&matcode);
+			// n = m = 16;
 
 			printf("problem_size:%d ", n);
+			Matrix matrix;
 
-			// verifications are done and we've got the size of the matrix
-			DenseMatrix dA;
+			#ifdef MATRIX_DENSE // using dense matrices
+				allocate_dense_matrix(n, m, &matrix);
+				read_dense_Matrix(n, m, nnz, symmetric, &matrix, input_file);
 
-			// read the matrix
-			// no ordering implied by MM format. No choice but to allocate a n*n space
-			// and then to transform to CSR format for sparse matrices.
-			allocate_dense_matrix(n, m, &dA);
-			read_dense_Matrix(n, m, nnz, symmetric, &dA, input_file);
+				//compute_neighbourhoods_dense(&dA, BS);
+				printf("matrix_format:DENSE ");
+
+			#else // by default : using sparse matrices
+				allocate_sparse_matrix(n, m, nnz * (1+symmetric), &matrix);
+				read_sparse_Matrix(n, m, nnz, symmetric, &matrix, input_file);
+
+				//compute_neighbourhoods_sparse(&dA, BS);
+				printf("matrix_format:SPARSE ");
+
+			#endif 
+
 
 			fclose(input_file);
 
 
 			// a few vectors for rhs of equation, solution and verification
-			double b[n], x[n], s[n];
-			void *matrix;
-			SparseMatrix sA;
-
+			double *b, *x, *s;
+			b = (double*)malloc( n * sizeof(double) );
+			x = (double*)malloc( n * sizeof(double) );
+			s = (double*)malloc( n * sizeof(double) );
 			// generate random rhs to problem, and initialize first guess to 0
 			double range = (double) 1;
 
@@ -242,36 +281,7 @@ int main(int argc, char* argv[])
 			}
 
 			// do some setup for the resilience part
-			setup(n, block_size, lambda, 0.7, fault_strat);
-
-
-			if(mm_is_sparse(matcode))
-			{
-				allocate_sparse_matrix(n, m, nnz * (1+symmetric), &sA);
-
-				dense_to_sparse_Matrix(&dA, &sA);
-				deallocate_dense_matrix(&dA);
-
-				matrix = &sA;
-				mult = &mult_sparse;
-				get_rhs = &rhs_sparse;
-				get_submatrix = &submatrix_sparse_to_dense;
-
-				compute_neighbourhoods_sparse(&sA, block_size);
-
-				printf("matrix_format:SPARSE ");
-			}
-			else
-			{
-				matrix = &dA;
-				mult = &mult_dense;
-				get_rhs = &rhs_dense;
-				get_submatrix = &submatrix_dense;
-
-				compute_neighbourhoods_dense(&dA, block_size);
-
-				printf("matrix_format:DENSE ");
-			}
+			setup(n, lambda, 0.7);
 
 			if(symmetric)
 				printf("matrix_symmetric:yes method:ConjugateGradient\n");
@@ -283,31 +293,28 @@ int main(int argc, char* argv[])
 			char strat[40];
 			name_strategy(fault_strat, strat);
 
-			printf("lambda:%e block_size:%d strategy:%s\n", lambda, block_size, strat);
+			printf("lambda:%e block_size:%d strategy:%s\n", lambda, BS, strat);
 
 			// if symmetric, solve with conjugate gradient method
 			if(symmetric)
-				solve_cg(n, matrix, b, x, 1e-10 );
+				solve_cg(n, &matrix, b, x, 1e-10 );
 			//otherwise, gmres
 			else
-				solve_gmres(n, matrix, b, x, 1e-10 , restart);
+				solve_gmres(n, &matrix, b, x, 1e-10 , restart);
 
 			// compute verification
-			mult(matrix, x, s);
+			mult(&matrix, x, s);
 
 			// deallocate everything we have allocated for this solving
 			unset();
-			if(mm_is_sparse(matcode))
-				deallocate_sparse_matrix(&sA);
-			else
-				deallocate_dense_matrix(&dA);
+			deallocate_matrix(&matrix);
 
 			// do displays (solution, error)
-			log_err("\nsolution : \n\n(  ");
+			log_err(SHOW_DBGINFO, "\nsolution : \n\n(  ");
 
 			for(i=0; i < n; i++)
-				log_err("%.2e\t", x[i]);
-			log_err(")\n");
+				log_err(SHOW_DBGINFO, "%.2e\t", x[i]);
+			log_err(SHOW_DBGINFO, ")\n");
 
 			double err = 0, norm_b = scalar_product(n, b, b);
 			for(i=0; i < n; i++)
@@ -317,6 +324,10 @@ int main(int argc, char* argv[])
 			}
 
 			printf("Verification : euclidian distance to solution ||Ax-b||^2 = %e , ||Ax-b||/||b|| = %e\n", err, sqrt(err/norm_b));
+
+			free(b);
+			free(x);
+			free(s);
 		}
 
 	return 0;

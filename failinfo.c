@@ -13,9 +13,9 @@
 
 struct timeval start, stop;
 double *iterationDuration, *nextFault, lambda = 1000, k = 0.7;
-int size, BS, nb_blocks;
-int *failed_block, nb_failed_block;
-char **neighbours, *neighbour_data, sf;
+int size, nb_blocks;
+int *failed_block, nb_failed_block = 0;
+char **neighbours, *neighbour_data;
 
 
 // from x a uniform distribution between 0 and 1, the weibull distribution 
@@ -26,20 +26,16 @@ double weibull(const double x)
 	y = - log1p( - x ); // - log ( 1 - x )
 	y *= lambda; // where 1/lambda ~ mean time between faults
 
-	// hop hop debug
-	//return DBL_MAX;
 	return pow(y, inv_k);
 }
 
-void setup(const int n, const int blocksize, const double lambda_bis, const double k_bis, const char fault_strat)
+void setup(const int n, const double lambda_bis, const double k_bis)
 {
 	size = n;
-	BS = blocksize;
 	nb_blocks = (n+BS-1)/BS;
 
 	lambda = lambda_bis;
 	k = k_bis;
-	sf = (fault_strat == SINGLEFAULT);
 
 	int i;
 	
@@ -50,8 +46,10 @@ void setup(const int n, const int blocksize, const double lambda_bis, const doub
 	for(i=0; i<nb_blocks; i++)
 		neighbours[i] = neighbour_data + i * nb_blocks;
 
+	if( fault_strat == NOFAULT )
+		;
 
-	if( sf )
+	else if( fault_strat == SINGLEFAULT )
 	{
 		iterationDuration = malloc( sizeof(double) );
 		nextFault = malloc( sizeof(double) );
@@ -91,14 +89,15 @@ void start_iteration()
 void stop_iteration()
 {
 	gettimeofday( &stop, NULL );
-	double incDuration = (1e6 * (stop.tv_sec - start.tv_sec)) + stop.tv_usec - start.tv_usec;
 
-	if( sf )
-		log_err("[%e usecs]  ", iterationDuration[0]);
+	if( fault_strat == NOFAULT )
+		return;
+
+	double incDuration = (1e6 * (stop.tv_sec - start.tv_sec)) + stop.tv_usec - start.tv_usec;
 
 	nb_failed_block = 0;
 
-	if( sf )
+	if( fault_strat == SINGLEFAULT )
 	{
 		iterationDuration[0] += incDuration ;
 		// One fault happened, reset the timer and decide where it happened
@@ -107,11 +106,11 @@ void stop_iteration()
 			iterationDuration[0] = 0;
 			nextFault[0] = weibull( (double)rand()/RAND_MAX );
 
-			// ok we've got a failed block. And it will be....
+			// ok we've got a failed block. Which one will it be ?
 			failed_block[0] = (int)((double)rand() / RAND_MAX * nb_blocks);
 			nb_failed_block = 1;
 
-			log_err("\nFault (on block %d), next fault in %e usecs\n", failed_block[0], nextFault[0]);
+			log_err(SHOW_FAILINFO, "\nFault (on block %d), next fault in %e usecs\n", failed_block[0], nextFault[0]);
 		}
 	}
 
@@ -132,7 +131,7 @@ void stop_iteration()
 				failed_block[ nb_failed_block ] = i;
 
 				nb_failed_block++;
-				log_err("\nNext fault on block %d in %e usecs\n", failed_block[0], nextFault[0]);
+				log_err(SHOW_FAILINFO, "\nNext fault on block %d in %e usecs\n", failed_block[0], nextFault[0]);
 			}
 		}
 	}
