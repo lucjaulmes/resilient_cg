@@ -6,12 +6,10 @@ OBJECTS = $(SRC:.c=.o)
 HEADERS = $(shell ls *.h)
 
 OPTS = -lm
-DBG_OPTS = -Wall -g -DVERBOSE=2
+#if -DPAPICOUNTERS , add -lpapi
+DBG_OPTS = -Wall -g -DVERBOSE=0
 RLS_OPTS = -O3 -DPERFORMANCE
 CC_OPTS = -Wno-unknown-pragmas -fdiagnostics-show-option #has to come after Wall
-MCC_OPTS = --keep-all-files --ompss --output-dir=.mercurium
-M_D_OPTS = -L/usr/local/lib64/instrumentation  --instrumentation
-M_R_OPTS = -L/usr/local/lib64/performance
 DENSE_OPTS = -DMATRIX_DENSE
 
 actual : debug

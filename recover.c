@@ -9,30 +9,28 @@
 
 #include "recover.h"
 
-void prepare_x_decorrelated( double *x )
+void prepare_x_decorrelated( double *x , const int n )
 {
-	int b, i, bs, start, id;
+	int b, i, id;
 
 	for(id=0; id < get_nb_failed_blocks(); id++)
 	{
 		b = get_failed_block(id);
-		get_line_from_block(b, &start, &bs);
 
-		for(i=start; i<start+bs; i++)
+		for(i=b*BS; i<(b+1)*BS && i < n; i++)
 			x[ i ] = 0;
 	}
 }
 
-void prepare_x_uncorrelated( double *x, const double *initial_x )
+void prepare_x_uncorrelated( double *x, const double *initial_x , const int n)
 {
-	int b, i, bs, start, id;
+	int b, i, id;
 
 	for(id=0; id < get_nb_failed_blocks(); id++)
 	{
 		b = get_failed_block(id);
-		get_line_from_block(b, &start, &bs);
 
-		for(i=start; i<start+bs; i++)
+		for(i=b*BS; i<(b+1)*BS && i < n; i++)
 			x[ i ] = initial_x[ i ];
 	}
 }
@@ -67,7 +65,7 @@ void recover( const Matrix *A, const double *b, double *x, SolveFunction solver,
 			break;
 
 		case MULTFAULTS_UNCORRELATED:
-			prepare_x_uncorrelated( x, b );
+			prepare_x_uncorrelated( x, b, A->n );
 
 			for(id=0; id < get_nb_failed_blocks(); id++)
 			{
@@ -81,7 +79,7 @@ void recover( const Matrix *A, const double *b, double *x, SolveFunction solver,
 			break;
 
 		case MULTFAULTS_DECORRELATED:
-			prepare_x_decorrelated( x );
+			prepare_x_decorrelated( x, A->n );
 
 			for(id=0; id < get_nb_failed_blocks(); id++)
 			{
@@ -132,167 +130,195 @@ void recover( const Matrix *A, const double *b, double *x, SolveFunction solver,
 
 void do_leastsquares( const Matrix *A, const double *b, double *x, const int nb_lost, const int *lost_blocks )
 {
-	int i, j, k, total_lost = 0, nb = get_nb_blocks(), total_neighbours = 0;
-	int max_items = (nb>nb_lost ? nb : nb_lost), startpoints[max_items], bs[max_items];
+	int i, total_lost = 0, total_blocks = get_nb_blocks(), nb_neighbours = 0;
+	int lost[nb_lost], neighbours[total_blocks];
 
-	// make explicit lists of all rows that were lost
+	// get first row in each block instead of block number
 	for(i=0; i<nb_lost; i++)
-	{
-		get_line_from_block(lost_blocks[i], &startpoints[i], &bs[i]);
-		total_lost += bs[i];
-	}
+		lost[i] = BS * lost_blocks[i];
 
-	int lost[total_lost];
-	k = 0;
+	// do the same (sic) with the neighbours (NB all "lost" are in "neighbours", this should be done once only)
+	char neighbourhood[ total_blocks ];
 
-	for(i=0; i<nb_lost; i++)
-		for(j=0; j<bs[i]; j++)
-			lost[k++] = startpoints[i] + j;
-
-	// do the same (sic) with the neighbours (TODO all lost are in the neighbourhood, this should be done once only)
-	char neighbourhood[ nb ];
-
-	for(i=0; i<nb; i++)
+	for(i=0; i<total_blocks; i++)
 		neighbourhood[i] = 0;
 
 	for(i=0; i<nb_lost; i++)
 		get_complete_neighbourset( lost_blocks[i], neighbourhood );
 
-	j = 0;
-	for(i=0; i<nb; i++)
+	for(i=0; i<total_blocks; i++)
 		if( neighbourhood[i] )
 		{
-			get_line_from_block(i, &startpoints[j], &bs[j]);
-			total_neighbours += bs[j];
-			j++;
+			neighbours[ nb_neighbours ] = i * BS;
+			nb_neighbours++;
 		}
 	
-	int neighbours[total_neighbours], nb_neighbour_blocks = j;
-	k = 0;
-	
-	for(i=0; i<nb_neighbour_blocks; i++)
-		for(j=0; j<bs[i]; j++)
-			neighbours[k++] = startpoints[i] + j;
-	
 	// now we can start doing the actual recovery
+	#ifndef MATRIX_DENSE
+	int nnz = 0;
+	for(i=0; i<nb_lost; i++)
+		nnz += A->r[ lost[i] +BS ] - A->r[ lost[i] ];
+	#endif
+
+	//Matrix recup;
+	//allocate_matrix( nb_neighbours, total_lost, nnz, &recup );
 	DenseMatrix recup;
-	allocate_dense_matrix( total_neighbours, total_lost, &recup );
-	double rhs[total_neighbours], interpolated[total_lost];
+	allocate_dense_matrix( nb_neighbours, total_lost, &recup );
+	double *rhs, *interpolated;
+	rhs = (double*)calloc( total_lost, sizeof(double) );
 
-	get_submatrix(A, neighbours, lost, &recup);
+	if( nb_lost > 1 )
+		interpolated = (double*)calloc( total_lost, sizeof(double) );
+	else
+		interpolated = &x[ lost[0] ];
 
-	get_rhs(total_neighbours, neighbours, total_lost, lost, A, b, x, rhs);
+	//get_submatrix(A, neighbours, nb_neighbours, lost, nb_lost, BS, &recup);
+	get_dense_submatrix(A, neighbours, nb_neighbours, lost, nb_lost, BS, &recup);
+
+	get_rhs(nb_neighbours, neighbours, total_lost, lost, BS, A, b, x, rhs);
 
 	solve_qr_house(&recup, rhs, interpolated);
 
-	// and update the x values we interpolated
-	for(i=0; i<total_lost; i++)
-		x[ lost[i] ] = interpolated[i];
 
+	//deallocate_matrix(&recup);
 	deallocate_dense_matrix(&recup);
+	free(rhs);
+
+	// and update the x values we interpolated
+	if(nb_lost > 1)
+	{
+		int j, k;
+		for(i=0, k=0; i<nb_lost; i++)
+			for(j=lost[i]; j<lost[i]+BS && j<A->n; j++, k++)
+				x[ j ] = interpolated[ k ];
+
+		free(interpolated);
+	}
 }
 
 
 void do_interpolation( const Matrix *A, const double *b, double *x, const int nb_lost, const int *lost_blocks, SolveFunction solver )
 {
-	int i, j, total_lost = 0, startpoints[nb_lost], bs[nb_lost];
-
-	// make explicit lists of all rows that were lost
+	int i, total_lost = nb_lost * BS, lost[nb_lost];
+	
+	// change from block numver to first row in block number
 	for(i=0; i<nb_lost; i++)
-	{
-		get_line_from_block(lost_blocks[i], &startpoints[i], &bs[i]);
-		total_lost += bs[i];
-	}
+		lost[i] = lost_blocks[i] * BS;
 
-	int lost[total_lost], k = 0;
+	if( lost[nb_lost -1] + BS > A->n )
+		total_lost -= (lost[nb_lost -1] + BS - A->n);
 
+	#ifndef MATRIX_DENSE
+	int nnz = 0;
 	for(i=0; i<nb_lost; i++)
-		for(j=0; j<bs[i]; j++)
-			lost[k++] = startpoints[i] + j;
+		nnz += A->r[ lost[i] +BS ] - A->r[ lost[i] ];
+	#endif
 
+	//Matrix recup;
+	//allocate_matrix(total_lost, total_lost, nnz, &recup);
 	DenseMatrix recup;
 	allocate_dense_matrix(total_lost, total_lost, &recup);
-	double rhs[total_lost], interpolated[total_lost];
+
+	double *rhs, *interpolated;
+	rhs = (double*)calloc( total_lost, sizeof(double) );
+
+	if( nb_lost > 1 )
+		interpolated = (double*)calloc( total_lost, sizeof(double) );
+	else
+		interpolated = &x[ lost[0] ];
 
 	// get the submatrix for those lines
-	get_submatrix(A, lost, lost, &recup);
+	//get_submatrix(A, lost, nb_lost, lost, nb_lost, BS, &recup);
+	get_dense_submatrix(A, lost, nb_lost, lost, nb_lost, BS, &recup);
 
 	// fill in the rhs with the part we need 
-	get_rhs(total_lost, lost, total_lost, lost, A, b, x, rhs);
+	get_rhs(nb_lost, lost, nb_lost, lost, BS, A, b, x, rhs);
 
 	// now solve with favourite method  : 
 	// recup * interpolated = rhs
 	solver(&recup, rhs, interpolated);
 	
 	
-	//DEBUG
-	{
-		double a[total_lost], error_ls = 0;
+	#if VERBOSE > SHOW_FAILINFO
+	double *verif = (double*)malloc(total_lost * sizeof(double)), diff = 0.0;
+	//mult(&recup, interpolated, verif);
+	mult_dense(&recup, interpolated, verif);
 
-		// check the what we got from solver
-		mult_dense(&recup, interpolated, a);
-
-		log_err(SHOW_FAILINFO, "Error of the inner solver is %e, relative error %e\n", sqrt( error_ls ),
-			sqrt(error_ls/scalar_product(total_lost, rhs, rhs)));
-	}
+	for(i=0; i<total_lost; i++)
+		diff += ( rhs[i] - verif[i] ) * ( rhs[i] - verif[i] );
+	
+	log_out("Total error of solving is %e \n", sqrt(diff));
+	free(verif);
+	#endif
 
 	// and update the x values we interpolated
-	for(i=0; i<total_lost; i++)
-		x[ lost[i] ] = interpolated[i];
 
+	//deallocate_matrix(&recup);
 	deallocate_dense_matrix(&recup);
+	free(rhs);
+
+	if(nb_lost > 1)
+	{
+		int j, k;
+		for(i=0, k=0; i<nb_lost; i++)
+			for(j=lost[i]; j<lost[i]+BS && j<A->n; j++, k++)
+				x[ j ] = interpolated[ k ];
+
+		free(interpolated);
+	}
 }
 
 // give rows to but in rhs, and cols to avoid
-void get_rhs_dense(const int n, const int *rows, const int m, const int *except_cols, const DenseMatrix *mat, const double *b, const double *x, double *rhs)
+void get_rhs_dense(const int n, const int *rows, const int m, const int *except_cols, const int bs, const DenseMatrix *A, const double *b, const double *x, double *rhs)
 {
-	int i, j, k;
-	DenseMatrix *A = (DenseMatrix*) mat;
+	int i, ii, j, jj, k;
 
-	for(i=0; i<n; i++)
-	{
-		// for each lost line i, start with b_i
-		// and remove contributions A_ij * x_j 
-		// from all rows j that are not lost
-		rhs[i] = b[ rows[i] ];
-		k=0;
-
-		for(j=0; j<A->m; j++)
+	for(i=0, k=0; i<n; i++)
+		for(ii=rows[i]; ii < rows[i] + bs && ii<A->n; ii++, k++)
 		{
-			// update k so that cols_k >= j
-			if( k < m && except_cols[k] < j)
-				k++;
+			// for each lost line i, start with b_i
+			// and remove contributions A_ij * x_j 
+			// from all rows j that are not lost
+			rhs[k] = b[ ii ];
 
-			// if j is not a column to avoid
-			if( except_cols[k] != j )
-				rhs[i] -= A->v[ rows[i] ][j] * x[j];
+			for(j=0; j<A->m; j++)
+			{
+				// update l so that except_cols_jj >= j
+				if( jj < m && except_cols[jj] + bs <= j)
+					jj++;
+
+				// if j is not in a columns-to-avoid set
+				if( j < except_cols[jj] )
+					rhs[k] -= A->v[ ii ][j] * x[j];
+			}
 		}
-	}
 }
 
-void get_rhs_sparse(const int n, const int *rows, const int m, const int *except_cols, const SparseMatrix *mat, const double *b, const double *x, double *rhs)
+void get_rhs_sparse(const int n, const int *rows, const int m, const int *except_cols, const int bs, const SparseMatrix *A, const double *b, const double *x, double *rhs)
 {
-	int i, j, k;
-	SparseMatrix *A = (SparseMatrix*) mat;
+	int i, ii, j, jj, k;
 
-	for(i=0; i<n; i++)
-	{
-		// for each lost line i, start with b_i
-		// and remove contributions A_ij * x_j 
-		// from all rows j that are not lost
-		rhs[i] = b[ rows[i] ];
-		k=0;
-
-		for(j=A->r[ rows[i] ]; j<A->r[ rows[i] +1]; j++)
+	for(i=0, k=0; i<n; i++)
+		for(ii=rows[i]; ii < rows[i] + bs && ii<A->n; ii++, k++)
 		{
-			// update k so that except_cols_k >= col_j
-			while( k < m && except_cols[k] < A->c[j])
-				k++;
+			// for each lost line ii, start with b_ii
+			// and remove contributions A_ii,j * x_j 
+			// from all rows j that are not lost
+			rhs[k] = b[ ii ];
 
-			// if j is not a except_cols row
-			if( except_cols[k] != A->c[j] )
-				rhs[i] -= A->v[j] * x[ A->c[j] ];
+			for(j=A->r[ ii ], jj=0; j<A->r[ ii +1 ]; j++)
+			{
+				// update jj so that except_cols[jj] + bs > A->c[j]
+				while( jj < m && except_cols[jj] + bs <= A->c[j] )
+					jj++;
+
+				if( jj >= m )
+					break;
+
+				// if the column of item j is not in the [except_cols[jj],except_cols[jj]+bs-1] set
+				if( A->c[j] < except_cols[jj] )
+					rhs[k] -= A->v[j] * x[ A->c[j] ];
+			}
 		}
-	}
 }
 

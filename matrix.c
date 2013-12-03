@@ -378,120 +378,94 @@ void deallocate_sparse_matrix(SparseMatrix *A)
 	free(A->v);
 }
 
-void submatrix_dense( const DenseMatrix *A, int *rows, int *cols, DenseMatrix *B )
+void submatrix_dense( const DenseMatrix *A , const int *rows, const int nr, const int *cols, const int nc, const int bs, DenseMatrix *B )
 {
-	int i, j, k = 0, l = 0;
+	int i, ii, j, jj, k, l;
 
-	for(i=0; i < A->n && k < B->n; i++)
-	{
-		// increment k until rows k >= i
-		if( rows[k] < i )
-			k++;
+	for(i=0, k=0; i<nr; i++)
+		for(ii=rows[i]; ii < rows[i] + bs && ii < A->n ; ii++, k++)
 
-		if( k >= B->n )
-			break;
-	
-		// increment i until i >= k
-		if( rows[k] > i )
-			continue;
+			for(j=0, l=0; j<nc; j++)
+				for(jj=cols[j]; jj < cols[j] + bs && jj < A->m ; jj++, l++)
 
-		l = 0;
-		for(j=0; j < A->m && l < B->m; j++)
-		{
-			if( rows[l] < j )
-				l++;
-
-			if( l >= B->m )
-				break;
-
-			if( i == rows[k] && j == cols[l] )
-				B->v[k][l] = A->v[i][j];
-		}
-	}
+					B->v[k][l] = A->v[ii][jj];
 }
 
-void submatrix_sparse_to_dense( const SparseMatrix *A, int *rows, int *cols, DenseMatrix *B )
+void submatrix_sparse_to_dense( const SparseMatrix *A , const int *rows, const int nr, const int *cols, const int nc, const int bs, DenseMatrix *B )
 {
-	int i, j, col_A, k = 0, l = 0;
+	// nc = Number of Columns, nr = Number of Rows, bs = Block Size
+	int i, ii, j, jj, k;
 
-	for(i=0; i < A->n; i++)
-	{
-		// advance in rows so that rows_k >= i
-		if( rows[k] < i )
-			k++;
-
-		if( k >= B->n )
-			break;
-	
-		// increment i until i >= k
-		if( rows[k] > i )
-			continue;
-
-		l = 0;
-		for(j=A->r[i]; j < A->r[i+1]; j++)
+	// i iterates each block of rows, ii each row in A that needs to be copied. Parallelly, k iterates each row in B corresponding to ii.
+	for(i=0, k=0; i<nr; i++)
+		for(ii=rows[i]; ii < rows[i] + bs && ii < A->n && k < B->n ; ii++, k++)
 		{
-		    col_A = A->c[j];
-
-			// advance in cols until cols_l >= col_A
-			while( l < B->m && cols[l] < col_A )
+			// now j iterates over each element in A, and jj over each block of columns
+			// if j is found to be in a block [ cols[jj], cols[jj] + bs ], we compute the corresponding column in B and copy the value
+			for(j=A->r[ii], jj = 0; j < A->r[ii+1]; j++)
 			{
-				B->v[k][l] = 0;
-				l++;
-			}
+				while( jj < nc && A->c[j] >= cols[jj] + bs )
+					jj++;
 
-			if( l >= B->m )
-				break;
+				// from here on, we are sure that A->c[j] < cols[jj] + bs
 
-			if( i == rows[k] && col_A == cols[l] )
-			{
-				B->v[k][l] = A->v[j];
-				l++;
+				// if we did all the blocks for row ii, go to next row
+				if( jj >= nc )
+					break;
+
+				if( A->c[j] >= cols[jj] )
+				{
+					int col_in_B = jj * bs + (A->c[j] - cols[jj]);
+
+					if( col_in_B > B->m )
+						break;
+
+					B->v[k][col_in_B] = A->v[j];
+				}
 			}
 		}
-	}
 }
 
-void submatrix_sparse( const SparseMatrix *A, int *rows, int *cols, SparseMatrix *B )
+void submatrix_sparse( const SparseMatrix *A , const int *rows, const int nr, const int *cols, const int nc, const int bs, SparseMatrix *B )
 {
-	int i, j, k;
+	// nb = Number of Blocks, bs = Block Size
+	int i, ii, j, jj, k, p = 0;
 
-	// alrighty let's just write it all down so it'll be clearer...
-	int map_row[A->n], map_col[A->m];
+	B->r[0] = 0;
 
-	for(i=0; i < A->n; i++)
-		map_row[i] = -1;
-
-	for(j=0; j < A->m; j++)
-		map_col[j] = -1;
-
-	for(i=0; i < B->n; i++)
-		map_row[ rows[i] ] = i;
-
-	for(j=0; j < B->m; j++)
-		map_col[ cols[j] ] = j;
-
-	// now we can go..
-	k = 0;
-
-	for(i=0; i < A->n; i++)
-	{
-		// only enter here for rows we want to get values from
-		if( map_row[i] < 0 )
-			continue;
-
-		B->r[ map_row[i] ] = k;
-
-		for(j=A->r[i]; j < A->r[i+1]; j++)
-			if( map_col[ A->c[j] ] >= 0 )
+	// i iterates each block of rows, ii each row in A that needs to be copied. Parallelly, k iterates each row in B corresponding to ii.
+	for(i=0, k=0; i<nr; i++)
+		for(ii=rows[i]; ii < rows[i] + bs && ii < A->n && k < B->n ; ii++, k++)
+		{
+			
+			// now j iterates over each element in A, and jj over each block of columns
+			// if j is found to be in a block [ cols[jj], cols[jj] + bs ], we compute the corresponding column in B and copy the value
+			for(j=A->r[ii], jj = 0; j < A->r[ii+1]; j++)
 			{
-				B->v[ k ] = A->v[j];
-				B->c[ k ] = map_col[ A->c[j] ];
-				k++;
-			}
-	}
+				while( jj < nc && A->c[j] >= cols[jj] + bs )
+					jj++;
 
-	B->r[ B->n ] = k;
-	B->nnz = k;
+				// from here on, we are sure that A->c[j] < cols[jj] + bs
+
+				// if we did all the blocks for row ii, go to next row
+				if( jj >= nc )
+					break;
+
+				if( A->c[j] >= cols[jj] )
+				{
+					int col_in_B = jj * bs + (A->c[j] - cols[jj]);
+
+					if( col_in_B > B->m )
+						break;
+
+					B->v[p] = A->v[j];
+					B->c[p] = col_in_B;
+					p++;
+				}
+			}
+
+			B->r[k+1] = p;
+		}
 }
 
 

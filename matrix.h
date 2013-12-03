@@ -56,9 +56,28 @@ void deallocate_dense_matrix(DenseMatrix *A);
 void deallocate_sparse_matrix(SparseMatrix *A);
 
 // get the submatrix with rows 'rows', with all columns but 'cols'
-void submatrix_dense( const DenseMatrix *A, int *rows, int *cols, DenseMatrix *B );
-void submatrix_sparse_to_dense( const SparseMatrix *A, int *rows, int *cols, DenseMatrix *B );
-void submatrix_sparse( const SparseMatrix *A, int *rows, int *cols, SparseMatrix *B );
+void submatrix_dense( const DenseMatrix *A, const int *rows, const int nr, const int *cols, const int nc, const int bs, DenseMatrix *B );
+void submatrix_sparse_to_dense( const SparseMatrix *A, const int *rows, const int nr, const int *cols, const int nc, const int bs, DenseMatrix *B );
+void submatrix_sparse( const SparseMatrix *A, const int *rows, const int nr, const int *cols, const int nc, const int bs, SparseMatrix *B );
+
+// now depending on which we use, create aliases
+#ifdef MATRIX_DENSE // using dense matrices
+	#define Matrix DenseMatrix
+	#define mult(A, V, W) mult_dense((DenseMatrix*)A, V, W);
+	#define allocate_matrix(r, c, nnz, A) allocate_dense_matrix(r, c, (DenseMatrix*)A)
+	#define deallocate_matrix(A) deallocate_dense_matrix((DenseMatrix*)A)
+
+	#define get_submatrix(A, rows, nr, cols, nc, bs, B) submatrix_dense((DenseMatrix*)A, rows, nr, cols, nc, bs, (DenseMatrix*)B)
+	#define get_dense_submatrix(A, rows, nr, cols, nc, bs, B) submatrix_dense((DenseMatrix*)A, rows, nr, cols, nc, bs, (DenseMatrix*)B)
+#else // by default : using sparse matrices
+	#define Matrix SparseMatrix
+	#define mult(A, V, W) mult_sparse((SparseMatrix*)A, V, W);
+	#define allocate_matrix(r, c, nnz, A) allocate_sparse_matrix(r, c, nnz, (SparseMatrix*)A)
+	#define deallocate_matrix(A) deallocate_sparse_matrix((SparseMatrix*)A)
+
+	#define get_submatrix(A, rows, nr, cols, nc, bs, B) submatrix_sparse((SparseMatrix*)A, rows, nr, cols, nc, bs, (SparseMatrix*)B)
+	#define get_dense_submatrix(A, rows, nr, cols, nc, bs, B) submatrix_sparse_to_dense((SparseMatrix*)A, rows, nr, cols, nc, bs, (DenseMatrix*)B)
+#endif
 
 #endif // MATRIX_H_INCLUDED
 

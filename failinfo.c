@@ -11,7 +11,7 @@
 
 #define MAX_BLOCKS 100
 
-struct timeval start, stop;
+struct timeval start_it, end_it;
 double *iterationDuration, *nextFault, lambda = 1000, k = 0.7;
 int size, nb_blocks;
 int *failed_block, nb_failed_block = 0;
@@ -57,6 +57,7 @@ void setup(const int n, const double lambda_bis, const double k_bis)
 
 		nextFault[0] = weibull( (double)rand()/RAND_MAX );
 		iterationDuration[0] = 0;
+		log_err(SHOW_FAILINFO, "Single fault initialized. Next fault in %e\n", nextFault[0]); 
 	}
 	else
 	{
@@ -69,6 +70,7 @@ void setup(const int n, const double lambda_bis, const double k_bis)
 			nextFault[i] = weibull( (double)rand()/RAND_MAX );
 			iterationDuration[i] = 0;
 		}
+		log_err(SHOW_FAILINFO, "Multiple faults initialized. e.g. next fault on block 0 in %e\n", nextFault[0]); 
 	}
 }
 
@@ -83,17 +85,17 @@ void unset()
 
 void start_iteration()
 {
-	gettimeofday( &start, NULL );
+	gettimeofday( &start_it, NULL );
 }
 
 void stop_iteration()
 {
-	gettimeofday( &stop, NULL );
+	gettimeofday( &end_it, NULL );
 
 	if( fault_strat == NOFAULT )
 		return;
 
-	double incDuration = (1e6 * (stop.tv_sec - start.tv_sec)) + stop.tv_usec - start.tv_usec;
+	double incDuration = (1e6 * (end_it.tv_sec - start_it.tv_sec)) + end_it.tv_usec - start_it.tv_usec;
 
 	nb_failed_block = 0;
 
@@ -110,7 +112,7 @@ void stop_iteration()
 			failed_block[0] = (int)((double)rand() / RAND_MAX * nb_blocks);
 			nb_failed_block = 1;
 
-			log_err(SHOW_FAILINFO, "\nFault (on block %d), next fault in %e usecs\n", failed_block[0], nextFault[0]);
+			log_err(SHOW_FAILINFO, "Fault (on block %d), next fault in %e usecs\n", failed_block[0], nextFault[0]);
 		}
 	}
 
@@ -131,7 +133,7 @@ void stop_iteration()
 				failed_block[ nb_failed_block ] = i;
 
 				nb_failed_block++;
-				log_err(SHOW_FAILINFO, "\nNext fault on block %d in %e usecs\n", failed_block[0], nextFault[0]);
+				log_err(SHOW_FAILINFO, "Fault on block %d, next one in %e usecs\n", i, nextFault[i]);
 			}
 		}
 	}
@@ -211,91 +213,50 @@ void get_failed_neighbourset(const int id, int *set, int *num)
 	}
 }
 
-void get_line_from_block(const int b, int *start, int *blocksize)
-{
-	if( b == 0 )
-	{
-		*start = 0;
-		*blocksize = (size % BS) ? (size % BS) : BS;
-	}
-	else if( size % BS )
-	{
-		*start = BS * (b - 1) + (size % BS);
-		*blocksize = BS;
-	}
-	else
-	{
-		*start = BS * b;
-		*blocksize = BS;
-	}
-}
-
+/*
 void compute_neighbourhoods_dense(const DenseMatrix *mat, const int BS)
 {
-	int i, ii, j, k, block_j, off = mat->n % BS, n = mat->n;
+	int i, ii, j, jj, bi, bj;
+ 
+ 	// initialize zeros ? or was calloc'd ?
+//	for( i=0; i < (n+BS-1)/BS; i++ )
+//		for( j=0; j < (n+BS-1)/BS; j++ )
+//			neighbours[i][j] = 0;
 
-	// suppose they are all zero, thus block-diagonal matrix for block size BS (was calloc'd)
-	//for( i=0; i < (n+BS-1)/BS; i++ )
-	//	for( j=0; j < (n+BS-1)/BS; j++ )
-	//		neighbours[i][j] = 0;
+	// iterate all lines, i points to the start of the block, ii to the line and bi to the number of the block
+	for(i=0, bi=0; i < mat->n; i += BS, bi++ )
+		for( ii = i; ii < i+BS && ii < mat->n ; ii ++ )
 
-	// for the first row-block that is not necessarily of the same size as the others
-	for( k=0; k<off; k++ )
-		for( j=0; j<n; j++ )
-			if( mat->v[k][j] != 0 )
-			{
-				block_j = (j+BS-off)/BS;
-				if( off == 0 )
-					block_j--;
+			// iterate all columns, j points to the start of the block, jj to the column and bj to the number of the block
+			for(j=0, bj = 0; j < mat->m; j += BS , bj++ )
+				for( jj = j; jj < j+BS && jj < mat->m && neighbours[bj][bi] == 0; jj++ )
 
-				neighbours[ block_j ][0] = 1;
-			}
-
-	// for each row-block i, and within it each row k, we go through the columns j
-	for( i=off, ii = (off ? 1 : 0); i < n; i+=BS, ii++ )
-		for( k=0; k<BS; k++ )
-			for( j=0; j<mat->n; j++ )
-				if( mat->v[i+k][j] != 0 )
-				{
-					block_j = (j+BS-off)/BS;
-					if( off == 0 )
-						block_j--;
-
-					neighbours[ block_j ][ ii ] = 1;
-				}
+					if( mat->v[ii][jj] != 0 )
+						neighbours[ bj ][ bi ] = 1;
 }
 
 void compute_neighbourhoods_sparse(const SparseMatrix *mat, const int BS)
 {
-	int i, ii, k, block_col, off = mat->n % BS, n = mat->n;
+	int i, ii, bi, k, bj;
 
-	// suppose they are all zero, thus block-diagonal matrix for block size BS (was calloc'd)
-	//for( i=0; i < (n+BS-1)/BS; i++ )
-	//	for( j=0; j < (n+BS-1)/BS; j++ )
-	//		neighbours[i][j] = 0;
+ 	// initialize zeros ? or was calloc'd ?
+//	for( i=0; i < (n+BS-1)/BS; i++ )
+//		for( j=0; j < (n+BS-1)/BS; j++ )
+//			neighbours[i][j] = 0;
 	
-	// for the first row-block that is not necessarily of the same size as the others
-	for( k=0; k<mat->r[off+1]; k++ )
-		if( mat->v[k] != 0 )
-		{
-			block_col = (mat->c[k]+BS-off)/BS;
-			if( off == 0 )
-				block_col--;
+	// iterate all lines, i points to the start of the block, ii to the line and bi to the number of the block
+	for(i=0, bi=0; i < mat->n; i += BS, bi++ )
+		for( ii = i; ii < i+BS && ii < mat->n ; ii ++ )
 
-			neighbours[ block_col ][0] = 1;
-		}
-
-	// for each row-block i, and each element k within this row-block, we go through the columns j
-	for( i=off, ii = (off ? 1 : 0); i < n; i+=BS, ii++ )
-		for( k = mat->r[i] ; k < mat->r[i+BS] ; k++ )
-			if( mat->v[k] != 0 )
+			// iterate all columns, k points to the position in mat, and bj to the number of the block
+			for(k = mat->br[i] ; k < mat->er[i] ; k++ )
 			{
-				block_col = (mat->c[k]+BS-off)/BS;
-				if( off == 0 )
-					block_col--;
-
-				neighbours[ block_col ][ ii ] = 1;
-			}
+				bj = mat->c[k] / BS;
+				if( mat->v[k] != 0 )
+					neighbours[ bj ][ bi ] = 1;
+ 			}
 }
+*/
+
 
 

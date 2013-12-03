@@ -13,6 +13,10 @@
 #include "recover.h"
 #include "debug.h"
 
+#ifdef PAPICOUNTERS
+#include "counters.h"
+#endif
+
 // pointers to functions
 char fault_strat;
 int BS;
@@ -29,16 +33,24 @@ double scalar_product( const int n, const double *v, const double *w )
 	return r;
 }
 
-struct timeval start, stop;
+struct timeval start_time, stop_time;
 void start_measure()
 {
-	gettimeofday( &start, NULL );
+	log_out("starting the measures\n");
+	#ifdef PAPICOUNTERS
+	start_papi();
+	#endif
+	gettimeofday( &start_time, NULL );
 }
 
 double stop_measure()
 {
-	gettimeofday( &stop, NULL );
-	return (1e6 * (stop.tv_sec - start.tv_sec)) + stop.tv_usec - start.tv_usec;
+	log_out("ending the measures\n");
+	gettimeofday( &stop_time, NULL );
+	#ifdef PAPICOUNTERS
+	stop_papi();
+	#endif
+	return (1e6 * (stop_time.tv_sec - start_time.tv_sec)) + stop_time.tv_usec - start_time.tv_usec;
 }
 
 // some self-explanatory text functions
@@ -282,6 +294,9 @@ int main(int argc, char* argv[])
 
 			// do some setup for the resilience part
 			setup(n, lambda, 0.7);
+			#ifdef PAPICOUNTERS
+			setup_papi();
+			#endif
 
 			if(symmetric)
 				printf("matrix_symmetric:yes method:ConjugateGradient\n");
@@ -307,6 +322,9 @@ int main(int argc, char* argv[])
 
 			// deallocate everything we have allocated for this solving
 			unset();
+			#ifdef PAPICOUNTERS
+			unset_papi();
+			#endif
 			deallocate_matrix(&matrix);
 
 			// do displays (solution, error)

@@ -5,7 +5,6 @@
 
 // information about block-topology that does not inform on the errors
 int get_nb_blocks();
-void get_line_from_block(const int b, int *start, int *blocksize);
 void get_complete_neighbourset(const int id, char *sieve);
 
 // get info about failures, for the recovery methods
