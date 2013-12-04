@@ -3,7 +3,7 @@
 
 #include "global.h"
 
-#include "solvers.h"
+#include "dense_solvers.h"
 
 void solve_qr(const DenseMatrix *A, const double* rhs, double *x)
 {

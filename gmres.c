@@ -6,7 +6,7 @@
 #include "global.h"
 #include "failinfo.h"
 #include "recover.h"
-#include "solvers.h"
+#include "dense_solvers.h"
 #include "debug.h"
 
 #include "gmres.h"

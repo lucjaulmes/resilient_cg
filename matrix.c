@@ -152,8 +152,17 @@ void read_sparse_Matrix( const int n, const int m, const int nnz, const int symm
 	A->n = n;
 	A->m = m;
 
+	int ctr = 0, thres = (nnz+19)/20;
+	log_out("Reading file ...");
+
 	for (i=0; i<nnz; i++)
 	{
+		if( i > 0 && i % thres == 0 )
+		{
+			ctr += 5;
+			log_out(" %d%%", ctr);
+		}
+
 		fscanf(input_file, "%d %d %lg\n", &X, &Y, &val);
 		X--;  /* adjust from 1-based to 0-based */
 		Y--;
@@ -178,6 +187,8 @@ void read_sparse_Matrix( const int n, const int m, const int nnz, const int symm
 
 	A->nnz = pos;
 
+	log_out(" 100%%, reordering... ");
+
 	rows_cp = (int*)malloc( A->nnz * sizeof(int) );
 	cols_cp = (int*)malloc( A->nnz * sizeof(int) );
 	vals_cp = (double*)malloc( A->nnz * sizeof(double) );
@@ -185,25 +196,35 @@ void read_sparse_Matrix( const int n, const int m, const int nnz, const int symm
 	// but no ordering is implied in MM format, plus symmetric values are not repeated so never appear at the right moment
 	// -> let's reorder it all
 	reorder_sparse_mat(A->nnz, rows, cols, vals, rows_cp, cols_cp, vals_cp);
-	int row_num = 0;
+	int lastrow = 0;
 	pos = 0;
 
-	A->r[row_num] = pos;
+	A->r[lastrow] = pos;
 
 	for (i=0; i<A->nnz; i++)
 	{
-		if( rows[i] > row_num )
-			A->r[++row_num] = pos;
+		if( rows[i] > lastrow )
+		{
+			lastrow++;
 
-		if( rows[i] > row_num )
-			log_out("!!!!!!!!! ERROR Empty row %d !\n", i);
+			A->r[lastrow] = pos;
+		}
+
+		if( rows[i] > lastrow )
+			fprintf(stderr,"!!!!!!!!! ERROR Empty row %d !\n", i);
+
+		if( i > 0 && (rows[i] < rows[i-1] || (rows[i] == rows[i-1] && cols[i] < cols[i-1]) ) )
+			fprintf(stderr, "!!!!!!!!! ERROR Elements not ordered : %d [%d,%d] > %d [%d, %d]", i-1, rows[i-1], cols[i-1], i, rows[i], cols[i]);
 
 		A->v[pos] = vals[i];
 		A->c[pos] = cols[i];
 		pos++;
 	}
 
-	A->r[row_num+1] = pos;
+	lastrow++;
+	A->r[lastrow] = pos;
+
+	log_out("done.\n");
 
 	free(rows);
 	free(cols);
@@ -216,31 +237,39 @@ void read_sparse_Matrix( const int n, const int m, const int nnz, const int symm
 
 void read_dense_Matrix( const int n, const int m, const int nnz, const int symmetric, DenseMatrix *A, FILE* input_file )
 {
-	int X, Y, i,j;
+	int X, Y, i;
 	double val;
 
 	A->n = n;
 	A->m = m;
+	// A->v should be calloc'd thus all zeroes...
 
-	for (i=0; i<n; i++)
-		for (j=0; j<m; j++)
-		    A->v[i][j] = 0;
+	int ctr = 0, thres = (nnz+19)/20;
+	log_out("Reading file ...");
 
 	for (i=0; i<nnz; i++)
 	{
+		if( i > 0 && i % thres == 0 )
+		{
+			ctr += 5;
+			log_out(" %d%%", ctr);
+		}
+
 		fscanf(input_file, "%d %d %lg\n", &X, &Y, &val);
 		X--;  /* adjust from 1-based to 0-based */
 		Y--;
 
 		// for debug purposes
 		if( X >= n || Y >= m )
-		    continue;
+			continue;
 
 		A->v[X][Y] = val;
 
 		if(symmetric && X != Y)
-		    A->v[Y][X] = val;
+			A->v[Y][X] = val;
 	}
+
+	log_out("done.\n");
 }
 
 void dense_to_sparse_Matrix( const DenseMatrix *B, SparseMatrix *A )
@@ -317,23 +346,12 @@ void print_sparse( const SparseMatrix *A )
 	int i, j;
 	for(i=0; i < A->n; i++)
 	{
-		log_out("| ");
+		log_out("%4d   |  ", i);
 
-		int k = A->r[i];
+		for( j= A->r[i]; j < A->r[i+1]; j++)
+			log_out(" [%4d ] % 1.2e ", A->c[j], A->v[j]);
 
-		for(j=0; j < A->m; j++)
-		{
-			double p = 0;
-		    if( k < A->r[i+1] && j == A->c[k] )
-		        p = A->v[k++];
-
-			if( p == 0 )
-				log_out("  0		" );
-			else
-				log_out(" % 1.2e ", p );
-		}
-
-		log_out(" |\n");
+		log_out("\n");
 	}
 }
 

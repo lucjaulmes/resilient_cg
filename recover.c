@@ -4,8 +4,13 @@
 #include "global.h"
 #include "matrix.h"
 #include "failinfo.h"
-#include "solvers.h"
 #include "debug.h"
+
+#ifdef MATRIX_DENSE
+#include "dense_solvers.h"
+#else
+#include "csparse.h"
+#endif
 
 #include "recover.h"
 
@@ -36,19 +41,7 @@ void prepare_x_uncorrelated( double *x, const double *initial_x , const int n)
 }
 
 
-void recover_interpolation( const Matrix *A, const double *b, double *x, SolveFunction solver, const int strategy )
-{
-	recover( A, b, x, solver, 1, strategy );
-}
-
-
-void recover_leastsquares( const Matrix *A, const double *b, double *x, const int strategy )
-{
-	recover( A, b, x, NULL, 0, strategy );
-}
-
-
-void recover( const Matrix *A, const double *b, double *x, SolveFunction solver, const char A_full_rank, const int strategy )
+void recover( const Matrix *A, const double *b, double *x, const char A_full_rank, const int strategy )
 {
 	int block, id;
 
@@ -58,7 +51,7 @@ void recover( const Matrix *A, const double *b, double *x, SolveFunction solver,
 			block = get_failed_block(0);
 
 			if( A_full_rank )
-				do_interpolation(A, b, x, 1, &block, solver);
+				do_interpolation(A, b, x, 1, &block);
 			else
 				do_leastsquares(A, b, x, 1, &block);
 
@@ -72,7 +65,7 @@ void recover( const Matrix *A, const double *b, double *x, SolveFunction solver,
 				block = get_failed_block(id);
 
 				if( A_full_rank )
-					do_interpolation(A, b, x, 1, &block, solver);
+					do_interpolation(A, b, x, 1, &block);
 				else
 					do_leastsquares(A, b, x, 1, &block);
 			}
@@ -86,7 +79,7 @@ void recover( const Matrix *A, const double *b, double *x, SolveFunction solver,
 				block = get_failed_block(id);
 
 				if( A_full_rank )
-					do_interpolation(A, b, x, 1, &block, solver);
+					do_interpolation(A, b, x, 1, &block);
 				else
 					do_leastsquares(A, b, x, 1, &block);
 			}
@@ -95,33 +88,33 @@ void recover( const Matrix *A, const double *b, double *x, SolveFunction solver,
 		case MULTFAULTS_GLOBAL:
 			// get list of failed blocks, group by neighbour clusters, and interpolate
 			{
-			int flb = get_nb_failed_blocks(), id = 0, i, j, lost[flb], m, set[flb];
+				int flb = get_nb_failed_blocks(), id = 0, i, j, lost[flb], m, set[flb];
 
-			// fill lost with all the failed blocks
-			for(id=0; id < flb; id++)
-				lost[id] = get_failed_block(id);
+				// fill lost with all the failed blocks
+				for(id=0; id < flb; id++)
+					lost[id] = get_failed_block(id);
 
-			for(id=0; id < flb; id++)
-			{
-				if (lost[id] < 0)
-					continue;
+				for(id=0; id < flb; id++)
+				{
+					if (lost[id] < 0)
+						continue;
 
-				// get in set the block lost[id] and all its neighbours
-				get_failed_neighbourset(lost[id], set, &m);
+					// get in set the block lost[id] and all its neighbours
+					get_failed_neighbourset(lost[id], set, &m);
 
-				// remove from lost all blocks that are in the set that we recover now
-				// no need to recover them twice
-				lost[id] = -1;
-				for(i=id+1; i < flb; i++)
-					for(j=0; j<m; j++)
-						if( set[j] == lost[i] )
-							lost[i] = -1;
+					// remove from lost all blocks that are in the set that we recover now
+					// no need to recover them twice
+					lost[id] = -1;
+					for(i=id+1; i < flb; i++)
+						for(j=0; j<m; j++)
+							if( set[j] == lost[i] )
+								lost[i] = -1;
 
-				if( A_full_rank )
-					do_interpolation(A, b, x, 1, set, solver);
-				else
-					do_leastsquares(A, b, x, 1, set);
-			}
+					if( A_full_rank )
+						do_interpolation(A, b, x, 1, set);
+					else
+						do_leastsquares(A, b, x, 1, set);
+				}
 			}
 			break;
 	}
@@ -152,39 +145,39 @@ void do_leastsquares( const Matrix *A, const double *b, double *x, const int nb_
 			neighbours[ nb_neighbours ] = i * BS;
 			nb_neighbours++;
 		}
+
+	Matrix recup;
+	double *rhs = (double*)calloc( total_lost, sizeof(double) );
 	
-	// now we can start doing the actual recovery
 	#ifndef MATRIX_DENSE
 	int nnz = 0;
 	for(i=0; i<nb_lost; i++)
-		nnz += A->r[ lost[i] +BS ] - A->r[ lost[i] ];
+	{
+		int max = lost[i] +BS;
+		if( max > A->n )
+			max = A->n ;
+		nnz += A->r[ max ] - A->r[ lost[i] ];
+	}
 	#endif
 
-	//Matrix recup;
-	//allocate_matrix( nb_neighbours, total_lost, nnz, &recup );
-	DenseMatrix recup;
-	allocate_dense_matrix( nb_neighbours, total_lost, &recup );
-	double *rhs, *interpolated;
-	rhs = (double*)calloc( total_lost, sizeof(double) );
+	allocate_matrix( nb_neighbours, total_lost, nnz, &recup );
+
+	// get the submatrix for those lines
+	get_submatrix(A, neighbours, nb_neighbours, lost, nb_lost, BS, &recup);
+
+	// fill in the rhs with the part we need 
+	get_rhs(nb_neighbours, neighbours, total_lost, lost, BS, A, b, x, rhs);
+
+	#ifdef MATRIX_DENSE
+	double *interpolated;
 
 	if( nb_lost > 1 )
 		interpolated = (double*)calloc( total_lost, sizeof(double) );
 	else
 		interpolated = &x[ lost[0] ];
 
-	//get_submatrix(A, neighbours, nb_neighbours, lost, nb_lost, BS, &recup);
-	get_dense_submatrix(A, neighbours, nb_neighbours, lost, nb_lost, BS, &recup);
-
-	get_rhs(nb_neighbours, neighbours, total_lost, lost, BS, A, b, x, rhs);
-
 	solve_qr_house(&recup, rhs, interpolated);
 
-
-	//deallocate_matrix(&recup);
-	deallocate_dense_matrix(&recup);
-	free(rhs);
-
-	// and update the x values we interpolated
 	if(nb_lost > 1)
 	{
 		int j, k;
@@ -194,10 +187,36 @@ void do_leastsquares( const Matrix *A, const double *b, double *x, const int nb_
 
 		free(interpolated);
 	}
+	#else
+	// from csparse
+	cs *submatrix_tr = cs_calloc (1, sizeof (cs)) ;
+	submatrix_tr->m = recup.n ;
+	submatrix_tr->n = recup.m ;
+	submatrix_tr->nzmax = recup.nnz ;
+	submatrix_tr->nz = -1 ;
+	// don't work with triplets, so has to be compressed column even though we work with compressed row
+	submatrix_tr->p = recup.r;
+	submatrix_tr->i = recup.c;
+	submatrix_tr->x = recup.v;
+
+	cs *submatrix = cs_transpose (submatrix_tr, 1);
+	cs_qrsol(submatrix, rhs, 0);
+	cs_spfree(submatrix);
+	cs_free(submatrix_tr);
+
+	// and update the x values we interpolated, that are returned in rhs
+	int j, k;
+	for(i=0, k=0; i<nb_lost; i++)
+		for(j=lost[i]; j<lost[i]+BS && j<A->n; j++, k++)
+			x[ j ] = rhs[ k ];
+	#endif
+
+	deallocate_matrix(&recup);
+	free(rhs);
 }
 
 
-void do_interpolation( const Matrix *A, const double *b, double *x, const int nb_lost, const int *lost_blocks, SolveFunction solver )
+void do_interpolation( const Matrix *A, const double *b, double *x, const int nb_lost, const int *lost_blocks )
 {
 	int i, total_lost = nb_lost * BS, lost[nb_lost];
 	
@@ -208,54 +227,51 @@ void do_interpolation( const Matrix *A, const double *b, double *x, const int nb
 	if( lost[nb_lost -1] + BS > A->n )
 		total_lost -= (lost[nb_lost -1] + BS - A->n);
 
+	Matrix recup;
+	double *rhs = (double*)calloc( total_lost, sizeof(double) );
+
 	#ifndef MATRIX_DENSE
 	int nnz = 0;
 	for(i=0; i<nb_lost; i++)
-		nnz += A->r[ lost[i] +BS ] - A->r[ lost[i] ];
+	{
+		int max = lost[i] +BS;
+		if( max > A->n )
+			max = A->n ;
+		nnz += A->r[ max ] - A->r[ lost[i] ];
+	}
 	#endif
 
-	//Matrix recup;
-	//allocate_matrix(total_lost, total_lost, nnz, &recup);
-	DenseMatrix recup;
-	allocate_dense_matrix(total_lost, total_lost, &recup);
+	allocate_matrix(total_lost, total_lost, nnz, &recup);
 
-	double *rhs, *interpolated;
-	rhs = (double*)calloc( total_lost, sizeof(double) );
+	// get the submatrix for those lines
+	get_submatrix(A, lost, nb_lost, lost, nb_lost, BS, &recup);
+
+	// fill in the rhs with the part we need 
+	get_rhs(nb_lost, lost, nb_lost, lost, BS, A, b, x, rhs);
+
+
+	#ifdef MATRIX_DENSE
+	double *interpolated;
 
 	if( nb_lost > 1 )
 		interpolated = (double*)calloc( total_lost, sizeof(double) );
 	else
 		interpolated = &x[ lost[0] ];
 
-	// get the submatrix for those lines
-	//get_submatrix(A, lost, nb_lost, lost, nb_lost, BS, &recup);
-	get_dense_submatrix(A, lost, nb_lost, lost, nb_lost, BS, &recup);
+	solve_cholesky(&recup, rhs, interpolated);
 
-	// fill in the rhs with the part we need 
-	get_rhs(nb_lost, lost, nb_lost, lost, BS, A, b, x, rhs);
-
-	// now solve with favourite method  : 
-	// recup * interpolated = rhs
-	solver(&recup, rhs, interpolated);
-	
-	
 	#if VERBOSE > SHOW_FAILINFO
-	double *verif = (double*)malloc(total_lost * sizeof(double)), diff = 0.0;
-	//mult(&recup, interpolated, verif);
-	mult_dense(&recup, interpolated, verif);
+	double *verif = (double*) calloc ( total_lost, sizeof(double) ), err = 0.0;
+
+	mult(&recup, interpolated, verif);
 
 	for(i=0; i<total_lost; i++)
-		diff += ( rhs[i] - verif[i] ) * ( rhs[i] - verif[i] );
-	
-	log_out("Total error of solving is %e \n", sqrt(diff));
+		err += (verif[i] - rhs[i]) * (verif[i] - rhs[i]);
+
+	log_err(SHOW_FAILINFO, "error of recovery Cholesky solver is % 1.4e\n", sqrt(err));
+
 	free(verif);
 	#endif
-
-	// and update the x values we interpolated
-
-	//deallocate_matrix(&recup);
-	deallocate_dense_matrix(&recup);
-	free(rhs);
 
 	if(nb_lost > 1)
 	{
@@ -266,6 +282,33 @@ void do_interpolation( const Matrix *A, const double *b, double *x, const int nb
 
 		free(interpolated);
 	}
+	#else
+	// from csparse
+	cs *submatrix = cs_calloc (1, sizeof (cs)) ;
+	submatrix->m = recup.m ;
+	submatrix->n = recup.n ;
+	submatrix->nzmax = recup.nnz ;
+	submatrix->nz = -1 ;
+	// don't work with triplets, so has to be compressed column even though we work with compressed row
+	// but since here the matrix is symmetric they are interchangeable
+	submatrix->p = recup.r;
+	submatrix->i = recup.c;
+	submatrix->x = recup.v;
+
+	cs_cholsol(submatrix, rhs, 0);
+
+	// and update the x values we interpolated, that are returned in rhs
+	int j, k;
+	for(i=0, k=0; i<nb_lost; i++)
+		for(j=lost[i]; j<lost[i]+BS && j<A->n; j++, k++)
+			x[ j ] = rhs[ k ];
+
+	cs_free(submatrix);
+	#endif
+
+
+	deallocate_matrix(&recup);
+	free(rhs);
 }
 
 // give rows to but in rhs, and cols to avoid
@@ -281,18 +324,25 @@ void get_rhs_dense(const int n, const int *rows, const int m, const int *except_
 			// from all rows j that are not lost
 			rhs[k] = b[ ii ];
 
-			for(j=0; j<A->m; j++)
+			log_err(SHOW_FAILINFO, "rhs_%d = b_%d - sum_j( dA_%d,j * x_j ), j =", k, ii, ii);
+
+			for(j=0, jj=0; j<A->m; j++)
 			{
-				// update l so that except_cols_jj >= j
+				// update jj so that except_cols[jj] + bs > A->c[j]
 				if( jj < m && except_cols[jj] + bs <= j)
 					jj++;
 
 				// if j is not in a columns-to-avoid set
-				if( j < except_cols[jj] )
+				if( jj >= m || j < except_cols[jj] )
+				{
 					rhs[k] -= A->v[ ii ][j] * x[j];
+					log_err(SHOW_FAILINFO, " %d", j);
+				}
 			}
+			log_err(SHOW_FAILINFO, "\n");
 		}
 }
+
 
 void get_rhs_sparse(const int n, const int *rows, const int m, const int *except_cols, const int bs, const SparseMatrix *A, const double *b, const double *x, double *rhs)
 {
@@ -306,19 +356,24 @@ void get_rhs_sparse(const int n, const int *rows, const int m, const int *except
 			// from all rows j that are not lost
 			rhs[k] = b[ ii ];
 
-			for(j=A->r[ ii ], jj=0; j<A->r[ ii +1 ]; j++)
+			log_err(SHOW_FAILINFO, "rhs_%d = b_%d - sum_j( sA_%d,j * x_j ), j =", k, ii, ii);
+
+			for(j=A->r[ ii ], jj=0; j<A->r[ ii+1 ]; j++)
 			{
 				// update jj so that except_cols[jj] + bs > A->c[j]
 				while( jj < m && except_cols[jj] + bs <= A->c[j] )
 					jj++;
 
-				if( jj >= m )
-					break;
 
 				// if the column of item j is not in the [except_cols[jj],except_cols[jj]+bs-1] set
-				if( A->c[j] < except_cols[jj] )
+				if( jj >= m || A->c[j] < except_cols[jj] )
+				{
 					rhs[k] -= A->v[j] * x[ A->c[j] ];
+					log_err(SHOW_FAILINFO, " %d", A->c[j]);
+				}
 			}
+			log_err(SHOW_FAILINFO, "\n");
 		}
 }
+
 

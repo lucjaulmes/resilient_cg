@@ -83,23 +83,16 @@ void solve_cg( const int n, const void *A, const double *b, double *iterate, dou
 			total_failures += failures;
 			// do the recovery here
 			// recover by interpolation since our submatrix is always spd
-			recover_interpolation( A, b, iterate, &solve_cholesky, fault_strat );
+			recover_interpolation( A, b, iterate, fault_strat );
 
 			old_err_sq = INFINITY;
 			update_gradient = 0;
 
 			#if VERBOSE > SHOW_FAILINFO
-			mult(A, iterate, Aiterate);
-			daxpy(n, &min1, Aiterate, b, gradient);
+			mult(A, iterate, gradient);
+			daxpy(n, -1, gradient, b, gradient);
 			
-			int i, j;
-			for(i = 0; i < n ; i += BS )
-			{
-				log_out("%3d  -- ", i);
-				for( j = i; j < i +BS ; j++ )
-					log_out(" % 1.2e", iterate[j]);
-				log_out("\n");
-			}
+			log_err(SHOW_FAILINFO, "Recovered : moved from % 1.2e to % 1.2e\n", err_sq, scalar_product(n, gradient, gradient));
 			#endif
 		}
 		if (err_sq <= thres_sq)

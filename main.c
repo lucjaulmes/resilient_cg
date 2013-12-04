@@ -201,7 +201,6 @@ int main(int argc, char* argv[])
 		// if it's not an option, it's a file
 		else
 		{
-			printf("\nFile:%s ", argv[f]);
 			FILE* input_file = fopen(argv[f], "r");
 			if(input_file == NULL)
 			{
@@ -212,14 +211,14 @@ int main(int argc, char* argv[])
 			MM_typecode matcode;
 			if (mm_read_banner(input_file, &matcode) != 0)
 			{
-				printf("Could not process Matrix Market banner.\n");
+				printf("Could not process Matrix Market banner of file %s.\n", argv[f]);
 				exit(1);
 			}
 
 			if (mm_is_complex(matcode))
 			{
-				printf("Sorry, this application does not support ");
-				printf("Matrix Market type: [%s]\n", mm_typecode_to_str(matcode));
+				printf("Sorry, this application does not support "
+						"Matrix Market type of file %s : [%s]\n", argv[f], mm_typecode_to_str(matcode));
 				continue;
 			}
 
@@ -228,19 +227,22 @@ int main(int argc, char* argv[])
 
 			if( !mm_is_array(matcode) && ( mm_read_mtx_crd_size(input_file, &m, &n, &nnz) != 0 || m != n ) )
 			{
-				printf("Sorry, this application does not support this matrix\n");
+				printf("Sorry, this application does not support the matrix in file %s\n", argv[f]);
 				continue;
 			}
 			else if( mm_is_array(matcode) )
 			{
 				if( mm_read_mtx_array_size(input_file, &m, &n) != 0 || m != n )
 				{
-					printf("Sorry, this application does not support this matrix\n");
+				printf("Sorry, this application does not support the matrix in file %s\n", argv[f]);
 					continue;
 				}
 
 				nnz = m*n;
 			}
+
+			// DEBUG TO MODIFY PROBLEM
+			// n = m = 16;
 
 			// compute now we have n, and reset for next matrix
 			if( BS_defined )
@@ -252,10 +254,6 @@ int main(int argc, char* argv[])
 			else
 				printf("WARNING : block size way be unadapted.\n");
 
-			// DEBUG TO MODIFY PROBLEM
-			// n = m = 16;
-
-			printf("problem_size:%d ", n);
 			Matrix matrix;
 
 			#ifdef MATRIX_DENSE // using dense matrices
@@ -274,29 +272,10 @@ int main(int argc, char* argv[])
 
 			#endif 
 
-
 			fclose(input_file);
 
-
-			// a few vectors for rhs of equation, solution and verification
-			double *b, *x, *s;
-			b = (double*)malloc( n * sizeof(double) );
-			x = (double*)malloc( n * sizeof(double) );
-			s = (double*)malloc( n * sizeof(double) );
-			// generate random rhs to problem, and initialize first guess to 0
-			double range = (double) 1;
-
-			for(i=0; i<n; i++)
-			{
-				b[i] = ((double)rand() / (double)RAND_MAX ) * range - range/2;
-				x[i] = 0.0;
-			}
-
-			// do some setup for the resilience part
-			setup(n, lambda, 0.7);
-			#ifdef PAPICOUNTERS
-			setup_papi();
-			#endif
+			// now show infos
+			printf("File:%s problem_size:%d ", argv[f], n);
 
 			if(symmetric)
 				printf("matrix_symmetric:yes method:ConjugateGradient\n");
@@ -309,6 +288,31 @@ int main(int argc, char* argv[])
 			name_strategy(fault_strat, strat);
 
 			printf("lambda:%e block_size:%d strategy:%s\n", lambda, BS, strat);
+
+			#if VERBOSE > FULL_VERBOSE
+			print(&matrix);
+			#endif
+		
+			// a few vectors for rhs of equation, solution and verification
+			double *b, *x, *s;
+			b = (double*)malloc( n * sizeof(double) );
+			x = (double*)malloc( n * sizeof(double) );
+			s = (double*)malloc( n * sizeof(double) );
+
+			// generate random rhs to problem, and initialize first guess to 0
+			double range = (double) 1;
+
+			for(i=0; i<n; i++)
+			{
+				b[i] = ((double)rand() / (double)RAND_MAX ) * range - range/2;
+				x[i] = 0.0;
+			}
+
+			// do some setup for the resilience part
+			#ifdef PAPICOUNTERS
+			setup_papi();
+			#endif
+			setup(n, lambda, 0.7);
 
 			// if symmetric, solve with conjugate gradient method
 			if(symmetric)
@@ -327,13 +331,7 @@ int main(int argc, char* argv[])
 			#endif
 			deallocate_matrix(&matrix);
 
-			// do displays (solution, error)
-			log_err(SHOW_DBGINFO, "\nsolution : \n\n(  ");
-
-			for(i=0; i < n; i++)
-				log_err(SHOW_DBGINFO, "%.2e\t", x[i]);
-			log_err(SHOW_DBGINFO, ")\n");
-
+			// do displays (verification, error)
 			double err = 0, norm_b = scalar_product(n, b, b);
 			for(i=0; i < n; i++)
 			{

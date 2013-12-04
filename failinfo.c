@@ -249,7 +249,7 @@ void compute_neighbourhoods_sparse(const SparseMatrix *mat, const int BS)
 		for( ii = i; ii < i+BS && ii < mat->n ; ii ++ )
 
 			// iterate all columns, k points to the position in mat, and bj to the number of the block
-			for(k = mat->br[i] ; k < mat->er[i] ; k++ )
+			for(k = mat->br[i] ; k < mat->r[i+1] ; k++ )
 			{
 				bj = mat->c[k] / BS;
 				if( mat->v[k] != 0 )

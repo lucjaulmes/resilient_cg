@@ -12,8 +12,6 @@ void solve_lu(const DenseMatrix *A, const double* rhs, double *x);
 // use for spd matrices when doing linear interpolation (A is full rank)
 void solve_cholesky(const DenseMatrix *A, const double* rhs, double *x);
 
-typedef void (*SolveFunction)(const DenseMatrix*, const double*, double*);
-
 
 #endif // SOLVERS_H_INCLUDED
 

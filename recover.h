@@ -1,7 +1,6 @@
 #ifndef RECOVER_H_INCLUDED
 #define RECOVER_H_INCLUDED
 
-#include "solvers.h" // to define the SolveFunction s
 #include "matrix.h" // define (Dense|Sparse|)Matrix
 
 // before calling those, make sure that all the lost elements of x have been replaced
@@ -17,14 +16,21 @@ void get_rhs_sparse(const int n, const int *rows, const int m, const int *except
 	#define get_rhs(n, rows, m, cols, bs, A, b, x, rhs) get_rhs_sparse(n, rows, m, cols, bs, (SparseMatrix*)A, b, x, rhs)
 #endif
 
-void do_interpolation( const Matrix *A, const double *b, double *x, const int nb_lost, const int *lost_blocks, SolveFunction solver);
+void do_interpolation( const Matrix *A, const double *b, double *x, const int nb_lost, const int *lost_blocks );
 void do_leastsquares( const Matrix *A, const double *b, double *x, const int nb_lost, const int *lost_blocks );
 
-void recover( const Matrix *A, const double *b, double *x, SolveFunction solver, const char A_full_rank, const int strategy );
+void recover( const Matrix *A, const double *b, double *x, const char A_full_rank, const int strategy );
 
 // aliases setting A_full_rank
-void recover_interpolation(const Matrix *A, const double *b, double *x, SolveFunction solver, const int strategy );
-void recover_leastsquares( const Matrix *A, const double *b, double *x, const int strategy );
+static inline void recover_interpolation(const Matrix *A, const double *b, double *x, const int strategy )
+{
+	recover( A, b, x, 1, strategy );
+}
+static inline void recover_leastsquares( const Matrix *A, const double *b, double *x, const int strategy )
+{
+	recover( A, b, x, 0, strategy );
+}
+
 
 #endif // RECOVER_H_INCLUDED
 
