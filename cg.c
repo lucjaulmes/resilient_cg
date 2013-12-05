@@ -103,7 +103,7 @@ void solve_cg( const int n, const void *A, const double *b, double *iterate, dou
 	time = stop_measure();
 
 	log_out("\n\n------\nConverged at rank %d\n------\n\n", r);
-	printf("\nCG method finished in wall clock time %e usecs with %d failures (%d iterations, error %e)\n", time, total_failures, r, sqrt(err_sq)/norm_b);
+	printf("CG method finished in wall clock time %e usecs with %d failures (%d iterations, error %e)\n", time, total_failures, r, sqrt(err_sq)/norm_b);
 
 	free(p);
 	free(Ap);

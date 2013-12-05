@@ -69,6 +69,7 @@ void usage(char* arg0)
 			"  -nb  blocks       Defines the number of blocks in which to divide operations ;\n"
 			"                    their size will depdend on the matrix' size.\n"
 			"                    Note : the options -bs and -nb are mutually exclusive.\n"
+			"  -run runs         number of times to run a matrix solving.\n"
 			"  -r   restart      number of steps for the restarted gmres.\n"
 			"                    0 means standard gmres, without restarting (default).\n\n"
 			"Options apply to all following input files. You may re-specify them for each file.\n\n", arg0);
@@ -99,11 +100,11 @@ int main(int argc, char* argv[])
 	if(argc < 2)
 		usage(argv[0]);
 
-	int i, f;
+	int i, j, f;
 	srand(time(NULL));
 
 	double lambda = 100;
-	int restart = 0, blocks = 0;
+	int restart = 0, blocks = 0, runs = 1;
 	BS = 64; // educated guess ? could we get something from a like of omp_get_num_threads() ?
 	fault_strat = NOFAULT;
 	char BS_defined = 0;
@@ -152,6 +153,20 @@ int main(int argc, char* argv[])
 
 			f++;
 			BS_defined = 1;
+			continue;
+		}
+		else if( strcmp(argv[f], "-runs") == 0 )
+		{
+			// we want at least the integer and a matrix market file after
+			if( f+2 >= argc )
+				usage(argv[0]);
+
+			runs = (int) strtol(argv[f+1], NULL, 10);
+
+			if( runs < 0 )
+				usage(argv[0]);
+
+			f++;
 			continue;
 		}
 		else if( strcmp(argv[f], "-r") == 0 )
@@ -292,55 +307,62 @@ int main(int argc, char* argv[])
 			#if VERBOSE > FULL_VERBOSE
 			print(&matrix);
 			#endif
-		
+
 			// a few vectors for rhs of equation, solution and verification
 			double *b, *x, *s;
 			b = (double*)malloc( n * sizeof(double) );
 			x = (double*)malloc( n * sizeof(double) );
 			s = (double*)malloc( n * sizeof(double) );
 
-			// generate random rhs to problem, and initialize first guess to 0
-			double range = (double) 1;
-
-			for(i=0; i<n; i++)
+			// interesting stuff is here
+			for(j=0;j<runs;j++)
 			{
-				b[i] = ((double)rand() / (double)RAND_MAX ) * range - range/2;
-				x[i] = 0.0;
+				if( runs > 1 )
+					printf("run:%d ", j);
+
+				// generate random rhs to problem, and initialize first guess to 0
+				double range = (double) 1;
+
+				for(i=0; i<n; i++)
+				{
+					b[i] = ((double)rand() / (double)RAND_MAX ) * range - range/2;
+					x[i] = 0.0;
+				}
+
+				// do some setup for the resilience part
+				#ifdef PAPICOUNTERS
+				setup_papi();
+				#endif
+				setup(n, lambda, 0.7);
+
+				// if symmetric, solve with conjugate gradient method
+				if(symmetric)
+					solve_cg(n, &matrix, b, x, 1e-10 );
+				//otherwise, gmres
+				else
+					solve_gmres(n, &matrix, b, x, 1e-10 , restart);
+
+				// compute verification
+				mult(&matrix, x, s);
+
+				// deallocate everything we have allocated for this solving
+				unset();
+				#ifdef PAPICOUNTERS
+				unset_papi();
+				#endif
+
+				// do displays (verification, error)
+				double err = 0, norm_b = scalar_product(n, b, b);
+				for(i=0; i < n; i++)
+				{
+					double e_i = b[i] - s[i];
+					err += e_i * e_i;
+				}
+
+				printf("Verification : euclidian distance to solution ||Ax-b||^2 = %e , ||Ax-b||/||b|| = %e\n", err, sqrt(err/norm_b));
 			}
 
-			// do some setup for the resilience part
-			#ifdef PAPICOUNTERS
-			setup_papi();
-			#endif
-			setup(n, lambda, 0.7);
-
-			// if symmetric, solve with conjugate gradient method
-			if(symmetric)
-				solve_cg(n, &matrix, b, x, 1e-10 );
-			//otherwise, gmres
-			else
-				solve_gmres(n, &matrix, b, x, 1e-10 , restart);
-
-			// compute verification
-			mult(&matrix, x, s);
-
-			// deallocate everything we have allocated for this solving
-			unset();
-			#ifdef PAPICOUNTERS
-			unset_papi();
-			#endif
 			deallocate_matrix(&matrix);
-
-			// do displays (verification, error)
-			double err = 0, norm_b = scalar_product(n, b, b);
-			for(i=0; i < n; i++)
-			{
-				double e_i = b[i] - s[i];
-				err += e_i * e_i;
-			}
-
-			printf("Verification : euclidian distance to solution ||Ax-b||^2 = %e , ||Ax-b||/||b|| = %e\n", err, sqrt(err/norm_b));
-
 			free(b);
 			free(x);
 			free(s);
