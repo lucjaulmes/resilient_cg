@@ -6,6 +6,18 @@
 
 #include "matrix.h"
 
+// 2 useful vector functions
+double scalar_product( const int n, const double *v, const double *w )
+{
+	int i;
+	double r = 0;
+
+	for(i=0; i<n; i++)
+		r += v[i] * w[i];
+
+	return r;
+}
+
 void daxpy( const int n, const double a, const double *x, const double *y, double *z)
 {
 	int i;

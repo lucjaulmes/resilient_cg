@@ -8,12 +8,13 @@
 #include "recover.h"
 #include "dense_solvers.h"
 #include "debug.h"
+#include "counters.h"
 
 #include "gmres.h"
 
 void solve_gmres( const int n, const void *A, const double *b, double *x, double thres, const int restart )
 {
-	double error, norm_b, time, comp_thres;
+	double error, norm_b, comp_thres;
 	int it, total_it = 0, steps, failures = 0;
 
 	// not-restarted strategy : maximum n steps (NB. the algorithm can still restart before that sometimes, e.g. degenerate cases)
@@ -46,8 +47,8 @@ void solve_gmres( const int n, const void *A, const double *b, double *x, double
 	}
 	while( error < -comp_thres || error > comp_thres );
 
-	time = stop_measure();
-	printf("\nGMRES method finished in wall clock time %e usecs with %d failures (%d iterations, error %e)\n", time, failures, total_it, error / norm_b);
+	stop_measure();
+	printf("GMRES method finished in %d iterations with error %e (%d failures)\n", total_it, error/norm_b, failures);
 }
 
 void restart_gmres( const int n, const void *A, const double *b, double *x, double thres, const int max_steps, double *error, int *rank_converged )

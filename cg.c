@@ -6,13 +6,14 @@
 #include "failinfo.h"
 #include "recover.h"
 #include "debug.h"
+#include "counters.h"
 
 #include "cg.h"
 
 void solve_cg( const int n, const void *A, const double *b, double *iterate, double thres )
 {
 	// do some memory allocations
-	double norm_b, time, thres_sq;
+	double norm_b, thres_sq;
 	int r, failures, total_failures = 0, update_gradient = 0;
 	double *p, *Ap, normA_p_sq, *gradient, err_sq, old_err_sq = INFINITY, alpha, beta = 0.0;
 
@@ -30,7 +31,7 @@ void solve_cg( const int n, const void *A, const double *b, double *iterate, dou
 	// real work starts here
 	start_measure();
 
-	for(r=0; r < 500*n ; r++)
+	for(r=0; r < 1000 ; r++)
 	{
 		start_iteration();
 
@@ -100,10 +101,10 @@ void solve_cg( const int n, const void *A, const double *b, double *iterate, dou
 	}
 
 	// end of the math, showing infos
-	time = stop_measure();
+	stop_measure();
 
 	log_out("\n\n------\nConverged at rank %d\n------\n\n", r);
-	printf("CG method finished in wall clock time %e usecs with %d failures (%d iterations, error %e)\n", time, total_failures, r, sqrt(err_sq)/norm_b);
+	printf("CG method finished iterations:%d with error:%e (failures:%d)\n", r, sqrt(err_sq/norm_b), total_failures);
 
 	free(p);
 	free(Ap);

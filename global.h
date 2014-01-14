@@ -10,10 +10,8 @@
 extern char fault_strat;
 extern int BS;
 
-double scalar_product( const int n, const double *v, const double *w );
-
 void start_measure();
-double stop_measure();
+void stop_measure();
 
 
 #endif // GLOBAL_H_INCLUDED

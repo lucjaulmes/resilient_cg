@@ -22,6 +22,8 @@ typedef struct SparseMatrix
 
 typedef void (*MultFunction)(const void*, const double*, double*);
 
+
+double scalar_product( const int n, const double *v, const double *w );
 void daxpy( const int n, const double a, const double *x, const double *y, double *z);
 
 // general matrix-vector multiplication, row major ( W = A x V )
