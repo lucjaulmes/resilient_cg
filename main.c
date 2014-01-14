@@ -20,7 +20,6 @@
 #endif
 
 char fault_strat;
-int BS;
 
 // some self-explanatory text functions
 void usage(char* arg0)
@@ -33,7 +32,7 @@ void usage(char* arg0)
 			"  -mf  strategy     Enabling multiple faults to happen.\n "
 			"                   'strategy' must be one of global, uncorrelated, decorrelated.\n"
 			"                    Note : the options -nf, -sf and -mf are mutually exclusive.\n"
-			"  -c   size         Defines size of lost data on failure (in bytes).\n"
+			"  -ld  size         Defines size of lost data on failure (in bytes).\n"
 			"  -run runs         number of times to run a matrix solving.\n"
 			"  -r   restart      number of steps for the restarted gmres.\n"
 			"                    0 means standard gmres, without restarting (default).\n\n"
@@ -57,7 +56,7 @@ void name_strategy(const char n, char* name)
 		strcpy(name, "unknown_fault_strategy_expect_crashes");	
 }
 
-int read_param(int argsleft, char* argv[], double *lambda, int *restart, int *runs, int *blocks, char *BS_defined)
+int read_param(int argsleft, char* argv[], double *lambda, int *restart, int *runs, int *fail_size)
 {
 	if( strcmp(argv[0], "-l") == 0 )
 	{
@@ -72,15 +71,15 @@ int read_param(int argsleft, char* argv[], double *lambda, int *restart, int *ru
 
 		return 2;
 	}
-	else if( strcmp(argv[0], "-c") == 0 )
+	else if( strcmp(argv[0], "-ld") == 0 )
 	{
 		// we want at least the integer and a matrix market file after
 		if( argsleft <= 2 )
 			usage(argv[0]);
 
-		BS = (int) strtol(argv[1], NULL, 10);
+		*fail_size = (int) strtol(argv[1], NULL, 10);
 
-		if( BS <= 0 )
+		if( *fail_size <= 0 )
 			usage(argv[0]);
 
 		return 2;
@@ -197,14 +196,13 @@ int main(int argc, char* argv[])
 	srand(1591613054);
 
 	double lambda = 100;
-	int restart = 0, runs = 1, blocks = 16; // educated guess ?
+	int restart = 0, runs = 1, fail_size = 4096; // default page size ?
 	fault_strat = NOFAULT;
-	char BS_defined = 0;
 
 	// Iterate over parameters (usually open files)
 	for(f=1; f<argc; f += nb_read )
 
-		if( (nb_read = read_param(argc - f, &argv[f], &lambda, &restart, &runs, &blocks, &BS_defined)) == 0 )
+		if( (nb_read = read_param(argc - f, &argv[f], &lambda, &restart, &runs, &fail_size)) == 0 )
 		{
 			// if it's not an option, it's a file. Read it (and consume parameter)
 			int n, m, nnz, symmetric;
@@ -223,19 +221,17 @@ int main(int argc, char* argv[])
 				allocate_dense_matrix(n, m, &matrix);
 				read_dense_Matrix(n, m, nnz, symmetric, &matrix, input_file);
 
-				//compute_neighbourhoods_dense(&dA, BS);
+				//compute_neighbourhoods_dense(&dA, fail_size);
 				printf("matrix_format:DENSE ");
 
 			#else // by default : using sparse matrices
 				allocate_sparse_matrix(n, m, nnz * (1+symmetric), &matrix);
 				read_sparse_Matrix(n, m, nnz, symmetric, &matrix, input_file);
 
-				//compute_neighbourhoods_sparse(&dA, BS);
+				//compute_neighbourhoods_sparse(&dA, fail_size);
 				printf("matrix_format:SPARSE ");
 
 			#endif 
-
-			BS = (n + blocks / 2) / blocks;
 
 			fclose(input_file);
 
@@ -282,7 +278,7 @@ int main(int argc, char* argv[])
 				}
 
 				// do some setup for the resilience part
-				setup(n, lambda, 0.7);
+				setup(n, fail_size, lambda, 0.7);
 
 				// if symmetric, solve with conjugate gradient method
 				if(symmetric)

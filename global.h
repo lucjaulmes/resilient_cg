@@ -8,7 +8,6 @@
 #define MULTFAULTS_DECORRELATED 4
 
 extern char fault_strat;
-extern int BS;
 
 void start_measure();
 void stop_measure();

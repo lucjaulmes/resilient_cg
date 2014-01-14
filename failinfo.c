@@ -13,7 +13,7 @@
 
 struct timeval start_it, end_it;
 double *iterationDuration, *nextFault, lambda = 1000, k = 0.7;
-int size, nb_blocks;
+int size, nb_failblocks, failblock_size;
 int *failed_block, nb_failed_block = 0;
 char **neighbours, *neighbour_data;
 
@@ -29,10 +29,11 @@ double weibull(const double x)
 	return pow(y, inv_k);
 }
 
-void setup(const int n, const double lambda_bis, const double k_bis)
+void setup(const int n, const int fbs, const double lambda_bis, const double k_bis)
 {
+	failblock_size = fbs / 8;
 	size = n;
-	nb_blocks = (n+BS-1)/BS;
+	nb_failblocks = (8 * n + fbs - 1) / fbs;
 
 	lambda = lambda_bis;
 	k = k_bis;
@@ -40,11 +41,11 @@ void setup(const int n, const double lambda_bis, const double k_bis)
 	int i;
 	
 
-	neighbours = malloc( nb_blocks * sizeof(char*) );
-	neighbour_data = calloc( nb_blocks * nb_blocks, sizeof(char) );
+	neighbours = calloc( nb_failblocks, sizeof(char*) );
+	neighbour_data = calloc( nb_failblocks * nb_failblocks, sizeof(char) );
 
-	for(i=0; i<nb_blocks; i++)
-		neighbours[i] = neighbour_data + i * nb_blocks;
+	for(i=0; i<nb_failblocks; i++)
+		neighbours[i] = neighbour_data + i * nb_failblocks;
 
 	if( fault_strat == NOFAULT )
 		;
@@ -61,11 +62,11 @@ void setup(const int n, const double lambda_bis, const double k_bis)
 	}
 	else
 	{
-		iterationDuration = malloc( nb_blocks * sizeof(double) );
-		nextFault = malloc( nb_blocks * sizeof(double) );
-		failed_block = calloc( nb_blocks, sizeof(int) );
+		iterationDuration = malloc( nb_failblocks * sizeof(double) );
+		nextFault = malloc( nb_failblocks * sizeof(double) );
+		failed_block = calloc( nb_failblocks, sizeof(int) );
 
-		for (i=0; i<nb_blocks; i++)
+		for (i=0; i<nb_failblocks; i++)
 		{
 			nextFault[i] = weibull( (double)rand()/RAND_MAX );
 			iterationDuration[i] = 0;
@@ -109,10 +110,10 @@ void stop_iteration()
 			nextFault[0] = weibull( (double)rand()/RAND_MAX );
 
 			// ok we've got a failed block. Which one will it be ?
-			failed_block[0] = (int)((double)rand() / RAND_MAX * nb_blocks);
+			failed_block[0] = (int)((double)rand() / RAND_MAX * nb_failblocks);
 			nb_failed_block = 1;
 
-			log_err(SHOW_FAILINFO, "Fault (on block %d), next fault in %e usecs\n", failed_block[0], nextFault[0]);
+			log_err(SHOW_FAILINFO, "Fault (on block %d of %d), next fault in %e usecs\n", failed_block[0], nb_failblocks, nextFault[0]);
 		}
 	}
 
@@ -121,7 +122,7 @@ void stop_iteration()
 		// otherwise, go through all blocks and see which failed
 		// if they did add to them to failed_block[] and reset timer
 		int i;
-		for(i=0; i<nb_blocks; i++)
+		for(i=0; i<nb_failblocks; i++)
 		{
 			iterationDuration[i] += incDuration ;
 
@@ -145,9 +146,9 @@ int get_nb_failed_blocks()
 	return nb_failed_block;
 }
 
-int get_nb_blocks()
+int get_nb_failblocks()
 {
-	return nb_blocks;
+	return nb_failblocks;
 }
 
 // function returning the number of lines and setting their list in *lines for processor id
@@ -159,11 +160,16 @@ int get_failed_block(const int id)
 	return failed_block[id];
 }
 
+int get_failblock_size()
+{
+	return failblock_size;
+}
+
 void get_complete_neighbourset(const int id, char *sieve)
 {
 	int i;
 
-	for(i=0; i<nb_blocks; i++)
+	for(i=0; i<nb_failblocks; i++)
 		if( i == id ||  neighbours[ id ][i] )
 			sieve[i] = 1;
 }
@@ -171,9 +177,9 @@ void get_complete_neighbourset(const int id, char *sieve)
 // function setting the number and set of lost blocks that are neighbours with block id
 void get_failed_neighbourset(const int id, int *set, int *num)
 {
-	int i, j, k = 0, added[nb_blocks];
+	int i, j, k = 0, added[nb_failblocks];
 
-	for(i=0; i<nb_blocks; i++)
+	for(i=0; i<nb_failblocks; i++)
 		added[i] = 0;
 
 	*num = 1;
@@ -183,7 +189,7 @@ void get_failed_neighbourset(const int id, int *set, int *num)
 	do {
 		// search the neighbours of set_k
 		// if set_k and i are neighbours and i is found in the failed blocks, add i to set
-		for(i=0; i<nb_blocks; i++)
+		for(i=0; i<nb_failblocks; i++)
 			if( neighbours[ set[k] ][i] && added[i] == 0 )
 			{
 				for(j=0; j<nb_failed_block; j++)
@@ -218,11 +224,6 @@ void compute_neighbourhoods_dense(const DenseMatrix *mat, const int BS)
 {
 	int i, ii, j, jj, bi, bj;
  
- 	// initialize zeros ? or was calloc'd ?
-//	for( i=0; i < (n+BS-1)/BS; i++ )
-//		for( j=0; j < (n+BS-1)/BS; j++ )
-//			neighbours[i][j] = 0;
-
 	// iterate all lines, i points to the start of the block, ii to the line and bi to the number of the block
 	for(i=0, bi=0; i < mat->n; i += BS, bi++ )
 		for( ii = i; ii < i+BS && ii < mat->n ; ii ++ )
@@ -239,11 +240,6 @@ void compute_neighbourhoods_sparse(const SparseMatrix *mat, const int BS)
 {
 	int i, ii, bi, k, bj;
 
- 	// initialize zeros ? or was calloc'd ?
-//	for( i=0; i < (n+BS-1)/BS; i++ )
-//		for( j=0; j < (n+BS-1)/BS; j++ )
-//			neighbours[i][j] = 0;
-	
 	// iterate all lines, i points to the start of the block, ii to the line and bi to the number of the block
 	for(i=0, bi=0; i < mat->n; i += BS, bi++ )
 		for( ii = i; ii < i+BS && ii < mat->n ; ii ++ )

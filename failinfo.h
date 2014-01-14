@@ -4,18 +4,19 @@
 #include "matrix.h"
 
 // information about block-topology that does not inform on the errors
-int get_nb_blocks();
+int get_nb_failblocks();
 void get_complete_neighbourset(const int id, char *sieve);
 
 // get info about failures, for the recovery methods
 int get_nb_failed_blocks();
 
 int get_failed_block(const int id);
+int get_failblock_size();
 void get_failed_neighbourset(const int block, int *set, int *num);
 
 
 // setup methods, called before anything happens
-void setup(const int n, const double lambda, const double k);
+void setup(const int n, const int fbs, const double lambda, const double k);
 void compute_neighbourhoods_dense(const DenseMatrix *mat, const int bs);
 void compute_neighbourhoods_sparse(const SparseMatrix *mat, const int bs);
 void unset();

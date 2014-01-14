@@ -16,26 +16,26 @@
 
 void prepare_x_decorrelated( double *x , const int n )
 {
-	int b, i, id;
+	int b, i, id, fbs = get_failblock_size();
 
 	for(id=0; id < get_nb_failed_blocks(); id++)
 	{
 		b = get_failed_block(id);
 
-		for(i=b*BS; i<(b+1)*BS && i < n; i++)
+		for(i=b*fbs; i<(b+1)*fbs && i < n; i++)
 			x[ i ] = 0;
 	}
 }
 
 void prepare_x_uncorrelated( double *x, const double *initial_x , const int n)
 {
-	int b, i, id;
+	int b, i, id, fbs = get_failblock_size();
 
 	for(id=0; id < get_nb_failed_blocks(); id++)
 	{
 		b = get_failed_block(id);
 
-		for(i=b*BS; i<(b+1)*BS && i < n; i++)
+		for(i=b*fbs; i<(b+1)*fbs && i < n; i++)
 			x[ i ] = initial_x[ i ];
 	}
 }
@@ -123,12 +123,12 @@ void recover( const Matrix *A, const double *b, double *x, const char A_full_ran
 
 void do_leastsquares( const Matrix *A, const double *b, double *x, const int nb_lost, const int *lost_blocks )
 {
-	int i, total_lost = 0, total_blocks = get_nb_blocks(), nb_neighbours = 0;
+	int i, fbs = get_failblock_size(), total_lost = 0, total_blocks = get_nb_failblocks(), nb_neighbours = 0;
 	int lost[nb_lost], neighbours[total_blocks];
 
 	// get first row in each block instead of block number
 	for(i=0; i<nb_lost; i++)
-		lost[i] = BS * lost_blocks[i];
+		lost[i] = fbs * lost_blocks[i];
 
 	// do the same (sic) with the neighbours (NB all "lost" are in "neighbours", this should be done once only)
 	char neighbourhood[ total_blocks ];
@@ -142,7 +142,7 @@ void do_leastsquares( const Matrix *A, const double *b, double *x, const int nb_
 	for(i=0; i<total_blocks; i++)
 		if( neighbourhood[i] )
 		{
-			neighbours[ nb_neighbours ] = i * BS;
+			neighbours[ nb_neighbours ] = i * fbs;
 			nb_neighbours++;
 		}
 
@@ -153,7 +153,7 @@ void do_leastsquares( const Matrix *A, const double *b, double *x, const int nb_
 	int nnz = 0;
 	for(i=0; i<nb_lost; i++)
 	{
-		int max = lost[i] +BS;
+		int max = lost[i] +fbs;
 		if( max > A->n )
 			max = A->n ;
 		nnz += A->r[ max ] - A->r[ lost[i] ];
@@ -163,10 +163,10 @@ void do_leastsquares( const Matrix *A, const double *b, double *x, const int nb_
 	allocate_matrix( nb_neighbours, total_lost, nnz, &recup );
 
 	// get the submatrix for those lines
-	get_submatrix(A, neighbours, nb_neighbours, lost, nb_lost, BS, &recup);
+	get_submatrix(A, neighbours, nb_neighbours, lost, nb_lost, fbs, &recup);
 
 	// fill in the rhs with the part we need 
-	get_rhs(nb_neighbours, neighbours, total_lost, lost, BS, A, b, x, rhs);
+	get_rhs(nb_neighbours, neighbours, total_lost, lost, fbs, A, b, x, rhs);
 
 	#ifdef MATRIX_DENSE
 	double *interpolated;
@@ -182,7 +182,7 @@ void do_leastsquares( const Matrix *A, const double *b, double *x, const int nb_
 	{
 		int j, k;
 		for(i=0, k=0; i<nb_lost; i++)
-			for(j=lost[i]; j<lost[i]+BS && j<A->n; j++, k++)
+			for(j=lost[i]; j<lost[i]+fbs && j<A->n; j++, k++)
 				x[ j ] = interpolated[ k ];
 
 		free(interpolated);
@@ -207,7 +207,7 @@ void do_leastsquares( const Matrix *A, const double *b, double *x, const int nb_
 	// and update the x values we interpolated, that are returned in rhs
 	int j, k;
 	for(i=0, k=0; i<nb_lost; i++)
-		for(j=lost[i]; j<lost[i]+BS && j<A->n; j++, k++)
+		for(j=lost[i]; j<lost[i]+fbs && j<A->n; j++, k++)
 			x[ j ] = rhs[ k ];
 	#endif
 
@@ -218,14 +218,14 @@ void do_leastsquares( const Matrix *A, const double *b, double *x, const int nb_
 
 void do_interpolation( const Matrix *A, const double *b, double *x, const int nb_lost, const int *lost_blocks )
 {
-	int i, total_lost = nb_lost * BS, lost[nb_lost];
+	int i, fbs = get_failblock_size(), total_lost = nb_lost * fbs, lost[nb_lost];
 	
 	// change from block numver to first row in block number
 	for(i=0; i<nb_lost; i++)
-		lost[i] = lost_blocks[i] * BS;
+		lost[i] = lost_blocks[i] * fbs;
 
-	if( lost[nb_lost -1] + BS > A->n )
-		total_lost -= (lost[nb_lost -1] + BS - A->n);
+	if( lost[nb_lost -1] + fbs > A->n )
+		total_lost -= (lost[nb_lost -1] + fbs - A->n);
 
 	Matrix recup;
 	double *rhs = (double*)calloc( total_lost, sizeof(double) );
@@ -234,7 +234,7 @@ void do_interpolation( const Matrix *A, const double *b, double *x, const int nb
 	int nnz = 0;
 	for(i=0; i<nb_lost; i++)
 	{
-		int max = lost[i] +BS;
+		int max = lost[i] +fbs;
 		if( max > A->n )
 			max = A->n ;
 		nnz += A->r[ max ] - A->r[ lost[i] ];
@@ -244,10 +244,10 @@ void do_interpolation( const Matrix *A, const double *b, double *x, const int nb
 	allocate_matrix(total_lost, total_lost, nnz, &recup);
 
 	// get the submatrix for those lines
-	get_submatrix(A, lost, nb_lost, lost, nb_lost, BS, &recup);
+	get_submatrix(A, lost, nb_lost, lost, nb_lost, fbs, &recup);
 
 	// fill in the rhs with the part we need 
-	get_rhs(nb_lost, lost, nb_lost, lost, BS, A, b, x, rhs);
+	get_rhs(nb_lost, lost, nb_lost, lost, fbs, A, b, x, rhs);
 
 
 	#ifdef MATRIX_DENSE
@@ -277,7 +277,7 @@ void do_interpolation( const Matrix *A, const double *b, double *x, const int nb
 	{
 		int j, k;
 		for(i=0, k=0; i<nb_lost; i++)
-			for(j=lost[i]; j<lost[i]+BS && j<A->n; j++, k++)
+			for(j=lost[i]; j<lost[i]+fbs && j<A->n; j++, k++)
 				x[ j ] = interpolated[ k ];
 
 		free(interpolated);
@@ -300,7 +300,7 @@ void do_interpolation( const Matrix *A, const double *b, double *x, const int nb
 	// and update the x values we interpolated, that are returned in rhs
 	int j, k;
 	for(i=0, k=0; i<nb_lost; i++)
-		for(j=lost[i]; j<lost[i]+BS && j<A->n; j++, k++)
+		for(j=lost[i]; j<lost[i]+fbs && j<A->n; j++, k++)
 			x[ j ] = rhs[ k ];
 
 	cs_free(submatrix);

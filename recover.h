@@ -14,23 +14,23 @@ void get_rhs_sparse(const int n, const int *rows, const int m, const int *except
 	#define get_rhs(n, rows, m, cols, bs, A, b, x, rhs) get_rhs_dense(n, rows, m, cols, bs, (DenseMatrix*)A, b, x, rhs)
 #else
 	#define get_rhs(n, rows, m, cols, bs, A, b, x, rhs) get_rhs_sparse(n, rows, m, cols, bs, (SparseMatrix*)A, b, x, rhs)
-#endif
+#endif 
 
 void do_interpolation( const Matrix *A, const double *b, double *x, const int nb_lost, const int *lost_blocks );
 void do_leastsquares( const Matrix *A, const double *b, double *x, const int nb_lost, const int *lost_blocks );
 
 void recover( const Matrix *A, const double *b, double *x, const char A_full_rank, const int strategy );
 
-// aliases setting A_full_rank
+// aliases of recover, setting the A_full_rank parameter
 static inline void recover_interpolation(const Matrix *A, const double *b, double *x, const int strategy )
 {
 	recover( A, b, x, 1, strategy );
 }
+
 static inline void recover_leastsquares( const Matrix *A, const double *b, double *x, const int strategy )
 {
 	recover( A, b, x, 0, strategy );
 }
-
 
 #endif // RECOVER_H_INCLUDED
 
