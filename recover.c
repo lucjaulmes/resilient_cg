@@ -216,7 +216,7 @@ void do_leastsquares( const Matrix *A, const double *b, double *x, const int nb_
 }
 
 
-void do_interpolation( const Matrix *A, const double *b, double *x, const int nb_lost, const int *lost_blocks )
+void do_interpolation_with_grad( const Matrix *A, const double *b, const double *g, double *x, const int nb_lost, const int *lost_blocks )
 {
 	int i, fbs = get_failblock_size(), total_lost = nb_lost * fbs, lost[nb_lost];
 	
@@ -247,7 +247,10 @@ void do_interpolation( const Matrix *A, const double *b, double *x, const int nb
 	get_submatrix(A, lost, nb_lost, lost, nb_lost, fbs, &recup);
 
 	// fill in the rhs with the part we need 
-	get_rhs(nb_lost, lost, nb_lost, lost, fbs, A, b, x, rhs);
+	if( g == NULL )
+		get_rhs(nb_lost, lost, nb_lost, lost, fbs, A, b, x, rhs);
+	else
+		get_rhs_sparse_with_grad(nb_lost, lost, nb_lost, lost, fbs, A, b, g, x, rhs);
 
 
 	#ifdef MATRIX_DENSE
@@ -337,6 +340,38 @@ void get_rhs_dense(const int n, const int *rows, const int m, const int *except_
 				{
 					rhs[k] -= A->v[ ii ][j] * x[j];
 					log_err(SHOW_FAILINFO, " %d", j);
+				}
+			}
+			log_err(SHOW_FAILINFO, "\n");
+		}
+}
+
+void get_rhs_sparse_with_grad(const int n, const int *rows, const int m, const int *except_cols, const int bs, const SparseMatrix *A, const double *b, const double *g, const double *x, double *rhs)
+{
+	int i, ii, j, jj, k;
+
+	for(i=0, k=0; i<n; i++)
+		for(ii=rows[i]; ii < rows[i] + bs && ii<A->n; ii++, k++)
+		{
+			// for each lost line ii, start with b_ii
+			// and remove contributions A_ii,j * x_j 
+			// from all rows j that are not lost
+			rhs[k] = b[ ii ] - g[ ii ];
+
+			log_err(SHOW_FAILINFO, "rhs_%d = b_%d - sum_j( sA_%d,j * x_j ), j =", k, ii, ii);
+
+			for(j=A->r[ ii ], jj=0; j<A->r[ ii+1 ]; j++)
+			{
+				// update jj so that except_cols[jj] + bs > A->c[j]
+				while( jj < m && except_cols[jj] + bs <= A->c[j] )
+					jj++;
+
+
+				// if the column of item j is not in the [except_cols[jj],except_cols[jj]+bs-1] set
+				if( jj >= m || A->c[j] < except_cols[jj] )
+				{
+					rhs[k] -= A->v[j] * x[ A->c[j] ];
+					log_err(SHOW_FAILINFO, " %d", A->c[j]);
 				}
 			}
 			log_err(SHOW_FAILINFO, "\n");

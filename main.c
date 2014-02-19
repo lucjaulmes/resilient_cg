@@ -19,6 +19,9 @@
 	#define register_sigsegv_handler()
 #endif
 
+int MAGIC_ITERATION = 212;
+int MAGIC_BLOCKTORECOVER = 0;
+
 char fault_strat;
 
 // some self-explanatory text functions
@@ -56,9 +59,35 @@ void name_strategy(const char n, char* name)
 		strcpy(name, "unknown_fault_strategy_expect_crashes");	
 }
 
-int read_param(int argsleft, char* argv[], double *lambda, int *restart, int *runs, int *fail_size)
+int read_param(int argsleft, char* argv[], double *lambda, int *restart, int *runs, int *fail_size, char *fault_strat)
 {
-	if( strcmp(argv[0], "-l") == 0 )
+	if( strcmp(argv[0], "-it") == 0 )
+	{
+		// we want at least the double and a matrix market file after
+		if( argsleft <= 2 )
+			usage(argv[0]);
+
+		MAGIC_ITERATION = strtod(argv[1], NULL);
+
+		if( MAGIC_ITERATION <= 0 )
+			usage(argv[0]);
+
+		return 2;
+	}
+	else if( strcmp(argv[0], "-btr") == 0 )
+	{
+		// we want at least the double and a matrix market file after
+		if( argsleft <= 2 )
+			usage(argv[0]);
+
+		MAGIC_BLOCKTORECOVER = strtod(argv[1], NULL);
+
+		if( MAGIC_BLOCKTORECOVER <= 0 )
+			usage(argv[0]);
+
+		return 2;
+	}
+	else if( strcmp(argv[0], "-l") == 0 )
 	{
 		// we want at least the double and a matrix market file after
 		if( argsleft <= 2 )
@@ -116,7 +145,7 @@ int read_param(int argsleft, char* argv[], double *lambda, int *restart, int *ru
 		if( argsleft <= 1 )
 			usage(argv[0]);
 
-		fault_strat = SINGLEFAULT;
+		*fault_strat = SINGLEFAULT;
 		// (all strategies equivalent for 1 fault)
 
 		return 1;
@@ -128,11 +157,11 @@ int read_param(int argsleft, char* argv[], double *lambda, int *restart, int *ru
 			usage(argv[0]);
 
 		if( strcmp(argv[1], "global") == 0 )
-			fault_strat = MULTFAULTS_GLOBAL;
+			*fault_strat = MULTFAULTS_GLOBAL;
 		else if( strcmp(argv[1], "uncorrelated") == 0 )
-			fault_strat = MULTFAULTS_UNCORRELATED;
+			*fault_strat = MULTFAULTS_UNCORRELATED;
 		else if( strcmp(argv[1], "decorrelated") == 0 )
-			fault_strat = MULTFAULTS_DECORRELATED;
+			*fault_strat = MULTFAULTS_DECORRELATED;
 		else
 			usage(argv[0]);
 
@@ -202,7 +231,7 @@ int main(int argc, char* argv[])
 	// Iterate over parameters (usually open files)
 	for(f=1; f<argc; f += nb_read )
 
-		if( (nb_read = read_param(argc - f, &argv[f], &lambda, &restart, &runs, &fail_size)) == 0 )
+		if( (nb_read = read_param(argc - f, &argv[f], &lambda, &restart, &runs, &fail_size, &fault_strat)) == 0 )
 		{
 			// if it's not an option, it's a file. Read it (and consume parameter)
 			int n, m, nnz, symmetric;

@@ -8,6 +8,7 @@
 #define MULTFAULTS_DECORRELATED 4
 
 extern char fault_strat;
+extern int MAGIC_BLOCKTORECOVER, MAGIC_ITERATION;
 
 void start_measure();
 void stop_measure();
