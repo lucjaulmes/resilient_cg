@@ -279,10 +279,6 @@ int main(int argc, char* argv[])
 
 			printf("lambda:%e strategy:%s\n", lambda, strat);
 
-			#if VERBOSE > FULL_VERBOSE
-			print(&matrix);
-			#endif
-
 			setup_measure();
 
 			// a few vectors for rhs of equation, solution and verification

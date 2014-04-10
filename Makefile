@@ -26,7 +26,7 @@ USE_DENSMAT = -DMATRIX_DENSE
 # -DVERBOSE=x make it talk, with x from 0 (talk just a bit) to 6 (talk a LOT)
 
 #this will be passed to debug builds, add any of the above options
-DBG_OPTS = -Wall -g -O0 -DVERBOSE=0 $(USE_BT) $(USE_TIMEOFDAY)
+DBG_OPTS = -Wall -g -O0 -DVERBOSE=9 $(USE_BT) $(USE_TIMEOFDAY)
 #this will be passed to release builds
 RLS_OPTS = -O1 -DPERFORMANCE $(USE_TIMEOFDAY)
 #####################################################################################################
