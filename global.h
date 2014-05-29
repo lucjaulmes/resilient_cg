@@ -9,6 +9,7 @@
 
 extern char fault_strat;
 extern int MAGIC_BLOCKTORECOVER, MAGIC_ITERATION;
+extern int MAXIT;
 
 void start_measure();
 void stop_measure();

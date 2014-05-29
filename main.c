@@ -43,6 +43,8 @@ void usage(char* arg0)
 	exit(1);
 }
 
+int MAXIT = 1000;
+
 void name_strategy(const char n, char* name)
 {
 	if( n == NOFAULT )
@@ -70,6 +72,19 @@ int read_param(int argsleft, char* argv[], double *lambda, int *restart, int *ru
 		MAGIC_ITERATION = strtod(argv[1], NULL);
 
 		if( MAGIC_ITERATION <= 0 )
+			usage(argv[0]);
+
+		return 2;
+	}
+	else if( strcmp(argv[0], "-maxit") == 0 )
+	{
+		// we want at least the integer and a matrix market file after
+		if( argsleft <= 2 )
+			usage(argv[0]);
+
+		MAXIT = (int) strtol(argv[1], NULL, 10);
+
+		if( MAXIT <= 0 )
 			usage(argv[0]);
 
 		return 2;
