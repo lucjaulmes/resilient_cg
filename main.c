@@ -37,8 +37,8 @@ void usage(char* arg0)
 			"                   'strategy' must be one of global, uncorrelated, decorrelated.\n"
 			"                    Note : the options -nf, -sf and -mf are mutually exclusive.\n"
 			"  -ld  size         Defines size of lost data on failure (in bytes).\n"
-			"  -run runs         number of times to run a matrix solving.\n"
-			"  -r   restart      number of steps for the restarted gmres.\n"
+			"  -r   runs         number of times to run a matrix solving.\n"
+			"  -rs  restart      number of steps for the restarted gmres.\n"
 			"                    0 means standard gmres, without restarting (default).\n\n"
 			"All options apply to every following input file. You may re-specify them for each file.\n\n", arg0);
 	exit(1);
@@ -140,7 +140,7 @@ int read_param(int argsleft, char* argv[], double *lambda, int *restart, int *ru
 
 		return 2;
 	}
-	else if( strcmp(argv[0], "-runs") == 0 )
+	else if( strcmp(argv[0], "-r") == 0 )
 	{
 		// we want at least the integer and a matrix market file after
 		if( argsleft <= 2 )
@@ -153,7 +153,7 @@ int read_param(int argsleft, char* argv[], double *lambda, int *restart, int *ru
 
 		return 2;
 	}
-	else if( strcmp(argv[0], "-r") == 0 )
+	else if( strcmp(argv[0], "-rs") == 0 )
 	{
 		// we want at least the integer and a matrix market file after
 		if( argsleft <= 2 )
