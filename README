@@ -1,0 +1,104 @@
+######################################
+#             COMPILING              #
+######################################
+
+to compile, be sure to have in your path
+- a C11 able compiler (e.g. gcc-4.9)
+- the mercurium compiler for OmpSs
+and to have installed
+- nanos
+- extrae
+- papi
+
+adjust variables if they don't comply to the following defaults :
+CC = gcc-4.9							# C11 compiler
+MCC = mcc								# mercurium compiler
+NANOS_HOME = /apps/PM/ompss/2014-04-10
+PAPI_HOME = /apps/PAPI/5.0.1
+EXTRAE_HOME = /apps/CEPBATOOLS/extrae/latest/default/64
+
+e.g. :
+$ make NANOS_HOME=/usr/local
+
+Each different configuration will be compiled in a subdirectory, with 6 targets
+
+- cg, parallel version that is compiled with the instrumentation library of nanox
+- cg_seq, sequential : same as above ignoring pragmas (entirely compiled with $(CC))
+
+- cg_speedup, parallel version that only measures speed (compiled with performance library)
+- cg_seq_speedup, sequential : same as above ignoring pragmas (entirely compiled with $(CC))
+
+- cg_conv, parallel version that writes convergence and resilience values to a trace (perf)
+- cg_seq_conv, sequential : same as above ignoring pragmas (entirely compiled with $(CC))
+
+######################################
+#             RESILIENCE             #
+######################################
+
+The default make target will be a non-resilient textbook Conjugate Gradient.
+You may then choose resilience strategies for Detected Uncorrected Errors (DUE),
+e.g. a memory page failure, and a detector for Silent Data Corruption (SDC).
+
+Options are :
+DUE: none async path rollback lossy
+SDC: none alpha ortho grad
+
+If using an SDC detector or the rollback DUE strategy, you will need to choose a 
+(not "none") checkpointing method as well.
+CKPT: none disk mem
+
+Finally, if you choose to detect SDC or to checkpoint, you must choose frequencies
+(in number of iterations) to do so, thus SDC_FREQ and CKPT_FREQ.
+If SDC=grad, SDC_FREQ must be a multiple of RECOMPUTE_GRAD_FREQ (defaults to 50).
+If SDC is used, CKPT_FREQ must be a multiple of SDC_FREQ.
+
+The name of each configuration's directory is then DUE_SDC(SDC_FREQ)_CKPT(CKPT_FREQ)
+Some valid examples :
+
+	configuration :											directory :
+	
+	DUE=none												none_none_none
+	DUE=rollback CKPT=disk CKPT_FREQ=100					rollblack_none_disk100
+	DUE=async SDC=alpha SDC_FREQ=50 CKPT=mem CKPT_FREQ=200	async_alpha50_mem200
+
+######################################
+#              RUNNING               #
+######################################
+
+You have to supply a file containing a spd matrix in Matrix Market format.
+All other parameters are optional and described below. Some are only available for
+some flavours of the resilient CG.
+
+Usage: ./async_alpha100_disk200/cg [options] <matrix-market-filename> [, ...] 
+Possible options are : 
+ ===  fault injection  === 
+  -nf               Disabling faults simulation (default).
+  -sf               Forcing faults to happen no more than one at a time.
+  -mf    strategy   Enabling multiple faults to happen.
+                    'strategy' must be one of global, uncorrelated, decorrelated.
+                    Note : the options -nf, -sf and -mf are mutually exclusive.
+  -l     lambda     Number (double), meaning MTBE in usec.
+  -nerr  N duration Inject N errors over a period of duration in usec.
+                    Note : the options -l and -nerr are mutually exclusive.
+ === run configuration === 
+  -th    threads    Manually define number of threads.
+  -nb    blocks     Defines the number of blocks in which to divide operations ;
+                    their size will depdend on the matrix' size.
+  -r     runs       number of times to run a matrix solving.
+  -cv    thres      Run until the error verifies ||b-Ax|| < thres * ||b|| (default 1e-10).
+  -maxit N          Run no more than N iterations (default no limit).
+  -seed  s          Initialize seed of each run with s. If 0 use different (random) seeds.
+ === resilience method === 
+  -ps    size       Defines page size (used on failure, in bytes, defaults to 4K).
+                    Must be a multiple of the system page size (and a power of 2).
+  -disk  /path/dir  Path to a directory on local disk for checkpointing (default $TMPDIR).
+  -ckpt             Prefix of the name of checkpoint files.
+  -sdc    tol       Consider SDC occured if detector yields a value > tol (default 1e-12).
+All options apply to every following input file. You may re-specify them for each file.
+
+
+e.g. the following command will run CG once without fault injection, and once with a MTBE of 1e8 us
+(without reloading the matrix from file) :
+
+$ ./cg -nf <file>.mtx -sf -l 1e8 <file>.mtx
+
