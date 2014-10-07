@@ -85,13 +85,9 @@ void usage(char* arg0)
 			"  -cv    thres      Run until the error verifies ||b-Ax|| < thres * ||b|| (default 1e-10).\n"
 			"  -maxit N          Run no more than N iterations (default no limit).\n"
 			"  -seed  s          Initialize seed of each run with s. If 0 use different (random) seeds.\n"
-	#if DUE || CKPT || SDC
 			" === resilience method === \n"
-	#endif
-	#if DUE
 			"  -ps    size       Defines page size (used on failure, in bytes, defaults to 4K).\n"
 			"                    Must be a multiple of the system page size (and a power of 2).\n"
-	#endif
 	#if CKPT == CKPT_TO_DISK
 			"  -disk  /path/dir  Path to a directory on local disk for checkpointing (default $TMPDIR).\n"
 			"  -ckpt             Prefix of the name of checkpoint files.\n"
@@ -196,11 +192,7 @@ int read_param(int argsleft, char* argv[], double *lambda, int *runs, int *block
 			usage(argv[0]);
 
 		*fail_size = strtol(argv[1], NULL, 10);
-		#if DUE
 		const long divisor = sysconf(_SC_PAGESIZE);
-		#else
-		const long divisor = sizeof(double);
-		#endif
 
 		if( *fail_size <= 0 || *fail_size % divisor || *fail_size ^ (1 << (ffs((int)*fail_size)-1)) )
 			usage(argv[0]);
@@ -390,11 +382,7 @@ int main(int argc, char* argv[])
 	char *checkpoint_path = NULL, *checkpoint_prefix = NULL;
 	#endif
 
-	#if DUE
 	fail_size = sysconf(_SC_PAGESIZE); // default page size ?
-	#else
-	fail_size = sizeof(double);
-	#endif
 
 	unsigned int seed = 1591613054 ;// time(NULL);
 

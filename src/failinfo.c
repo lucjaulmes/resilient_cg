@@ -183,10 +183,12 @@ void resilience_sighandler(int signum, siginfo_t *info, void *context UNUSED)
 		// notify globally
 		__sync_fetch_and_add(&errinfo.errors, 1);
 
+	#if DUE
 		// notify this thread
 		exception_happened++;
 		if( out_vect == RECOVERY )
 			errinfo.in_recovery_errors++;
+	#endif
 
 
 		// old : unprotect, mess with data in the page
@@ -230,10 +232,6 @@ void* simulate_failures(void* ptr)
 	error_sim_data *sim_err = (error_sim_data*)ptr;
 
 	struct timespec next_sim_fault, remainder, remainder2;
-	#if !DUE
-	fprintf(stderr, "WARNING : can't inject faults in a non-resilient method\n");
-	return NULL;
-	#endif
 
 	// default cancellability state + nanosleep is a cancellation point
 	//pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
