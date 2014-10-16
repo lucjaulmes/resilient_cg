@@ -52,7 +52,7 @@ double exponential(const double lambda, const double x)
 	return y;
 }
 
-void populate_global(const int n, const int fail_size_bytes, const char fault_strat, const int nerr, const double lambda, const char *checkpoint_path UNUSED)
+void populate_global(const int n, const int fail_size_bytes, const int fault_strat, const int nerr, const double lambda, const char *checkpoint_path UNUSED)
 {
 	const int fail_size = fail_size_bytes / sizeof(double);
 	errinfo = (analyze_err){ .failblock_size = fail_size, .log2fbs = ffs(fail_size)-1, .nb_failblocks = (n + fail_size -1) / fail_size, .fault_strat = fault_strat,
@@ -60,7 +60,7 @@ void populate_global(const int n, const int fail_size_bytes, const char fault_st
 		.ckpt = checkpoint_path
 		#endif
 	};
-	sim_err = (error_sim_data){ .lambda = lambda, .fault_strat = fault_strat, .nerr = nerr, .info = &errinfo };
+	sim_err = (error_sim_data){ .lambda = lambda, .nerr = nerr, .info = &errinfo };
 }
 
 void setup_resilience(const Matrix *A UNUSED, const int nb, magic_pointers *mp)
@@ -116,7 +116,7 @@ void setup_resilience(const Matrix *A UNUSED, const int nb, magic_pointers *mp)
 	sem_init(&sim_err.start_sim, 0, 0);
 	
 	// if simulating faults, create thread to do so
-	if( sim_err.fault_strat != NOFAULT )
+	if( sim_err.lambda != 0 )
 		pthread_create(&sim_err.th, NULL, &simulate_failures, (void*)&sim_err);
 }
 
@@ -127,7 +127,7 @@ void start_error_injection()
 
 void unset_resilience()
 {
-	if( sim_err.fault_strat != NOFAULT && sim_err.th )
+	if( sim_err.lambda != 0 && sim_err.th )
 	{
 		pthread_cancel(sim_err.th);
 		pthread_join(sim_err.th, NULL);

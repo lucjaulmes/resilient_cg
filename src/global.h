@@ -5,11 +5,9 @@
 // these are the possible fault strategies
 
 // some values we pass around
-#define NOFAULT					0
-#define SINGLEFAULT				1
-#define MULTFAULTS_GLOBAL		2
-#define MULTFAULTS_UNCORRELATED	3
-#define MULTFAULTS_DECORRELATED	4
+#define MULTFAULTS_GLOBAL		1
+#define MULTFAULTS_UNCORRELATED	2
+#define MULTFAULTS_DECORRELATED	3
 
 #define DO_NOTHING         0
 #define SAVE_CHECKPOINT    1
@@ -46,7 +44,7 @@
 #endif
 
 #if SDC || DUE == DUE_ROLLBACK
-	#ifndef CKPT
+	#if CKPT == CKPT_NONE
 	#error you have to define a checkpoint strategy
 	#endif
 #endif

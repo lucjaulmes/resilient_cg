@@ -70,17 +70,16 @@ void usage(char* arg0)
 			"Possible options are : \n"
 			" ===  fault injection  === \n"
 			"  -nf               Disabling faults simulation (default).\n"
-			"  -sf               Forcing faults to happen no more than one at a time.\n"
-			"  -mf    strategy   Enabling multiple faults to happen.\n "
-			"                   'strategy' must be one of global, uncorrelated, decorrelated.\n"
-			"                    Note : the options -nf, -sf and -mf are mutually exclusive.\n"
-			"  -l     lambda     Number (double), meaning MTBE in usec.\n"
+			"  -l     lambda     Inject errors with lambda meaning MTBE in usec.\n"
 			"  -nerr  N duration Inject N errors over a period of duration in usec.\n"
-			"                    Note : the options -l and -nerr are mutually exclusive.\n"
+			"                    Note : the options -nf, -l and -nerr are mutually exclusive.\n"
+			"  -mfs   strategy   Select an alternate (cf Agullo2013) strategy for multiple faults.\n "
+			"                   'strategy' must be one of global, uncorrelated, decorrelated.\n"
+			"                    Note : has no effect without errors. global is default.\n"
 			" === run configuration === \n"
 			"  -th    threads    Manually define number of threads.\n"
 			"  -nb    blocks     Defines the number of blocks in which to divide operations ;\n"
-			"                    their size will depdend on the matrix' size.\n"
+			"                    their size will depend on the matrix' size.\n"
 			"  -r     runs       number of times to run a matrix solving.\n"
 			"  -cv    thres      Run until the error verifies ||b-Ax|| < thres * ||b|| (default 1e-10).\n"
 			"  -maxit N          Run no more than N iterations (default no limit).\n"
@@ -100,7 +99,7 @@ void usage(char* arg0)
 }
 
 // we return how many parameters we consumed
-int read_param(int argsleft, char* argv[], double *lambda, int *runs, int *blocks, long *fail_size, char *fault_strat, int *nerr,
+int read_param(int argsleft, char* argv[], double *lambda, int *runs, int *blocks, long *fail_size, int *fault_strat, int *nerr,
 				unsigned int *seed, double *cv_thres, double *err_thres, char **checkpoint_path UNUSED, char **checkpoint_prefix UNUSED)
 {
 	if( strcmp(argv[0], "-r") == 0 )
@@ -219,23 +218,13 @@ int read_param(int argsleft, char* argv[], double *lambda, int *runs, int *block
 		if( argsleft <= 1 )
 			usage(argv[0]);
 
-		*fault_strat = NOFAULT;
+		*lambda = 0;
+		*nerr   = 0;
 		// (all strategies equivalent for 1 fault)
 
 		return 1;
 	}
-	else if( strcmp(argv[0], "-sf") == 0 )
-	{
-		// we want at least a matrix market file after the switch
-		if( argsleft <= 1 )
-			usage(argv[0]);
-
-		*fault_strat = SINGLEFAULT;
-		// (all strategies equivalent for 1 fault)
-
-		return 1;
-	}
-	else if( strcmp(argv[0], "-mf") == 0 )
+	else if( strcmp(argv[0], "-mfs") == 0 )
 	{
 		// we want at least the strategy and a matrix market file after
 		if( argsleft <= 2 )
@@ -372,9 +361,8 @@ int main(int argc, char* argv[])
 	int i, j, f, nb_read, runs = 1;
 
 	int nb_threads = nb_blocks = 1;
-	char fault_strat = NOFAULT;
+	int fault_strat = MULTFAULTS_GLOBAL, nerr = 0;
 	long fail_size;
-	int nerr = 0;
 	double lambda = 100000, cv_thres = 1e-10, err_thres = 1e-12;
 	#if CKPT == CKPT_TO_DISK
 	char *checkpoint_path = getenv("TMPDIR"), *checkpoint_prefix = "", ckpt[50];
@@ -428,7 +416,7 @@ int main(int argc, char* argv[])
 														"unknown_fault_strategy_expect_crashes"};
 
 			sprintf(header, "matrix_format:SPARSE executable:%s File:%s problem_size:%d nb_threads:%d nb_blocks:%d due:%s strategy:%s failure_size:%ld srand_seed:%u maxit:%d convergence_at:%e\n",
-					argv[0], argv[f], n, nb_threads, nb_blocks, due_names[DUE], fault_strat_names[(int)fault_strat], fail_size, seed, MAXIT, cv_thres);
+					argv[0], argv[f], n, nb_threads, nb_blocks, due_names[DUE], fault_strat_names[fault_strat], fail_size, seed, MAXIT, cv_thres);
 
 			if( nerr )
 				sprintf(strchr(header, '\n'), " inject_errors:%d inject_duration:%e\n", nerr, lambda);

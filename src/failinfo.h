@@ -86,8 +86,7 @@ static inline char * str_mask(char * str, const int mask)
 
 typedef struct analyze_err
 {
-	int nb_failblocks, failblock_size, log2fbs;
-	char fault_strat;
+	int nb_failblocks, failblock_size, log2fbs, fault_strat;
 	Matrix *neighbours;
 
 	#if CKPT == CKPT_TO_DISK
@@ -106,7 +105,6 @@ typedef struct error_sim_data
 {
 	// simulation infos, parameters, etc.
 	double lambda;
-	char fault_strat;
 	int nerr;
 	pthread_t th;
 	sem_t start_sim;
@@ -141,7 +139,7 @@ static inline int get_failblock_size()
 	return errinfo.failblock_size;
 }
 
-static inline char get_strategy()
+static inline int get_strategy()
 {
 	return errinfo.fault_strat;
 }
@@ -217,7 +215,7 @@ void cause_mpr(analyze_err *info);
 void* simulate_failures(void *ptr);
 
 // setup methods, called before anything happens
-void populate_global(const int n, const int fail_size_bytes, const char fault_strat, const int max_err, const double lambda, const char *checkpoint_path);
+void populate_global(const int n, const int fail_size_bytes, const int fault_strat, const int max_err, const double lambda, const char *checkpoint_path);
 void setup_resilience(const Matrix *A, const int nb, magic_pointers *mp);
 void start_error_injection();
 void unset_resilience();
