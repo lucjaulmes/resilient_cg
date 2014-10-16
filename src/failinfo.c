@@ -270,6 +270,7 @@ void* simulate_failures(void* ptr)
 	}
 	else
 		log_err(SHOW_FAILINFO, "Error is going to be simulated with exponential distribution (e^(-x/lambda))/lambda microseconds, lambda [~mtbe] = %e\n", sim_err->lambda);
+	
 
 	// Now wait for everything to be nicely started & first gradient to exist etc.
 	sem_wait(&sim_err->start_sim);
@@ -280,7 +281,12 @@ void* simulate_failures(void* ptr)
 	{
 		long long next_fault_nsec;
 		if( nerr )
-			next_fault_nsec = faults_nsec[i++];
+		{
+			if( i > nerr )
+				break;
+			else
+				next_fault_nsec = faults_nsec[i++];
+		}
 		else
 			next_fault_nsec = (long long)( exponential(sim_err->lambda, (double)rand()/(double)RAND_MAX) * 1e3);
 
@@ -301,9 +307,6 @@ void* simulate_failures(void* ptr)
 		// TODO switch between kinds of fault injections ?
 		cause_mpr(sim_err->info);
 		//flip_a_bit(sim_err->info);
-
-		if( --nerr == 0 )
-			break;
 	}	
 
 	return NULL;

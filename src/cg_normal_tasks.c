@@ -134,7 +134,6 @@ void update_p(const int n, double *p, double *old_p, char *wait_for_p UNUSED, do
 				p[k] = (*beta) * old_p[k] + gradient[k];
 
 			log_err(SHOW_TASKINFO, "Updating p[%d from %d] part %d finished = %e with beta = %e\n", get_data_vectptr(p), get_data_vectptr(old_p), i, norm(e-s, &(p[s])), *beta);
-			log_err(SHOW_DBGINFO,  "Updating p[%d from %d] part %d finished = %e with beta = %e\n", get_data_vectptr(p), get_data_vectptr(old_p), i, norm(e-s, &(p[s])), *beta);
 		}
 	}
 }
