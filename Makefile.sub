@@ -61,7 +61,7 @@ LNK_PAPI = -L$(PAPI_HOME)/lib -lpapi
 #	libnanostrace	to use with nanos, thus ompss 
 #	libseqtrace		sequential app
 USE_EXTRAE = -I$(EXTRAE_HOME)/include -I$(NANOS_HOME)/include/nanox -DEXTRAE_EVENTS 
-LNK_EXTRAE = -L$(EXTRAE_HOME)/lib64
+LNK_EXTRAE = -L$(EXTRAE_HOME)/lib64 -L$(EXTRAE_HOME)/lib
 plain% : LNK_EXTRAE += -lseqtrace
 ompss% : LNK_EXTRAE += -lnanostrace
 
