@@ -172,15 +172,15 @@ void stop_measure()
 	log_out("Ended measures\n");
 	#endif
 
-//	#ifdef EXTRAE_EVENTS
-//	#ifdef _OMPSS
-//		int i;
-//		#pragma omp for schedule(static,1)
-//		for(i=0;i<nanos_omp_get_num_threads();i++)
-//			Extrae_flush();
-//	#else
-//		Extrae_flush();
-//	#endif
-//	#endif
+	#ifdef EXTRAE_EVENTS
+	#ifdef _OMPSS
+		int i;
+		#pragma omp for schedule(static,1)
+		for(i=0;i<nanos_omp_get_num_threads();i++)
+			Extrae_flush();
+	#else
+		Extrae_flush();
+	#endif
+	#endif
 }
 

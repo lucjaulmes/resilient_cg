@@ -149,6 +149,8 @@ void solve_cg( const Matrix *A, const double *b, double *iterate, double converg
 	{
 		if( --do_update_gradient > 0 )
 		{
+			update_iterate(n, iterate, wait_for_iterate, old_p, &alpha);
+
 			update_gradient(n, gradient, Ap, &alpha, wait_for_iterate);
 
 			norm_task(n, gradient, &err_sq);
@@ -159,8 +161,6 @@ void solve_cg( const Matrix *A, const double *b, double *iterate, double converg
 			#endif
 
 			compute_beta(&err_sq, &old_err_sq, &beta);
-
-			update_iterate(n, iterate, wait_for_iterate, old_p, &alpha);
 
 			#if DUE == DUE_ASYNC
 			recover_rectify_xk(n, &mp, iterate, wait_for_iterate);
