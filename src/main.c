@@ -416,11 +416,11 @@ int main(int argc, char* argv[])
 			#endif
 
 			char header[500];
-			const char * const due_names[] = {"none", "in_path", "async", "rollback", "lossy"};
+			const char * const due_names[] = {"none", "async", "in_path", "rollback", "lossy"};
 			const char * const fault_strat_names[] = {"global", "uncorrelated", "decorrelated"};
 
 			sprintf(header, "matrix_format:SPARSE executable:%s File:%s problem_size:%d nb_threads:%d nb_blocks:%d due:%s strategy:%s failure_size:%ld srand_seed:%u maxit:%d convergence_at:%e\n",
-					argv[0], argv[f], n, nb_threads, nb_blocks, due_names[DUE], fault_strat_names[fault_strat], fail_size, seed, MAXIT, cv_thres);
+					argv[0], argv[f], n, nb_threads, nb_blocks, due_names[DUE], fault_strat_names[fault_strat-1], fail_size, seed, MAXIT, cv_thres);
 
 			if( nerr )
 				sprintf(strchr(header, '\n'), " inject_errors:%d inject_duration:%e\n", nerr, lambda);
@@ -447,7 +447,7 @@ int main(int argc, char* argv[])
 
 			printf(header);
 			#if VERBOSE >= SHOW_TOOMUCH
-			print(stderr, &matrix);
+			print_matrix(stderr, &matrix);
 			#endif
 
 			populate_global(matrix.n, fail_size, fault_strat, nerr, lambda, ckpt);

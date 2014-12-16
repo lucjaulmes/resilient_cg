@@ -60,6 +60,7 @@ void populate_global(const int n, const int fail_size_bytes, const int fault_str
 		.ckpt = checkpoint_path
 		#endif
 	};
+
 	sim_err = (error_sim_data){ .lambda = lambda, .nerr = nerr, .info = &errinfo };
 }
 
@@ -245,7 +246,7 @@ void* simulate_failures(void* ptr)
 		double total_time = 0, mtbe = sim_err->lambda / (double)nerr, faults_unscaled[nerr+1];
 
 		log_err(SHOW_FAILINFO, "Error is going to be simulated with exponential distribution (e^(-x/lambda))/lambda microseconds, lambda [~mtbe] = %e"
-								", and time scaled back for %d errors in duration %e\n", mtbe, nerr, sim_err->lambda);
+				", and time scaled back for %d errors in duration %e\n", mtbe, nerr, sim_err->lambda);
 
 		// at first, create unscaled intervals between evenst (start, {faults}, end)
 		for(i=0; i<nerr+1; i++)
@@ -301,27 +302,28 @@ void* simulate_failures(void* ptr)
 
 			if( r != 0 )
 				fprintf(stderr, "Nanosleep skipped %d.%09d of %d.%09d sleeping time because of 2 successive interruptions\n",
-								(int)remainder2.tv_sec, (int)remainder2.tv_nsec, (int)next_sim_fault.tv_sec, (int)next_sim_fault.tv_nsec);
+						(int)remainder2.tv_sec, (int)remainder2.tv_nsec, (int)next_sim_fault.tv_sec, (int)next_sim_fault.tv_nsec);
 		}
 
 		// TODO switch between kinds of fault injections ?
-		cause_mpr(sim_err->info);
+		cause_mpr(&sim_err);
 		//flip_a_bit(sim_err->info);
 	}	
 
 	return NULL;
 }
 
-void cause_mpr(analyze_err *info)
+void cause_mpr(error_sim_data *sim_err)
 {
-	int rand_page = (int)( ((double)rand() / (double)RAND_MAX) * info->nb_failblocks ) ;
-	int vect      = (int)( ((double)rand() / (double)RAND_MAX) * info->nb_data ) ;
+	int rand_page = (int)( ((double)rand() / (double)RAND_MAX) * sim_err->info->nb_failblocks ) ;
+	int vect      = (int)( ((double)rand() / (double)RAND_MAX) * sim_err->info->nb_data ) ;
 
-	double *victim = info->data[ vect ] + rand_page * info->failblock_size;
+	double* addr = info->data[ vect ] + rand_page * sim_err->info->failblock_size;
 
 	log_err(SHOW_DBGINFO, "Error is going to be triggered on page %3d of vector %s (%d) : %p\n", rand_page, vect_name(vect+1), vect+1, (void*)victim);
 
-	mprotect(victim, sizeof(double) << info->log2fbs, PROT_NONE);
+	mprotect((void*)addr, sizeof(double) << sim_err->info->log2fbs, PROT_NONE);
+	//madvise((void*)addr, sysconf(_SC_PAGESIZE), MADV_HWPOISON);
 }
 
 void flip_a_bit(analyze_err *info)
@@ -349,13 +351,13 @@ void flip_a_bit(analyze_err *info)
 int get_data_blockptr(const void *vect, int *block)
 {
 	int i;
-	long ptr = (long)vect, pos;
-	const long block_size = sizeof(double) << get_log2_failblock_size(), max_vect_size = errinfo.nb_failblocks * block_size;
+	intptr_t ptr = (intptr_t)vect, pos;
+	const intptr_t block_size = sizeof(double) << get_log2_failblock_size(), max_vect_size = errinfo.nb_failblocks * block_size;
 
 
 	for(i=0; i<errinfo.nb_data; i++)
 	{
-		pos = ptr - (long)errinfo.data[i];
+		pos = ptr - (intptr_t)errinfo.data[i];
 
 		if( pos >= 0 && pos < max_vect_size )
 		{

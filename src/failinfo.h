@@ -211,7 +211,7 @@ void silent_deallocating_sighandler(int signum, siginfo_t *info, void *context);
 
 // cause an error
 void flip_a_bit(analyze_err *info);
-void cause_mpr(analyze_err *info);
+void cause_mpr(error_sim_data *sim_err);
 void* simulate_failures(void *ptr);
 
 // setup methods, called before anything happens
