@@ -12,7 +12,7 @@
 
 magic_pointers mp;
 
-#if DUE
+#if DUE && DUE != DUE_ROLLBACK
 #include "cg_resilient_tasks.c"
 #include "cg_recovery_tasks.c"
 #else
@@ -51,11 +51,11 @@ void compute_alpha(double *err_sq, double *normA_p_sq, double *old_err_sq, doubl
 
 	#if DUE
 	int state = aggregate_skips();
-	#if (!SDC && DUE == DUE_ROLLBACK) || DUE == DUE_LOSSY
+	#if DUE == DUE_LOSSY
 	if( state )
 	{
-		hard_reset(&mp);
 		log_err(SHOW_FAILINFO, "There was an error, restarting (eventual lossy x interpolation)");
+		hard_reset(&mp);
 	}
 	#else
 	if( state & (MASK_ITERATE | MASK_P | MASK_OLD_P | MASK_A_P | MASK_NORM_A_P | MASK_RECOVERY) )
@@ -149,6 +149,8 @@ void solve_cg( const Matrix *A, const double *b, double *iterate, double converg
 	{
 		if( --do_update_gradient > 0 )
 		{
+			update_iterate(n, iterate, wait_for_iterate, old_p, &alpha);
+
 			update_gradient(n, gradient, Ap, &alpha, wait_for_iterate);
 
 			norm_task(n, gradient, &err_sq);
@@ -159,8 +161,6 @@ void solve_cg( const Matrix *A, const double *b, double *iterate, double converg
 			#endif
 
 			compute_beta(&err_sq, &old_err_sq, &beta);
-
-			update_iterate(n, iterate, wait_for_iterate, old_p, &alpha);
 
 			#if DUE == DUE_ASYNC
 			recover_rectify_xk(n, &mp, iterate, wait_for_iterate);
@@ -302,9 +302,12 @@ void solve_cg( const Matrix *A, const double *b, double *iterate, double converg
 
 		// should happen after p, Ap are ready and before (post-alpha) iterate and gradient updates
 		// so just after (or just before) alpha basically
-		#if CKPT && SDC == SDC_NONE // NB. SDC = NONE => DUE_ROLLBACK
+		#if CKPT && SDC == SDC_NONE // NB. this implies DUE_ROLLBACK
 		if(failures)
+		{
 			do_checkpoint = 0;
+			force_rollback(n, &err_data, iterate, gradient, old_p, Ap);
+		}
 		else if( --do_checkpoint == 0 )
 			due_checkpoint(n, &err_data, iterate, gradient, old_p, Ap);
 		#elif SDC == SDC_ALPHA

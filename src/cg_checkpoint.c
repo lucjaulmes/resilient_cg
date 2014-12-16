@@ -16,7 +16,7 @@ void force_checkpoint(const int n, detect_error_data *err_data, double *iterate,
 	#elif SDC == SDC_GRADIENT
 		double *old_err_sq = mp.old_err_sq;
 		#define PRAGMA_CHECKPOINT STRINGIFY(omp task out(*behaviour) inout(*err_data, *old_err_sq) label(force_checkpoint) no_copy_deps)
-	#else //if SDC == SDC_ALPHA
+	#else //if SDC == SDC_ALPHA || (!SDC && DUE == ROLLBACK)
 		double *old_err_sq = mp.old_err_sq, *alpha = mp.alpha;
 		#define PRAGMA_CHECKPOINT STRINGIFY(omp task out(*behaviour) inout(*err_data, *alpha, *old_err_sq) label(force_checkpoint) no_copy_deps)
 	#endif
@@ -50,10 +50,10 @@ void due_checkpoint(const int n, detect_error_data *err_data, double *iterate, d
 	// reuse pragma check
 	#pragma omp task out(*behaviour) inout(*err_data, *old_err_sq) label(due_checkpoint) no_copy_deps
 	{
-		log_err(SHOW_DBGINFO, "SAVING CHECKPOINT\n");
-
 		if( !aggregate_skips() )
 		{
+			log_err(SHOW_DBGINFO, "SAVING CHECKPOINT\n");
+
 			*behaviour = SAVE_CHECKPOINT;
 			*err_data->save_err_sq = *old_err_sq;
 			*err_data->save_alpha = *alpha;
@@ -61,6 +61,8 @@ void due_checkpoint(const int n, detect_error_data *err_data, double *iterate, d
 		//else if( *prev_error ) -- we don't care about this in due_checkpoint : no sdc, thus no prev_error
 		else //if( *behaviour == RELOAD_CHECKPOINT )
 		{
+			log_err(SHOW_DBGINFO, "LOADING CHECKPOINT\n");
+
 			*behaviour = RELOAD_CHECKPOINT;
 			*old_err_sq = *err_data->save_err_sq;
 			*alpha = *err_data->save_alpha;
@@ -83,7 +85,7 @@ void force_rollback(const int n, detect_error_data *err_data, double *iterate, d
 	#elif SDC == SDC_GRADIENT
 		double *old_err_sq = mp.old_err_sq;
 		#define PRAGMA_CHECKPOINT STRINGIFY(omp task out(*behaviour) inout(*err_data, *old_err_sq) label(force_rollback) no_copy_deps)
-	#else //if SDC == SDC_ALPHA || DUE == ROLLBACK
+	#else //if SDC == SDC_ALPHA || (!SDC && DUE == ROLLBACK)
 		double *old_err_sq = mp.old_err_sq, *alpha = mp.alpha;
 		#define PRAGMA_CHECKPOINT STRINGIFY(omp task out(*behaviour) inout(*err_data, *alpha, *old_err_sq) label(force_rollback) no_copy_deps)
 	#endif
@@ -115,7 +117,7 @@ void force_rollback(const int n, detect_error_data *err_data, double *iterate, d
 			#if SDC == SDC_GRADIENT
 			*old_err_sq = *err_data->save_err_sq;
 			#elif SDC == SDC_ORTHO
-			#else //if SDC == SDC_ALPHA || DUE == ROLLBACK
+			#else //if SDC == SDC_ALPHA || (!SDC && DUE == ROLLBACK)
 			*old_err_sq = *err_data->save_err_sq;
 			*alpha = *err_data->save_alpha;
 			#endif
@@ -203,9 +205,10 @@ void checkpoint_vectors(const int n, detect_error_data *err_data, int *behaviour
 				write(ckpt_fd,  gradient+s, (e-s) * sizeof(double));
 				write(ckpt_fd,  p+s,        (e-s) * sizeof(double));
 				#if SDC != SDC_ORTHO
-				write(ckpt_fd, Ap+s,       (e-s) * sizeof(double));
+				write(ckpt_fd, Ap+s,        (e-s) * sizeof(double));
 				#endif
 
+				fsync(ckpt_fd);
 				close(ckpt_fd);
 			}
 			else if( *behaviour != DO_NOTHING )
@@ -229,7 +232,7 @@ void checkpoint_vectors(const int n, detect_error_data *err_data, int *behaviour
 					// not restarting, just going back to last checkpoint
 					read(ckpt_fd,    p+s,  (e-s) * sizeof(double));
 					#if SDC != SDC_ORTHO
-					read(ckpt_fd,   Ap+s, (e-s) * sizeof(double));
+					read(ckpt_fd,   Ap+s,  (e-s) * sizeof(double));
 					#endif
 				}
 				#if SDC == SDC_ORTHO

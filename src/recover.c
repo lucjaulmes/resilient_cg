@@ -104,20 +104,10 @@ void recover_inverse(const Matrix *A, const double *b, const double *g, double *
 
 void cluster_neighbour_failures(const Matrix *A, const double *b, double *x, int *lost_blocks, const int nb_lost, int *recovery_sizes)
 {
-	char strategy = SINGLEFAULT;
-	int i;
-	if( nb_lost > 1 )
-	{
-		strategy = get_strategy();
-		if( strategy == SINGLEFAULT || strategy == NOFAULT )
-		{
-			fprintf(stderr, "strategy is %d but more than one fault (%d), defaulting to MULTFAULTS_GLOBAL\n", strategy, nb_lost);
-			strategy = MULTFAULTS_GLOBAL;
-		}
-	}
-	
+	int strategy = get_strategy();
 	if( nb_lost == 1 || strategy != MULTFAULTS_GLOBAL )
 	{
+		int i;
 		// each block is recovered individually
 		for(i=0; i<nb_lost; i++)
 			recovery_sizes[i] = 1;
@@ -134,8 +124,8 @@ void cluster_neighbour_failures(const Matrix *A, const double *b, double *x, int
 	}
 	else // nb_lost > 1 && strategy == MULTFAULTS_GLOBAL
 	{
-		// get list of failed blocks, group by neighbour clusters into set
-		int id = 0, j, m, c = 0, pos = 0, set[nb_lost];
+		// get list of failed blocks, group by neighbour clusters into set[]
+		int id = 0, i, j, m, c = 0, pos = 0, set[nb_lost];
 
 		for(id=0; id < nb_lost; id++)
 		{

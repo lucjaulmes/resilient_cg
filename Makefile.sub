@@ -7,7 +7,7 @@ ifeq ($(VPATH),)
 endif
 
 # files : anything without pragmas will be compiler with gcc for cleanliness
-#SRC = mmio.c matrix.c counters.c failinfo.c recover.c cg.c main.c backtrace.c
+#SRC = mmio.c matrix.c counters.c failinfo.c recover.c cg.c main.c backtrace.c page-collect.c
 #WITH_PRAGMAS = counters.c failinfo.c recover.c cg.c 
 #NO_PRAGMAS = mmio.c matrix.c main.c backtrace.c
 #HEADERS = backtrace.h cg.h counters.h csparse.h debug.h failinfo.h global.h matrix.h mmio.h recover.h Makefile.sub
@@ -61,7 +61,7 @@ LNK_PAPI = -L$(PAPI_HOME)/lib -lpapi
 #	libnanostrace	to use with nanos, thus ompss 
 #	libseqtrace		sequential app
 USE_EXTRAE = -I$(EXTRAE_HOME)/include -I$(NANOS_HOME)/include/nanox -DEXTRAE_EVENTS 
-LNK_EXTRAE = -L$(EXTRAE_HOME)/lib 
+LNK_EXTRAE = -L$(EXTRAE_HOME)/lib64 -L$(EXTRAE_HOME)/lib
 plain% : LNK_EXTRAE += -lseqtrace
 ompss% : LNK_EXTRAE += -lnanostrace
 
@@ -94,8 +94,8 @@ ompssdebug : M_CFLAGS += --output-dir=.objs/ompssdebug --instrumentation
 # -DVERBOSE=x make it talk, x a bitmask (see debug.h for values)
 
 #both debug builds
-%debug : CFLAGS += -rdynamic -O2 -DPERFORMANCE $(USE_EXTRAE)
-%debug : LDFLAGS += $(LNK_EXTRAE)
+%debug : CFLAGS += -rdynamic -g -O2 -DVERBOSE=2 $(USE_TIMEOFDAY)
+%debug : LDFLAGS +=
 #both conv builds
 %conv : CFLAGS += -O2 -DPERFORMANCE $(USE_EXTRAE)
 %conv : LDFLAGS += $(LNK_EXTRAE)

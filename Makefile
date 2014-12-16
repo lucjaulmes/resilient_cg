@@ -47,7 +47,7 @@ DIR+=$(SDC)$(SDC_FREQ)
 FLAVOUR+= -DCHECK_SDC_FREQ=$(SDC_FREQ)
 endif
 
-ifeq ($D,0)
+ifeq ($C,0)
 DIR+=$(CKPT)
 else 
 DIR+=$(CKPT)$(CKPT_FREQ)

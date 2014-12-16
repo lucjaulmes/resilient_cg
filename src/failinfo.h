@@ -6,6 +6,7 @@
 #include <semaphore.h> // sem_t
 #include <signal.h>    // siginfo_t
 #include <string.h>    // ffs
+#include <stdint.h>    // intptr
 #include "global.h"
 #include "cg.h"        // magic_pointers, ASSOC_CONST_MP , VECT_xxx and MASK_xxx
 #include "matrix.h"    // Matrix
@@ -86,8 +87,7 @@ static inline char * str_mask(char * str, const int mask)
 
 typedef struct analyze_err
 {
-	int nb_failblocks, failblock_size, log2fbs;
-	char fault_strat;
+	int nb_failblocks, failblock_size, log2fbs, fault_strat;
 	Matrix *neighbours;
 
 	#if CKPT == CKPT_TO_DISK
@@ -106,15 +106,17 @@ typedef struct error_sim_data
 {
 	// simulation infos, parameters, etc.
 	double lambda;
-	char fault_strat;
 	int nerr;
 	pthread_t th;
 	sem_t start_sim;
 
+	intptr_t start_range[200], end_range[200];
+	int range_page_cumul[200], nb_range, nb_pages;
+
 	analyze_err *info;
 } error_sim_data;
 
-extern error_sim_data sim_err;
+extern error_sim_data *sim_err;
 extern analyze_err errinfo;
 
 // these are used to communicate between a thread and its tasks and vice versa, but not between threads
@@ -141,7 +143,7 @@ static inline int get_failblock_size()
 	return errinfo.failblock_size;
 }
 
-static inline char get_strategy()
+static inline int get_strategy()
 {
 	return errinfo.fault_strat;
 }
@@ -213,11 +215,11 @@ void silent_deallocating_sighandler(int signum, siginfo_t *info, void *context);
 
 // cause an error
 void flip_a_bit(analyze_err *info);
-void cause_mpr(analyze_err *info);
+void cause_mpr(error_sim_data *sim_err);
 void* simulate_failures(void *ptr);
 
 // setup methods, called before anything happens
-void populate_global(const int n, const int fail_size_bytes, const char fault_strat, const int max_err, const double lambda, const char *checkpoint_path);
+void populate_global(const int n, const int fail_size_bytes, const int fault_strat, const int max_err, const double lambda, const char *checkpoint_path);
 void setup_resilience(const Matrix *A, const int nb, magic_pointers *mp);
 void start_error_injection();
 void unset_resilience();

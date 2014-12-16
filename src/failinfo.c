@@ -8,11 +8,13 @@
 #include <unistd.h>
 #include <sys/mman.h>
 #include <pthread.h>
+#include <inttypes.h>
 
 #include "global.h"
 #include "debug.h"
 #include "cg.h"
 #include "backtrace.h"
+#include "page-collect.h"
 
 const char * const mask_names[] = { "0 ", 
 	"X ", "Ax", "G ", "P4", "P5", "Ap", "7 ", "8 ", 
@@ -22,7 +24,7 @@ const char * const mask_names[] = { "0 ",
 
 #include "failinfo.h"
 
-error_sim_data sim_err;
+error_sim_data *sim_err;
 analyze_err errinfo;
 
 // these are used to communicate between a thread and its tasks and vice versa, but not between threads
@@ -52,7 +54,7 @@ double exponential(const double lambda, const double x)
 	return y;
 }
 
-void populate_global(const int n, const int fail_size_bytes, const char fault_strat, const int nerr, const double lambda, const char *checkpoint_path UNUSED)
+void populate_global(const int n, const int fail_size_bytes, const int fault_strat, const int nerr, const double lambda, const char *checkpoint_path UNUSED)
 {
 	const int fail_size = fail_size_bytes / sizeof(double);
 	errinfo = (analyze_err){ .failblock_size = fail_size, .log2fbs = ffs(fail_size)-1, .nb_failblocks = (n + fail_size -1) / fail_size, .fault_strat = fault_strat,
@@ -60,10 +62,11 @@ void populate_global(const int n, const int fail_size_bytes, const char fault_st
 		.ckpt = checkpoint_path
 		#endif
 	};
-	sim_err = (error_sim_data){ .lambda = lambda, .fault_strat = fault_strat, .nerr = nerr, .info = &errinfo };
+	sim_err = aligned_calloc( sysconf(_SC_PAGESIZE), sizeof(error_sim_data) );
+	*sim_err = (error_sim_data){ .lambda = lambda, .nerr = nerr, .info = &errinfo };
 }
 
-void setup_resilience(const Matrix *A UNUSED, const int nb, magic_pointers *mp)
+void setup_resilience(const Matrix *A, const int nb, magic_pointers *mp)
 {
 	// various allocations
 
@@ -78,7 +81,7 @@ void setup_resilience(const Matrix *A UNUSED, const int nb, magic_pointers *mp)
 	errinfo.neighbours->v = NULL;
 
 	compute_neighbourhoods(A, errinfo.failblock_size, errinfo.neighbours);
-	
+
 	// now for storing infos about errors
 	errinfo.skipped_blocks = (int*)calloc( errinfo.nb_failblocks, sizeof(int) );
 	#endif
@@ -94,6 +97,13 @@ void setup_resilience(const Matrix *A UNUSED, const int nb, magic_pointers *mp)
 	#define X(constant, name) errinfo.data[constant-1] = mp->name;
 	ASSOC_CONST_MP
 	#undef X
+
+	// everything that is in a "reliable backing store" gets a free pass through error injection
+	mprotect((void*)A->c,	sizeof(A->c),	PROT_READ);
+	mprotect((void*)A->r,	sizeof(A->r),	PROT_READ);
+	mprotect((void*)A->v,	sizeof(A->v),	PROT_READ);
+	mprotect((void*)mp->b,	sizeof(mp->b),	PROT_READ);	
+
 
 	errinfo.in_recovery_errors = 0;
 	errinfo.errors = 0;
@@ -113,27 +123,32 @@ void setup_resilience(const Matrix *A UNUSED, const int nb, magic_pointers *mp)
 		fprintf(stderr, "error setting signal handler for %d (%s)\n", SIGSEGV, strsignal(SIGSEGV));
 
 	// start semaphore locked : released in release_error_injection
-	sem_init(&sim_err.start_sim, 0, 0);
-	
+	sem_init(&(sim_err->start_sim), 0, 0);
+
 	// if simulating faults, create thread to do so
-	if( sim_err.fault_strat != NOFAULT )
-		pthread_create(&sim_err.th, NULL, &simulate_failures, (void*)&sim_err);
+	if( sim_err->lambda != 0 )
+		pthread_create(&(sim_err->th), NULL, &simulate_failures, (void*)sim_err);
+	
+	intptr_t no_inject[] = {(intptr_t)A->c, (intptr_t)A->nnz, (intptr_t)A->v, (intptr_t)mp->b, (intptr_t)sim_err};
+
+	// here, everything should be allocated, it's a good time to know what our memory pages are.
+	sim_err->nb_range = retrieve_vm_ranges(sim_err->start_range, sim_err->end_range, sim_err->range_page_cumul, &sim_err->nb_pages, no_inject, sizeof(no_inject));
 }
 
 void start_error_injection()
 {
-	sem_post(&sim_err.start_sim);
+	sem_post(&(sim_err->start_sim));
 }
 
 void unset_resilience()
 {
-	if( sim_err.fault_strat != NOFAULT && sim_err.th )
+	if( sim_err->lambda != 0 && sim_err->th )
 	{
-		pthread_cancel(sim_err.th);
-		pthread_join(sim_err.th, NULL);
+		pthread_cancel(sim_err->th);
+		pthread_join(sim_err->th, NULL);
 	}
 
-	sem_destroy(&sim_err.start_sim);
+	sem_destroy(&(sim_err->start_sim));
 
 	// now stop handling errors
 	struct sigaction sigact;
@@ -153,6 +168,7 @@ void unset_resilience()
 	#endif
 
 	free(errinfo.data);
+	free(sim_err);
 }
 
 void resilience_sighandler(int signum, siginfo_t *info, void *context UNUSED)
@@ -183,10 +199,12 @@ void resilience_sighandler(int signum, siginfo_t *info, void *context UNUSED)
 		// notify globally
 		__sync_fetch_and_add(&errinfo.errors, 1);
 
+	#if DUE
 		// notify this thread
 		exception_happened++;
 		if( out_vect == RECOVERY )
 			errinfo.in_recovery_errors++;
+	#endif
 
 
 		// old : unprotect, mess with data in the page
@@ -230,10 +248,6 @@ void* simulate_failures(void* ptr)
 	error_sim_data *sim_err = (error_sim_data*)ptr;
 
 	struct timespec next_sim_fault, remainder, remainder2;
-	#if !DUE
-	fprintf(stderr, "WARNING : can't inject faults in a non-resilient method\n");
-	return NULL;
-	#endif
 
 	// default cancellability state + nanosleep is a cancellation point
 	//pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
@@ -247,7 +261,7 @@ void* simulate_failures(void* ptr)
 		double total_time = 0, mtbe = sim_err->lambda / (double)nerr, faults_unscaled[nerr+1];
 
 		log_err(SHOW_FAILINFO, "Error is going to be simulated with exponential distribution (e^(-x/lambda))/lambda microseconds, lambda [~mtbe] = %e"
-								", and time scaled back for %d errors in duration %e\n", mtbe, nerr, sim_err->lambda);
+				", and time scaled back for %d errors in duration %e\n", mtbe, nerr, sim_err->lambda);
 
 		// at first, create unscaled intervals between evenst (start, {faults}, end)
 		for(i=0; i<nerr+1; i++)
@@ -273,6 +287,7 @@ void* simulate_failures(void* ptr)
 	else
 		log_err(SHOW_FAILINFO, "Error is going to be simulated with exponential distribution (e^(-x/lambda))/lambda microseconds, lambda [~mtbe] = %e\n", sim_err->lambda);
 
+
 	// Now wait for everything to be nicely started & first gradient to exist etc.
 	sem_wait(&sim_err->start_sim);
 	// Release immediately so thread can be cancelled without problems to destroy semaphore
@@ -282,7 +297,12 @@ void* simulate_failures(void* ptr)
 	{
 		long long next_fault_nsec;
 		if( nerr )
-			next_fault_nsec = faults_nsec[i++];
+		{
+			if( i > nerr )
+				break;
+			else
+				next_fault_nsec = faults_nsec[i++];
+		}
 		else
 			next_fault_nsec = (long long)( exponential(sim_err->lambda, (double)rand()/(double)RAND_MAX) * 1e3);
 
@@ -297,30 +317,42 @@ void* simulate_failures(void* ptr)
 
 			if( r != 0 )
 				fprintf(stderr, "Nanosleep skipped %d.%09d of %d.%09d sleeping time because of 2 successive interruptions\n",
-								(int)remainder2.tv_sec, (int)remainder2.tv_nsec, (int)next_sim_fault.tv_sec, (int)next_sim_fault.tv_nsec);
+						(int)remainder2.tv_sec, (int)remainder2.tv_nsec, (int)next_sim_fault.tv_sec, (int)next_sim_fault.tv_nsec);
 		}
 
 		// TODO switch between kinds of fault injections ?
-		cause_mpr(sim_err->info);
+		cause_mpr(sim_err);
 		//flip_a_bit(sim_err->info);
-
-		if( --nerr == 0 )
-			break;
 	}	
 
 	return NULL;
 }
 
-void cause_mpr(analyze_err *info)
+void cause_mpr(error_sim_data *sim_err)
 {
-	int rand_page = (int)( ((double)rand() / (double)RAND_MAX) * info->nb_failblocks ) ;
-	int vect      = (int)( ((double)rand() / (double)RAND_MAX) * info->nb_data ) ;
+	int rand_page = (int)( ((double)rand() / (double)RAND_MAX) * sim_err->nb_pages );
 
-	double *victim = info->data[ vect ] + rand_page * info->failblock_size;
+	if( sim_err->range_page_cumul[sim_err->nb_range-1] < rand_page )
+	{
+		log_err(SHOW_DBGINFO, "Error is going to be triggered on page %d/%d that is assumed protected (beyond page %d) -- no injection\n",
+				rand_page, sim_err->nb_pages, sim_err->range_page_cumul[sim_err->nb_range-1]);
+		return;
+	}
+	else
+	{
+		int i=0;
+		while(rand_page > sim_err->range_page_cumul[i])
+			i++;
 
-	log_err(SHOW_DBGINFO, "Error is going to be triggered on page %3d of vector %s (%d) : %p\n", rand_page, vect_name(vect+1), vect+1, (void*)victim);
+		// now rand_page in [ sim_err->range_page_cumul[i-1] , sim_err->range_page_cumul[i] ]
+		// compute from end of range, for the sake of not doing if( i > 0 )
+		intptr_t addr = sim_err->end_range[i] + (rand_page - sim_err->range_page_cumul[i]) * sysconf(_SC_PAGESIZE);
 
-	mprotect(victim, sizeof(double) << info->log2fbs, PROT_NONE);
+		log_err(SHOW_DBGINFO, "Error is going to be triggered on page %d/%d %" PRIxPTR "\n", rand_page, sim_err->nb_pages, addr);
+
+		mprotect((void*)addr, sizeof(double) << sim_err->info->log2fbs, PROT_NONE);
+		//madvise((void*)addr, sysconf(_SC_PAGESIZE), MADV_HWPOISON);
+	}
 }
 
 void flip_a_bit(analyze_err *info)
@@ -348,13 +380,13 @@ void flip_a_bit(analyze_err *info)
 int get_data_blockptr(const void *vect, int *block)
 {
 	int i;
-	long ptr = (long)vect, pos;
-	const long block_size = sizeof(double) << get_log2_failblock_size(), max_vect_size = errinfo.nb_failblocks * block_size;
+	intptr_t ptr = (intptr_t)vect, pos;
+	const intptr_t block_size = sizeof(double) << get_log2_failblock_size(), max_vect_size = errinfo.nb_failblocks * block_size;
 
 
 	for(i=0; i<errinfo.nb_data; i++)
 	{
-		pos = ptr - (long)errinfo.data[i];
+		pos = ptr - (intptr_t)errinfo.data[i];
 
 		if( pos >= 0 && pos < max_vect_size )
 		{
@@ -362,7 +394,7 @@ int get_data_blockptr(const void *vect, int *block)
 			return i+1;
 		}
 	}
-	
+
 	return -1;
 }
 
@@ -372,7 +404,7 @@ int get_data_vectptr(const double *vect)
 	for(i=0; i<errinfo.nb_data; i++)
 		if( errinfo.data[i] == vect )
 			return i+1;
-	
+
 	return -1;
 }
 
@@ -486,7 +518,7 @@ int aggregate_skips()
 	int i, r = 0;
 	for(i=0; i<errinfo.nb_failblocks; i++)
 		r |= errinfo.skipped_blocks[i];
-	
+
 	return r;
 }
 
@@ -499,7 +531,7 @@ int has_skipped_blocks(const int mask)
 			r++;
 			break;
 		}
-	
+
 	return r;
 }
 
@@ -560,7 +592,7 @@ int get_all_failed_blocks(const int mask, int **lost_blocks)
 	int total_skips = errinfo.skips;
 	if( ! total_skips )
 		return 0;
-	
+
 	*lost_blocks = (int*) calloc( total_skips, sizeof(int) );
 
 	int i, j = 0;
