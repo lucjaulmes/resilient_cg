@@ -5,7 +5,8 @@
 
 typedef struct Matrix
 {
-	int n, m, nnz, *c, *r;
+	int n, m, *c, *r;
+	long nnz;
 	double *v;
 } Matrix;
 
@@ -24,8 +25,10 @@ void read_matrix( const int n, const int m, const int nnz, const int symmetric, 
 // visual representation of matrix
 void print_matrix( FILE* f, const Matrix *A );
 
+void generate_Poisson3D(Matrix *A, const int p, const int mpi_rank, const int mpi_size);
+
 // memory utility functions
-void allocate_matrix(const int n, const int m, const int nnz, Matrix *A, int align_bytes );
+void allocate_matrix(const int n, const int m, const long nnz, Matrix *A, int align_bytes );
 
 void deallocate_matrix(Matrix *A);
 

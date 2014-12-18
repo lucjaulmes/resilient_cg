@@ -63,8 +63,8 @@ LNK_PAPI = -L$(PAPI_HOME)/lib -lpapi
 #	libseqtrace		sequential app
 USE_EXTRAE = -I$(EXTRAE_HOME)/include -I$(NANOS_HOME)/include/nanox -DEXTRAE_EVENTS 
 LNK_EXTRAE = -L$(EXTRAE_HOME)/lib64 -L$(EXTRAE_HOME)/lib
-plain% : LNK_EXTRAE += -lmpitrace
-ompss% : LNK_EXTRAE += -lnanosmpitrace
+plain% : LNK_EXTRAE += -lmpitrace -lextrae-core
+ompss% : LNK_EXTRAE += -lnanosmpitrace -lextrae-core
 
 # use dense instead of sparse matrices
 USE_DENSMAT = -DMATRIX_DENSE

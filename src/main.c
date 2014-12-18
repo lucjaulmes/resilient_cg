@@ -26,19 +26,25 @@
 	#include <nanos_omp.h>
 #endif
 
+typedef enum 
+{
+	FROM_FILE = 0,
+	POISSON3D
+} matrix_source;
+
 // globals
 int nb_blocks;
 int *block_bounds;
 int *mpi_zonestart, *mpi_zonesize;
 
-void set_blocks_sparse(Matrix *A, int *nb_blocks, const int fail_size, const int mpi_rank, const int mpi_size)
+void set_blocks_sparse(Matrix *A, int nb_blocks, const int fail_size, const int mpi_rank, const int mpi_size)
 {
-	block_bounds  = (int*)malloc( (*nb_blocks+1) * sizeof(int));
+	block_bounds  = (int*)malloc( (nb_blocks+1) * sizeof(int));
 	mpi_zonestart = (int*)malloc( (  mpi_size  ) * sizeof(int));
 	mpi_zonesize  = (int*)malloc( (  mpi_size  ) * sizeof(int));
-	int mpiworld_blocks = (*nb_blocks) * mpi_size;
+	int mpiworld_blocks = (nb_blocks) * mpi_size;
 
-	printf("mpi rank is %d out of %d : with %d blocks per rank, we have %d total blocks\n", mpi_rank, mpi_size, *nb_blocks, mpi_size);
+	printf("mpi rank is %d out of %d : with %d blocks per rank, we have %d total blocks\n", mpi_rank, mpi_size, nb_blocks, mpiworld_blocks);
 
 	// compute block repartition now we have the matrix, arrange for block limits to be on fail block limits
 	int i, r, b, pos = 0, next_stop = 0, ideal_bs, inc_pos;
@@ -52,7 +58,7 @@ void set_blocks_sparse(Matrix *A, int *nb_blocks, const int fail_size, const int
 		if( r == mpi_rank )
 			block_bounds[0] = pos;
 
-		for(b=0; b<*nb_blocks; b++, i++)
+		for(b=0; b<nb_blocks; b++, i++)
 		{
 			next_stop += ideal_bs;
 
@@ -64,13 +70,14 @@ void set_blocks_sparse(Matrix *A, int *nb_blocks, const int fail_size, const int
 				pos += inc_pos;
 
 			// choose which of just below or just above next_stop is closest
-			if( pos + inc_pos <= A->n && A->r[pos + inc_pos] - next_stop < next_stop - A->r[pos] )
+			if( pos + inc_pos <= A->n && A->r[pos + inc_pos] - next_stop < -(A->r[pos] - next_stop) )
 				pos += inc_pos;
 
-			if(pos >= A->n)
+			if(pos >= A->n && i+1 != mpiworld_blocks)
 			{
 				fprintf(stderr, "Error while making blocks : end of block %d/%d is %d, beyond size of matrix %d."
-								" Try reducing -ps\n", i+1, *nb_blocks, pos, A->n);
+								" Try reducing -ps\n", i+1, nb_blocks, pos, A->n);
+
 				exit(EXIT_FAILURE);
 			}
 
@@ -78,20 +85,23 @@ void set_blocks_sparse(Matrix *A, int *nb_blocks, const int fail_size, const int
 				block_bounds[b+1] = pos;
 		}
 
-		mpi_zonesize[r] = pos - mpi_zonestart[r]/* forced increment */;
+		mpi_zonesize[r] = pos - mpi_zonestart[r];
 	}
 
 	if( mpi_rank == mpi_size-1 )
-		block_bounds[ *nb_blocks ] = A->n;
+		block_bounds[ nb_blocks ] = A->n;
 }
  
 int MAXIT = 0;
 
 void usage(char* arg0)
 {
-	printf("Usage: %s [options] <matrix-market-filename> [, ...]\n"
-			"Possible options are : \n"
-			" ===  fault injection  === \n"
+	printf("Usage: %s [options] [<matrix-market-filename>|-synth name param] [, ...]\n"
+			" === Matrix === \n"
+			"  Either provide a path to a symmetric positive definite matrix in Matrix Market format\n"
+			"  or provide the -synth option for a synthetic matrix. Arguments are name param pairs :\n"
+			"    Poisson3D  n    3D Poisson's equation using finite differences, size proportional to n^3\n"
+			" ===  fault injection options === \n"
 			"  -nf               Disabling faults simulation (default).\n"
 			"  -l     lambda     Inject errors with lambda meaning MTBE in usec.\n"
 			"  -nerr  N duration Inject N errors over a period of duration in usec.\n"
@@ -99,7 +109,7 @@ void usage(char* arg0)
 			"  -mfs   strategy   Select an alternate (cf Agullo2013) strategy for multiple faults.\n "
 			"                   'strategy' must be one of global, uncorrelated, decorrelated.\n"
 			"                    Note : has no effect without errors. global is default.\n"
-			" === run configuration === \n"
+			" === run configuration options === \n"
 			"  -th    threads    Manually define number of threads PER RANK.\n"
 			"  -nb    blocks     Defines the number of blocks PER RANK in which to divide operations ;\n"
 			"                    their size will depend on the matrix' size.\n"
@@ -107,7 +117,7 @@ void usage(char* arg0)
 			"  -cv    thres      Run until the error verifies ||b-Ax|| < thres * ||b|| (default 1e-10).\n"
 			"  -maxit N          Run no more than N iterations (default no limit).\n"
 			"  -seed  s          Initialize seed of each run with s. If 0 use different (random) seeds.\n"
-			" === resilience method === \n"
+			" === resilience method options === \n"
 			"  -ps    size       Defines page size (used on failure, in bytes, defaults to 4K).\n"
 			"                    Must be a multiple of the system page size (and a power of 2).\n"
 	#if CKPT == CKPT_TO_DISK
@@ -122,8 +132,8 @@ void usage(char* arg0)
 }
 
 // we return how many parameters we consumed, -1 for error
-int read_param(int argsleft, char* argv[], double *lambda, int *runs, int *threads UNUSED, int *blocks, long *fail_size, int *fault_strat, 
-			int *nerr, unsigned int *seed, double *cv_thres, double *err_thres, char **checkpoint_path UNUSED, char **checkpoint_prefix UNUSED)
+int read_param(int argsleft, char* argv[], double *lambda, int *runs, int *threads UNUSED, int *blocks, long *fail_size, int *fault_strat, int *nerr, unsigned int *seed, 
+			double *cv_thres, double *err_thres, char **checkpoint_path UNUSED, char **checkpoint_prefix UNUSED, matrix_source *matrix_type, int *matrix_param)
 {
 	if( strcmp(argv[0], "-r") == 0 )
 	{
@@ -326,6 +336,24 @@ int read_param(int argsleft, char* argv[], double *lambda, int *runs, int *threa
 		return 2;
 	}
 	#endif
+	else if( strcmp(argv[0], "-synth") == 0 )
+	{
+		// we want at least the name and size parameter after
+		if( argsleft <= 2 )
+			return -1;
+		
+		if( strcmp(argv[1], "Poisson3D") == 0 )
+			*matrix_type = POISSON3D;
+		else
+			return -1; // unrecognized
+
+		*matrix_param = (int)strtol(argv[2], NULL, 10);
+
+		if( *matrix_param <= 0 )
+			return -1;
+
+		return 3;
+	}
 	else 
 		return 0; // no option regognized, consumed 0 parameters
 }
@@ -390,7 +418,8 @@ int main(int argc, char* argv[])
 	int nb_threads = nb_blocks = 1;
 	#endif
 
-	int fault_strat = MULTFAULTS_GLOBAL, nerr = 0;
+	int fault_strat = MULTFAULTS_GLOBAL, nerr = 0, matrix_param;
+	matrix_source matrix_type = FROM_FILE;
 	long fail_size;
 	double lambda = 0, cv_thres = 1e-10, err_thres = 1e-12;
 	#if CKPT == CKPT_TO_DISK
@@ -411,32 +440,73 @@ int main(int argc, char* argv[])
 	// Iterate over parameters (usually open files)
 	for(f=1; f<argc; f += nb_read )
 	{
-		nb_read = read_param(argc - f, &argv[f], &lambda, &runs, &nb_threads, &nb_blocks, &fail_size, &fault_strat, &nerr, &seed, &cv_thres, &err_thres, &checkpoint_path, &checkpoint_prefix);
+		nb_read = read_param(argc - f, &argv[f], &lambda, &runs, &nb_threads, &nb_blocks, &fail_size, &fault_strat, &nerr,
+							&seed, &cv_thres, &err_thres, &checkpoint_path, &checkpoint_prefix, &matrix_type, &matrix_param);
 
 		// error happened
 		if( nb_read < 0 )
 			usage(argv[0]);
 
 		// no parameters read : next param must be a matrix file. Read it (and consume parameter)
-		else if( nb_read == 0 )
+		else if( nb_read == 0 || matrix_type != FROM_FILE)
 		{
-			nb_read = 1;
-			int n, m, lines_in_file, symmetric;
-			FILE* input_file = get_infos_matrix(argv[f], &n, &m, &lines_in_file, &symmetric);
-
-			if( input_file == NULL )
-				usage(argv[0]);
-
-			// DEBUG TO MODIFY PROBLEM
-			// n = m = 128;
-
+			int n;
 			Matrix matrix;
-			allocate_matrix(n, m, lines_in_file * (1 + symmetric), &matrix, fail_size);
-			read_matrix(n, m, lines_in_file, symmetric, &matrix, input_file);
+			char *mat_name = argv[ matrix_type == FROM_FILE ? f : f+1 ];
 
-			set_blocks_sparse(&matrix, &nb_blocks, fail_size, mpi_rank, mpi_size);
+			if( matrix_type == FROM_FILE )
+			{
+				nb_read = 1;
+				int m, lines_in_file, symmetric;
+				FILE* input_file = get_infos_matrix(argv[f], &n, &m, &lines_in_file, &symmetric);
 
-			fclose(input_file);
+				if( input_file == NULL )
+					usage(argv[0]);
+
+				// DEBUG TO MODIFY PROBLEM
+				// n = m = 128;
+
+				allocate_matrix(n, m, lines_in_file * (1 + symmetric), &matrix, fail_size);
+				read_matrix(n, m, lines_in_file, symmetric, &matrix, input_file);
+
+				set_blocks_sparse(&matrix, nb_blocks, fail_size, mpi_rank, mpi_size);
+
+				fclose(input_file);
+			}
+			else // if matrix_type == POISSON3D
+			{
+				matrix_type = FROM_FILE;
+
+				// here all block etc. repartition is static, so we can load balance in advance
+				int p = 16 * mpi_size * nb_blocks * matrix_param;
+				n = p * p * p;
+				long nnz_here = 7 * n / (mpi_size * mpi_size * mpi_size);
+				int rows_per_rank = n / mpi_size, rows_per_block = rows_per_rank / nb_blocks;
+
+				block_bounds  = (int*)malloc( (nb_blocks+1) * sizeof(int));
+				mpi_zonestart = (int*)malloc( (  mpi_size  ) * sizeof(int));
+				mpi_zonesize  = (int*)malloc( (  mpi_size  ) * sizeof(int));
+
+				mpi_zonestart[0] = 0;
+				for(i=1; i<mpi_size; i++)
+				{
+					mpi_zonestart[i] = mpi_zonestart[i-1] + rows_per_rank;
+					mpi_zonesize[i-1] = rows_per_rank;
+				}
+				mpi_zonesize[i-1] = rows_per_rank;
+
+				block_bounds[0] = mpi_zonestart[mpi_rank];
+				for(i=1; i<nb_blocks+1; i++)
+					block_bounds[i] = block_bounds[i-1] + rows_per_block;
+
+
+				allocate_matrix(n, n, nnz_here, &matrix, fail_size);
+				generate_Poisson3D(&matrix, p, mpi_zonestart[mpi_rank], mpi_zonestart[mpi_rank] + rows_per_rank);
+			}
+
+			#if VERBOSE >= SHOW_TOOMUCH
+			print_matrix(stderr, &matrix);
+			#endif
 
 			// now show infos
 			#ifndef DUE
@@ -448,7 +518,7 @@ int main(int argc, char* argv[])
 			const char * const fault_strat_names[] = {"global", "uncorrelated", "decorrelated"};
 
 			sprintf(header, "matrix_format:SPARSE executable:%s File:%s problem_size:%d nb_threads:%d nb_blocks:%d due:%s strategy:%s failure_size:%ld srand_seed:%u maxit:%d convergence_at:%e\n",
-					argv[0], argv[f], n, nb_threads, nb_blocks, due_names[DUE], fault_strat_names[fault_strat-1], fail_size, seed, MAXIT, cv_thres);
+					argv[0], mat_name, n, nb_threads, nb_blocks, due_names[DUE], fault_strat_names[fault_strat-1], fail_size, seed, MAXIT, cv_thres);
 
 			if( nerr )
 				sprintf(strchr(header, '\n'), " inject_errors:%d inject_duration:%e\n", nerr, lambda);
@@ -474,9 +544,6 @@ int main(int argc, char* argv[])
 			#endif
 
 			printf(header);
-			#if VERBOSE >= SHOW_TOOMUCH
-			print_matrix(stderr, &matrix);
-			#endif
 
 			populate_global(matrix.n, fail_size, fault_strat, nerr, lambda, ckpt);
 

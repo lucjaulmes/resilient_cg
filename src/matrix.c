@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <assert.h>
 
 #include "global.h"
 #include "debug.h"
@@ -167,7 +168,33 @@ void read_matrix( const int n, const int m, const int nnz, const int symmetric, 
 	}
 }
 
-void allocate_matrix(const int n, const int m, const int nnz, Matrix *A, int align_bytes )
+// finite-difference method for a 3D Poisson's equation gives a SPD matrix with -6 on the diagonal, 
+// and 1s on the diagonal+1, diagonal+p and diagonal+p²
+void generate_Poisson3D(Matrix *A, const int p, const int start_row, const int end_row)
+{
+	int p2 = p * p, i, r=0, pos=0;
+
+	int stenc_c[] = {-p2, -p, -1,  0, 1, p, p2};
+	int stenc_v[] = {  1,  1,  1, -6, 1, 1,  1};
+	
+	// let's only do the part here.
+	for(r=start_row; r<end_row; r++)
+	{
+		A->r[r] = pos;
+		for(i=0; i<7; i++)
+			if( r + stenc_c[i] > 0 && r + stenc_c[i] < A->n )
+			{
+				A->c[pos] = r + stenc_c[i];
+				A->v[pos] = stenc_v[i];
+				pos++;
+			}
+	}
+
+	// point to just beyond last element
+	A->r[r] = pos;
+}
+
+void allocate_matrix(const int n, const int m, const long nnz, Matrix *A, int align_bytes )
 {
 	A->n = n;
 	A->m = m;
@@ -181,7 +208,7 @@ void allocate_matrix(const int n, const int m, const int nnz, Matrix *A, int ali
 
 	if( ! A->v || ! A->c || ! A->r )
 	{
-		fprintf(stderr, "Allocating sparse matrix of size %d rows and %d non-zeros failed !\n", n, nnz);
+		fprintf(stderr, "Allocating sparse matrix of size %d rows and %ld non-zeros failed !\n", n, nnz);
 		exit(2);
 	}
 }
