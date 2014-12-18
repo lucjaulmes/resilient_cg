@@ -114,6 +114,9 @@ void update_gradient(const int n, double *gradient, double *Ap, double *alpha, c
 
 void recompute_gradient_mvm(const int n, const Matrix *A, double *iterate, char *wait_for_iterate UNUSED, char *wait_for_mvm UNUSED, double *Aiterate)
 {
+	#pragma omp task inout(iterate[0:n-1], *wai_for_iterate, *wait_for_mvm) label(exchange_x)
+	MPI_Allgatherv(MPI_IN_PLACE, 0/*ignored*/, MPI_DOUBLE, iterate, mpi_zonesize, mpi_zonestart, MPI_DOUBLE, MPI_COMM_WORLD);
+
 	int i;
 	for(i=0; i < nb_blocks; i ++ )
 	{

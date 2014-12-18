@@ -2,7 +2,7 @@
 #             COMPILING              #
 ######################################
 
-to compile, be sure to have in your path
+To compile, be sure to have in your path
 - a C11 able compiler (e.g. gcc-4.9)
 - the mercurium compiler for OmpSs
 and to have installed
@@ -10,9 +10,9 @@ and to have installed
 - extrae
 - papi
 
-adjust variables if they don't comply to the following defaults :
-CC = gcc-4.9							# C11 compiler
-MCC = mcc								# mercurium compiler
+Adjust variables if they don't comply to the following defaults :
+CC  = gcc-4.9                            # C11 compiler
+MCC = mcc                                # mercurium compiler
 NANOS_HOME = /apps/PM/ompss/2014-04-10
 PAPI_HOME = /apps/PAPI/5.0.1
 EXTRAE_HOME = /apps/CEPBATOOLS/extrae/latest/default/64
@@ -55,11 +55,11 @@ If SDC is used, CKPT_FREQ must be a multiple of SDC_FREQ.
 The name of each configuration's directory is then DUE_SDC(SDC_FREQ)_CKPT(CKPT_FREQ)
 Some valid examples :
 
-	configuration :											directory :
-	
-	DUE=none												none_none_none
-	DUE=rollback CKPT=disk CKPT_FREQ=100					rollblack_none_disk100
-	DUE=async SDC=alpha SDC_FREQ=50 CKPT=mem CKPT_FREQ=200	async_alpha50_mem200
+    configuration :                                            directory :
+    
+    DUE=none                                                  none_none_none
+    DUE=rollback CKPT=disk CKPT_FREQ=100                      rollblack_none_disk100
+    DUE=async SDC=alpha SDC_FREQ=50 CKPT=mem CKPT_FREQ=200    async_alpha50_mem200
 
 ######################################
 #              RUNNING               #
@@ -73,13 +73,12 @@ Usage: ./async_alpha100_disk200/cg [options] <matrix-market-filename> [, ...]
 Possible options are : 
  ===  fault injection  === 
   -nf               Disabling faults simulation (default).
-  -sf               Forcing faults to happen no more than one at a time.
-  -mf    strategy   Enabling multiple faults to happen.
-                    'strategy' must be one of global, uncorrelated, decorrelated.
-                    Note : the options -nf, -sf and -mf are mutually exclusive.
-  -l     lambda     Number (double), meaning MTBE in usec.
+  -l     lambda     Inject errors with lambda meaning MTBE in usec.
   -nerr  N duration Inject N errors over a period of duration in usec.
-                    Note : the options -l and -nerr are mutually exclusive.
+                    Note : the options -nf, -l and -nerr are mutually exclusive.
+  -mfs   strategy   Select an alternate strategy for multiple faults (cf Agullo2013).
+                    'strategy' must be one of : global, uncorrelated, decorrelated.
+                    Note : has no effect without errors. global is default.
  === run configuration === 
   -th    threads    Manually define number of threads.
   -nb    blocks     Defines the number of blocks in which to divide operations ;
@@ -97,8 +96,19 @@ Possible options are :
 All options apply to every following input file. You may re-specify them for each file.
 
 
-e.g. the following command will run CG once without fault injection, and once with a MTBE of 1e8 us
-(without reloading the matrix from file) :
+e.g. the following command will run CG once with a MTBE of 1e8 us, and once without error
+injection (without reloading the matrix from file) :
 
-$ ./cg -nf <file>.mtx -sf -l 1e8 <file>.mtx
+$ ./cg -l 1e8 <file>.mtx -nf <file>.mtx
+
+######################################
+#              VIEWING               #
+######################################
+
+In the subdirectory utils/ you will find paraver configuration files that allow to view
+symbols outputted to traces that are specific to this application.
+
+The trace_to_plot.py script extracts these informations from configuration files into a
+format that can be fed to any viewing tool, to plot convergence and SDC detection values
+over time.
 

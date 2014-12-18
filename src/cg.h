@@ -68,7 +68,7 @@ void compute_Ap(const int n, const Matrix *A, double *p, char *wait_for_p, char 
 void scalar_product_task(const int n, const double *p, const double *Ap, double* r);
 void norm_task(const int n, const double *v, double* r );
 
-void compute_beta(const double *err_sq, const double *old_err_sq, double *beta);
+void compute_beta(double *err_sq, const double *old_err_sq, double *beta);
 void compute_alpha(double *err_sq, double *normA_p_sq, double *old_err_sq, double *old_err_sq2, double *alpha);
 
 void check_sdc_alpha_invariant(const int n, const int save, detect_error_data *err_data, const double *b, double *iterate, double *gradient, double *p, double *Ap, double *err_sq, double *alpha, const double threshold);

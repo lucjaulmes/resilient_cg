@@ -5,11 +5,9 @@
 // these are the possible fault strategies
 
 // some values we pass around
-#define NOFAULT					0
-#define SINGLEFAULT				1
-#define MULTFAULTS_GLOBAL		2
-#define MULTFAULTS_UNCORRELATED	3
-#define MULTFAULTS_DECORRELATED	4
+#define MULTFAULTS_GLOBAL		1
+#define MULTFAULTS_UNCORRELATED	2
+#define MULTFAULTS_DECORRELATED	3
 
 #define DO_NOTHING         0
 #define SAVE_CHECKPOINT    1
@@ -46,7 +44,7 @@
 #endif
 
 #if SDC || DUE == DUE_ROLLBACK
-	#ifndef CKPT
+	#if CKPT == CKPT_NONE
 	#error you have to define a checkpoint strategy
 	#endif
 #endif
@@ -84,24 +82,17 @@
 // a few global vars for parameters that everyone needs to know
 extern int nb_blocks;
 extern int MAXIT;
-
-extern int *block_ends;
-static inline void set_block_end(const int b, const int pos)
-{
-	block_ends[b] = pos;
-}
+extern int *block_bounds;
+extern int mpi_rank, *mpi_zonestart, *mpi_zonesize;
 
 static inline int get_block_start(const int b)
 {
-	if( b == 0 )
-		return 0;
-	else
-		return block_ends[b-1];
+	return block_bounds[b];
 }
 
 static inline int get_block_end(const int b)
 {
-	return block_ends[b];
+	return block_bounds[b+1];
 }
 
 static inline void* aligned_calloc(size_t alignment, size_t size)
@@ -113,7 +104,7 @@ static inline void* aligned_calloc(size_t alignment, size_t size)
 		alloc_size = (size ^ need_uprounding) + alignment;
 
 	void *ptr = aligned_alloc(alignment, alloc_size);
-	return memset(ptr, 0x00, alloc_size);
+	return ptr;
 }
 
 static inline char* alloc_deptoken()

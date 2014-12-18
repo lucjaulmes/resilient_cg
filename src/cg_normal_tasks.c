@@ -71,6 +71,9 @@ void update_gradient(const int n, double *gradient, double *Ap, double *alpha, c
 
 void recompute_gradient_mvm(const int n, const Matrix *A, double *iterate, char *wait_for_iterate UNUSED, char *wait_for_mvm UNUSED, double *Aiterate)
 {
+	#pragma omp task inout(iterate[0:n-1], *wait_for_iterate, *wait_for_mvm) label(exchange_x)
+	MPI_Allgatherv(MPI_IN_PLACE, 0/*ignored*/, MPI_DOUBLE, iterate, mpi_zonesize, mpi_zonestart, MPI_DOUBLE, MPI_COMM_WORLD);
+
 	int i;
 	for(i=0; i < nb_blocks; i ++ )
 	{
@@ -134,7 +137,6 @@ void update_p(const int n, double *p, double *old_p, char *wait_for_p UNUSED, do
 				p[k] = (*beta) * old_p[k] + gradient[k];
 
 			log_err(SHOW_TASKINFO, "Updating p[%d from %d] part %d finished = %e with beta = %e\n", get_data_vectptr(p), get_data_vectptr(old_p), i, norm(e-s, &(p[s])), *beta);
-			log_err(SHOW_DBGINFO,  "Updating p[%d from %d] part %d finished = %e with beta = %e\n", get_data_vectptr(p), get_data_vectptr(old_p), i, norm(e-s, &(p[s])), *beta);
 		}
 	}
 }

@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <math.h>
 #include <float.h>
+#include "mpi.h"
 
 #include "global.h"
 #include "failinfo.h"
@@ -12,7 +13,7 @@
 
 magic_pointers mp;
 
-#if DUE
+#if DUE && DUE != DUE_ROLLBACK
 #include "cg_resilient_tasks.c"
 #include "cg_recovery_tasks.c"
 #else
@@ -27,10 +28,13 @@ magic_pointers mp;
 #include "cg_checkpoint.c"
 #endif
 
-#pragma omp task in(*err_sq, *old_err_sq) out(*beta) label(compute_beta) priority(100) no_copy_deps
-void compute_beta(const double *err_sq, const double *old_err_sq, double *beta)
+#pragma omp task in(*old_err_sq) out(*beta) inout(*err_sq) label(compute_beta) priority(100) no_copy_deps
+void compute_beta(double *err_sq, const double *old_err_sq, double *beta)
 {
 	// on first iterations of a (re)start, old_err_sq should be INFINITY so that beta = 0
+	double loc_err_sq = *err_sq;
+	MPI_Allreduce(&loc_err_sq, err_sq, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+
 	*beta = *err_sq / *old_err_sq;
 
 	#if DUE
@@ -45,17 +49,20 @@ void compute_beta(const double *err_sq, const double *old_err_sq, double *beta)
 #pragma omp task inout(*normA_p_sq, *err_sq) out(*alpha, *old_err_sq, *old_err_sq2) label(compute_alpha) priority(100) no_copy_deps
 void compute_alpha(double *err_sq, double *normA_p_sq, double *old_err_sq, double *old_err_sq2, double *alpha)
 {
+	double loc_normA_p_sq = *normA_p_sq;
+	MPI_Allreduce(&loc_normA_p_sq, normA_p_sq, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+
 	*alpha = *err_sq / *normA_p_sq ;
 	*old_err_sq = *err_sq;
 	*old_err_sq2 = *err_sq;
 
 	#if DUE
 	int state = aggregate_skips();
-	#if (!SDC && DUE == DUE_ROLLBACK) || DUE == DUE_LOSSY
+	#if DUE == DUE_LOSSY
 	if( state )
 	{
-		hard_reset(&mp);
 		log_err(SHOW_FAILINFO, "There was an error, restarting (eventual lossy x interpolation)");
+		hard_reset(&mp);
 	}
 	#else
 	if( state & (MASK_ITERATE | MASK_P | MASK_OLD_P | MASK_A_P | MASK_NORM_A_P | MASK_RECOVERY) )
@@ -138,7 +145,6 @@ void solve_cg( const Matrix *A, const double *b, double *iterate, double converg
 	
 	err_data.helper_4 = norm_A * sqrt(norm_b);
 	#endif
-
 	
 	setup_resilience(A, 6, &mp);
 	start_measure();
@@ -149,6 +155,8 @@ void solve_cg( const Matrix *A, const double *b, double *iterate, double converg
 	{
 		if( --do_update_gradient > 0 )
 		{
+			update_iterate(n, iterate, wait_for_iterate, old_p, &alpha);
+
 			update_gradient(n, gradient, Ap, &alpha, wait_for_iterate);
 
 			norm_task(n, gradient, &err_sq);
@@ -159,8 +167,6 @@ void solve_cg( const Matrix *A, const double *b, double *iterate, double converg
 			#endif
 
 			compute_beta(&err_sq, &old_err_sq, &beta);
-
-			update_iterate(n, iterate, wait_for_iterate, old_p, &alpha);
 
 			#if DUE == DUE_ASYNC
 			recover_rectify_xk(n, &mp, iterate, wait_for_iterate);
@@ -218,6 +224,10 @@ void solve_cg( const Matrix *A, const double *b, double *iterate, double converg
 		}
 
 		update_p(n, p, old_p, wait_for_p, gradient, &beta);
+
+		#pragma omp task inout(*wait_for_p, p[0:n-1]) label(exchange_p)
+		MPI_Allgatherv(MPI_IN_PLACE, 0/*ignored*/, MPI_DOUBLE, p, mpi_zonesize, mpi_zonestart, MPI_DOUBLE, MPI_COMM_WORLD);
+	
 
 		#if SDC == SDC_ORTHO
 		// should happen in between p and Ap, to check if the new p and old Ap are orthogonal
@@ -302,9 +312,12 @@ void solve_cg( const Matrix *A, const double *b, double *iterate, double converg
 
 		// should happen after p, Ap are ready and before (post-alpha) iterate and gradient updates
 		// so just after (or just before) alpha basically
-		#if CKPT && SDC == SDC_NONE // NB. SDC = NONE => DUE_ROLLBACK
+		#if CKPT && SDC == SDC_NONE // NB. this implies DUE_ROLLBACK
 		if(failures)
+		{
 			do_checkpoint = 0;
+			force_rollback(n, &err_data, iterate, gradient, old_p, Ap);
+		}
 		else if( --do_checkpoint == 0 )
 			due_checkpoint(n, &err_data, iterate, gradient, old_p, Ap);
 		#elif SDC == SDC_ALPHA
@@ -323,6 +336,10 @@ void solve_cg( const Matrix *A, const double *b, double *iterate, double converg
 		}
 		#endif
 	}
+
+	// gather all x's at the end
+	#pragma omp task inout(iterate[0:n-1], *wait_for_iterate, *wait_for_mvm) label(exchange_x)
+	MPI_Allgatherv(MPI_IN_PLACE, 0/*ignored*/, MPI_DOUBLE, iterate, mpi_zonesize, mpi_zonestart, MPI_DOUBLE, MPI_COMM_WORLD);
 
 	#pragma omp taskwait 
 	// end of the math, showing infos

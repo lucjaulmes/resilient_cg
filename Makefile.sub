@@ -1,6 +1,7 @@
 #compilers
 CC = gcc
 MCC = mcc
+MPICC = mpicc
 
 ifeq ($(VPATH),)
 	VPATH:=$(CURDIR)
@@ -42,10 +43,10 @@ EXTRAE_HOME=/usr/local
 #
 # some warning management to be done. Mercurium doesn't understand -pedantic and code transformation creates some veriables
 # so pass all this info to native compiler (-Wn,flags)
-CFLAGS = -std=gnu11 -Wall -Wextra -fdiagnostics-show-option
+CFLAGS = -std=gnu11 -Wall -Wextra -fdiagnostics-show-option $(shell $(MPICC) -showme:compile)
 G_CFLAGS = -pedantic -Wno-unknown-pragmas
 M_CFLAGS = --Wn,-pedantic,-Wno-unused-parameter,-Wno-unused-variable,-Wno-strict-aliasing --keep-all-files
-LDFLAGS = -lm
+LDFLAGS = -lm $(shell $(MPICC) -showme:link)
 
 #####################################################################################################
 #defining several options  here that you can add to the compiler flags
@@ -61,9 +62,9 @@ LNK_PAPI = -L$(PAPI_HOME)/lib -lpapi
 #	libnanostrace	to use with nanos, thus ompss 
 #	libseqtrace		sequential app
 USE_EXTRAE = -I$(EXTRAE_HOME)/include -I$(NANOS_HOME)/include/nanox -DEXTRAE_EVENTS 
-LNK_EXTRAE = -L$(EXTRAE_HOME)/lib 
-plain% : LNK_EXTRAE += -lseqtrace
-ompss% : LNK_EXTRAE += -lnanostrace
+LNK_EXTRAE = -L$(EXTRAE_HOME)/lib64 -L$(EXTRAE_HOME)/lib
+plain% : LNK_EXTRAE += -lmpitrace
+ompss% : LNK_EXTRAE += -lnanosmpitrace
 
 # use dense instead of sparse matrices
 USE_DENSMAT = -DMATRIX_DENSE
@@ -94,8 +95,8 @@ ompssdebug : M_CFLAGS += --output-dir=.objs/ompssdebug --instrumentation
 # -DVERBOSE=x make it talk, x a bitmask (see debug.h for values)
 
 #both debug builds
-%debug : CFLAGS += -rdynamic -O2 -DPERFORMANCE $(USE_EXTRAE)
-%debug : LDFLAGS += $(LNK_EXTRAE)
+%debug : CFLAGS += -rdynamic -g -O2 -DVERBOSE=2 $(USE_TIMEOFDAY)
+%debug : LDFLAGS +=
 #both conv builds
 %conv : CFLAGS += -O2 -DPERFORMANCE $(USE_EXTRAE)
 %conv : LDFLAGS += $(LNK_EXTRAE)

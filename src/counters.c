@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <math.h>
 #include <signal.h>
+#include <mpi.h>
 
 #include "debug.h"
 
@@ -47,6 +48,8 @@ struct timeval start_time, stop_time;
 int nanos_omp_get_thread_num () { return 0; }
 int nanos_omp_get_num_threads() { return 1; }
 #endif
+int get_rank_num () { int mpi_rank; MPI_Comm_rank(MPI_COMM_WORLD, &mpi_rank); return mpi_rank; }
+int get_num_ranks() { int mpi_size; MPI_Comm_size(MPI_COMM_WORLD, &mpi_size); return mpi_size; }
 
 
 #if !defined PERFORMANCE || defined EXTRAE_EVENTS
@@ -114,6 +117,8 @@ void setup_measure()
 	{
 		Extrae_set_threadid_function ((unsigned int (*)(void))&nanos_omp_get_thread_num);
 		Extrae_set_numthreads_function ((unsigned int (*)(void))&nanos_omp_get_num_threads);
+		Extrae_set_taskid_function ((unsigned int (*)(void))&get_rank_num);
+		Extrae_set_numtasks_function ((unsigned int (*)(void))&get_num_ranks);
 		Extrae_init();
 	}
 	#ifdef PERFORMANCE
@@ -172,15 +177,15 @@ void stop_measure()
 	log_out("Ended measures\n");
 	#endif
 
-//	#ifdef EXTRAE_EVENTS
-//	#ifdef _OMPSS
-//		int i;
-//		#pragma omp for schedule(static,1)
-//		for(i=0;i<nanos_omp_get_num_threads();i++)
-//			Extrae_flush();
-//	#else
-//		Extrae_flush();
-//	#endif
-//	#endif
+	#ifdef EXTRAE_EVENTS
+	#ifdef _OMPSS
+		int i;
+		#pragma omp for schedule(static,1)
+		for(i=0;i<nanos_omp_get_num_threads();i++)
+			Extrae_flush();
+	#else
+		Extrae_flush();
+	#endif
+	#endif
 }
 
