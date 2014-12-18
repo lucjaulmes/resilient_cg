@@ -306,7 +306,7 @@ void* simulate_failures(void* ptr)
 		}
 
 		// TODO switch between kinds of fault injections ?
-		cause_mpr(&sim_err);
+		cause_mpr(sim_err);
 		//flip_a_bit(sim_err->info);
 	}	
 
@@ -318,9 +318,9 @@ void cause_mpr(error_sim_data *sim_err)
 	int rand_page = (int)( ((double)rand() / (double)RAND_MAX) * sim_err->info->nb_failblocks ) ;
 	int vect      = (int)( ((double)rand() / (double)RAND_MAX) * sim_err->info->nb_data ) ;
 
-	double* addr = info->data[ vect ] + rand_page * sim_err->info->failblock_size;
+	double* addr = sim_err->info->data[ vect ] + rand_page * sim_err->info->failblock_size;
 
-	log_err(SHOW_DBGINFO, "Error is going to be triggered on page %3d of vector %s (%d) : %p\n", rand_page, vect_name(vect+1), vect+1, (void*)victim);
+	log_err(SHOW_DBGINFO, "Error is going to be triggered on page %3d of vector %s (%d) : %p\n", rand_page, vect_name(vect+1), vect+1, (void*)addr);
 
 	mprotect((void*)addr, sizeof(double) << sim_err->info->log2fbs, PROT_NONE);
 	//madvise((void*)addr, sysconf(_SC_PAGESIZE), MADV_HWPOISON);
