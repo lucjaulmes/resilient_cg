@@ -78,6 +78,7 @@
 
 #include <string.h>
 #include <stdlib.h>
+#include <errno.h>
 
 // a few global vars for parameters that everyone needs to know
 extern int nb_blocks;
@@ -104,6 +105,11 @@ static inline void* aligned_calloc(size_t alignment, size_t size)
 		alloc_size = (size ^ need_uprounding) + alignment;
 
 	void *ptr = aligned_alloc(alignment, alloc_size);
+	if( ptr == NULL )
+	{
+		perror("aligned_alloc failed");
+		exit(errno);
+	}
 	return ptr;
 }
 

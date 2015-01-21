@@ -5,6 +5,8 @@
 #include <time.h>
 #include <unistd.h>
 #include <float.h>
+#include <signal.h>
+#include <assert.h>
 
 #include "mpi.h"
 
@@ -21,21 +23,16 @@
 #include "recover.h"
 #include "debug.h"
 #include "counters.h"
+#include "backtrace.h"
 
 #ifdef _OMPSS
 	#include <nanos_omp.h>
 #endif
 
-typedef enum 
-{
-	FROM_FILE = 0,
-	POISSON3D
-} matrix_source;
-
 // globals
 int nb_blocks;
 int *block_bounds;
-int *mpi_zonestart, *mpi_zonesize;
+int mpi_rank = 0, *mpi_zonestart, *mpi_zonesize;
 
 void set_blocks_sparse(Matrix *A, int nb_blocks, const int fail_size, const int mpi_rank, const int mpi_size)
 {
@@ -94,13 +91,17 @@ void set_blocks_sparse(Matrix *A, int nb_blocks, const int fail_size, const int 
  
 int MAXIT = 0;
 
-void usage(char* arg0)
+void usage(const char *arg0, const char *arg_err)
 {
+	if( arg_err != NULL )
+		printf("Error near (or after) argument \"%s\"\n\n", arg_err);
+	
 	printf("Usage: %s [options] [<matrix-market-filename>|-synth name param] [, ...]\n"
 			" === Matrix === \n"
 			"  Either provide a path to a symmetric positive definite matrix in Matrix Market format\n"
 			"  or provide the -synth option for a synthetic matrix. Arguments are name param pairs :\n"
-			"    Poisson3D  n    3D Poisson's equation using finite differences, size proportional to n^3\n"
+			"    Poisson3D  p n  3D Poisson's equation using finite differences, matrix size n^3\n"
+			"                    with a p-points stencil : p one of 7, 19, 27 (TODO : 9 BCC, 13 FCC)\n"
 			" ===  fault injection options === \n"
 			"  -nf               Disabling faults simulation (default).\n"
 			"  -l     lambda     Inject errors with lambda meaning MTBE in usec.\n"
@@ -133,7 +134,7 @@ void usage(char* arg0)
 
 // we return how many parameters we consumed, -1 for error
 int read_param(int argsleft, char* argv[], double *lambda, int *runs, int *threads UNUSED, int *blocks, long *fail_size, int *fault_strat, int *nerr, unsigned int *seed, 
-			double *cv_thres, double *err_thres, char **checkpoint_path UNUSED, char **checkpoint_prefix UNUSED, matrix_source *matrix_type, int *matrix_param)
+			double *cv_thres, double *err_thres, char **checkpoint_path UNUSED, char **checkpoint_prefix UNUSED, matrix_type *matsource, int *stencil_points, int *matrix_size)
 {
 	if( strcmp(argv[0], "-r") == 0 )
 	{
@@ -338,21 +339,28 @@ int read_param(int argsleft, char* argv[], double *lambda, int *runs, int *threa
 	#endif
 	else if( strcmp(argv[0], "-synth") == 0 )
 	{
-		// we want at least the name and size parameter after
-		if( argsleft <= 2 )
+		// we want at least the name and size and points parameter after
+		if( argsleft <= 3 )
 			return -1;
 		
 		if( strcmp(argv[1], "Poisson3D") == 0 )
-			*matrix_type = POISSON3D;
+		{
+			*matsource = POISSON3D;
+
+			*stencil_points = (int)strtol(argv[2], NULL, 10);
+
+			if( *stencil_points != 7 && *stencil_points != 19 && *stencil_points != 27 )
+				return -1;
+		}
 		else
 			return -1; // unrecognized
 
-		*matrix_param = (int)strtol(argv[2], NULL, 10);
+		*matrix_size = (int)strtol(argv[3], NULL, 10);
 
-		if( *matrix_param <= 0 )
+		if( *matrix_size <= 0 )
 			return -1;
 
-		return 3;
+		return 4;
 	}
 	else 
 		return 0; // no option regognized, consumed 0 parameters
@@ -404,11 +412,8 @@ FILE* get_infos_matrix(char *filename, int *n, int *m, int *nnz, int *symmetric)
 // main function, where we parse arguments, read files, setup stuff and start the recoveries
 int main(int argc, char* argv[])
 {
-	// no buffer on stdout so messages interleaved with stderr will be in right order
-	setbuf(stdout, NULL);
-
 	if(argc < 2)
-		usage(argv[0]);
+		usage(argv[0], NULL);
 
 	int i, j, f, nb_read, runs = 1;
 
@@ -418,8 +423,8 @@ int main(int argc, char* argv[])
 	int nb_threads = nb_blocks = 1;
 	#endif
 
-	int fault_strat = MULTFAULTS_GLOBAL, nerr = 0, matrix_param;
-	matrix_source matrix_type = FROM_FILE;
+	int fault_strat = MULTFAULTS_GLOBAL, nerr = 0, stencil_points, matrix_size;
+	matrix_type matsource = FROM_FILE;
 	long fail_size;
 	double lambda = 0, cv_thres = 1e-10, err_thres = 1e-12;
 	#if CKPT == CKPT_TO_DISK
@@ -432,36 +437,38 @@ int main(int argc, char* argv[])
 	fail_size = sysconf(_SC_PAGESIZE); // default page size ?
 	unsigned int seed = 1591613054 ;// time(NULL);
 
-	int mpi_args = 0, mpi_rank, mpi_size;
-	MPI_Init(&mpi_args, NULL);
+	int mpi_args = 0, mpi_thread_level = MPI_THREAD_SINGLE/*SERIALIZED*/, mpi_size = 1;
+	MPI_Init_thread(&mpi_args, NULL, mpi_thread_level, &mpi_thread_level);
+	//assert( mpi_thread_level == MPI_THREAD_SERIALIZED );
+
 	MPI_Comm_rank(MPI_COMM_WORLD, &mpi_rank);
 	MPI_Comm_size(MPI_COMM_WORLD, &mpi_size);
 
 	// Iterate over parameters (usually open files)
 	for(f=1; f<argc; f += nb_read )
 	{
-		nb_read = read_param(argc - f, &argv[f], &lambda, &runs, &nb_threads, &nb_blocks, &fail_size, &fault_strat, &nerr,
-							&seed, &cv_thres, &err_thres, &checkpoint_path, &checkpoint_prefix, &matrix_type, &matrix_param);
+		nb_read = read_param(argc - f, &argv[f], &lambda, &runs, &nb_threads, &nb_blocks, &fail_size, &fault_strat, &nerr, &seed,
+							&cv_thres, &err_thres, &checkpoint_path, &checkpoint_prefix, &matsource, &stencil_points, &matrix_size);
 
 		// error happened
 		if( nb_read < 0 )
-			usage(argv[0]);
+			usage(argv[0], argv[f]);
 
 		// no parameters read : next param must be a matrix file. Read it (and consume parameter)
-		else if( nb_read == 0 || matrix_type != FROM_FILE)
+		else if( nb_read == 0 || matsource != FROM_FILE)
 		{
 			int n;
 			Matrix matrix;
-			char *mat_name = argv[ matrix_type == FROM_FILE ? f : f+1 ];
+			char mat_name[200];
 
-			if( matrix_type == FROM_FILE )
+			if( matsource == FROM_FILE )
 			{
 				nb_read = 1;
 				int m, lines_in_file, symmetric;
 				FILE* input_file = get_infos_matrix(argv[f], &n, &m, &lines_in_file, &symmetric);
 
 				if( input_file == NULL )
-					usage(argv[0]);
+					usage(argv[0], NULL);
 
 				// DEBUG TO MODIFY PROBLEM
 				// n = m = 128;
@@ -472,16 +479,22 @@ int main(int argc, char* argv[])
 				set_blocks_sparse(&matrix, nb_blocks, fail_size, mpi_rank, mpi_size);
 
 				fclose(input_file);
+
+				strcpy(mat_name, argv[f]);
 			}
-			else // if matrix_type == POISSON3D
+			else // if matsource == POISSON3D
 			{
-				matrix_type = FROM_FILE;
+				matsource = FROM_FILE;
 
 				// here all block etc. repartition is static, so we can load balance in advance
-				int p = 16 * mpi_size * nb_blocks * matrix_param;
-				n = p * p * p;
-				long nnz_here = 7 * n / (mpi_size * mpi_size * mpi_size);
+				n = mpi_size * matrix_size * matrix_size;
+
+				// number of mem. pages per vector on one side, total number of threads on the other
+				if( n / (fail_size/sizeof(double)) % (mpi_size * nb_blocks) != 0 )
+					usage(argv[0], "Error : size of Poisson3D matrix incompatible with alignment of memory page per block\n");
+
 				int rows_per_rank = n / mpi_size, rows_per_block = rows_per_rank / nb_blocks;
+				long nnz_here = stencil_points * rows_per_rank;
 
 				block_bounds  = (int*)malloc( (nb_blocks+1) * sizeof(int));
 				mpi_zonestart = (int*)malloc( (  mpi_size  ) * sizeof(int));
@@ -501,7 +514,9 @@ int main(int argc, char* argv[])
 
 
 				allocate_matrix(n, n, nnz_here, &matrix, fail_size);
-				generate_Poisson3D(&matrix, p, mpi_zonestart[mpi_rank], mpi_zonestart[mpi_rank] + rows_per_rank);
+				generate_Poisson3D(&matrix, matrix_size, stencil_points, mpi_zonestart[mpi_rank], mpi_zonestart[mpi_rank] + rows_per_rank);
+
+				sprintf(mat_name, "Poisson3D_%dpt", stencil_points);
 			}
 
 			#if VERBOSE >= SHOW_TOOMUCH
@@ -569,7 +584,7 @@ int main(int argc, char* argv[])
 				// generate random rhs to problem
 				double range = (double) 1;
 
-				for(i=0; i<n; i++)
+				for(i=mpi_zonestart[mpi_rank]; i<mpi_zonestart[mpi_rank]+mpi_zonesize[mpi_rank]; i++)
 				{
 					b[i] = ((double)rand() / (double)RAND_MAX ) * range - range/2;
 					x[i] = 0.0;
@@ -577,16 +592,21 @@ int main(int argc, char* argv[])
 
 				solve_cg(&matrix, b, x, cv_thres, err_thres);
 
+				// get all x, for final computation of error
+				MPI_Allgatherv(MPI_IN_PLACE, 0/*ignored*/, MPI_DOUBLE, x, mpi_zonesize, mpi_zonestart, MPI_DOUBLE, MPI_COMM_WORLD);
+
 				// compute verification
 				mult(&matrix, x, s);
 
 				// do displays (verification, error)
-				double err = 0, norm_b = scalar_product(n, b, b);
-				for(i=0; i < n; i++)
+				double t, err = 0, norm_b = norm(mpi_zonesize[mpi_rank], b + mpi_zonestart[mpi_rank]);
+				for(i=mpi_zonestart[mpi_rank]; i<mpi_zonestart[mpi_rank]+mpi_zonesize[mpi_rank]; i++)
 				{
 					double e_i = b[i] - s[i];
 					err += e_i * e_i;
 				}
+				t = err;
+				MPI_Allreduce(&t, &err, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
 
 				printf("Verification : euclidian distance to solution ||Ax-b||^2 = %e , ||Ax-b||/||b|| = %e\n", err, sqrt(err/norm_b));
 			}

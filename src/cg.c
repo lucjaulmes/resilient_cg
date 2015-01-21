@@ -121,8 +121,10 @@ void solve_cg( const Matrix *A, const double *b, double *iterate, double converg
 	#endif
 	#endif
 
-	// some parameters pre-computed, and show some informations
-	norm_b = scalar_product(n, b, b);
+	// some parameters pre-computed, and show some informations (borrow thres_sq to be out_buf, norm in norm_b)
+	thres_sq = norm(mpi_zonesize[mpi_rank], b + mpi_zonestart[mpi_rank]);
+    MPI_Allreduce(&thres_sq, &norm_b, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+
 	thres_sq = convergence_thres * convergence_thres * norm_b;
 	{}//log_out("Error shown is ||Ax-b||^2, you should plot ||Ax-b||/||b||. (||b||^2 = %e)\n", norm_b);
 
@@ -142,8 +144,9 @@ void solve_cg( const Matrix *A, const double *b, double *iterate, double converg
 	for(i=0; i<A->n; i++)
 		norm_A = fmax(norm_A, sqrt(norm( A->r[i+1] - A->r[i], A->v + A->r[i] )));
 		//norm_A += sqrt(norm( A->r[i+1] - A->r[i], A->v + A->r[i] ));
-	
-	err_data.helper_4 = norm_A * sqrt(norm_b);
+
+	MPI_Allreduce(&norm_A, &(err_data.helper_4), 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+	err_data.helper_4 *= sqrt(norm_b);
 	#endif
 	
 	setup_resilience(A, 6, &mp);
@@ -336,10 +339,6 @@ void solve_cg( const Matrix *A, const double *b, double *iterate, double converg
 		}
 		#endif
 	}
-
-	// gather all x's at the end
-	#pragma omp task inout(iterate[0:n-1], *wait_for_iterate, *wait_for_mvm) label(exchange_x)
-	MPI_Allgatherv(MPI_IN_PLACE, 0/*ignored*/, MPI_DOUBLE, iterate, mpi_zonesize, mpi_zonestart, MPI_DOUBLE, MPI_COMM_WORLD);
 
 	#pragma omp taskwait 
 	// end of the math, showing infos

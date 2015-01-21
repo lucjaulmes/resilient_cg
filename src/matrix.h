@@ -10,6 +10,13 @@ typedef struct Matrix
 	double *v;
 } Matrix;
 
+typedef enum 
+{
+	FROM_FILE = 0,
+	POISSON3D
+} matrix_type;
+
+
 // general matrix-vector multiplication, row major ( W = A x V )
 // dense, sparse, single block and task-blocks versions
 void mult( const Matrix *A, const double *V, double *W );
@@ -25,7 +32,7 @@ void read_matrix( const int n, const int m, const int nnz, const int symmetric, 
 // visual representation of matrix
 void print_matrix( FILE* f, const Matrix *A );
 
-void generate_Poisson3D(Matrix *A, const int p, const int mpi_rank, const int mpi_size);
+void generate_Poisson3D(Matrix *A, const int p, const int stencil_points, const int mpi_rank, const int mpi_size);
 
 // memory utility functions
 void allocate_matrix(const int n, const int m, const long nnz, Matrix *A, int align_bytes );

@@ -13,7 +13,7 @@ void mult( const Matrix *A,  const double *V, double *W )
 {
 	int i, j;
 
-	for(i=0; i < A->n; i++)
+	for(i=mpi_zonestart[mpi_rank]; i<mpi_zonestart[mpi_rank]+mpi_zonesize[mpi_rank]; i++)
 	{
 		W[i] = 0;
 
@@ -30,7 +30,7 @@ void mult_transposed ( const Matrix *A , const double *V, double *W )
 	for(i=0; i < A->m; i++)
 		W[i] = 0;
 
-	for(i=0; i < A->n; i++)
+	for(i=mpi_zonestart[mpi_rank]; i<mpi_zonestart[mpi_rank]+mpi_zonesize[mpi_rank]; i++)
 	{
 		for(j=A->r[i]; j < A->r[i+1]; j++)
 		{
@@ -44,15 +44,43 @@ void mult_transposed ( const Matrix *A , const double *V, double *W )
 void print_matrix( FILE* f, const Matrix *A )
 {
 	int i, j;
-	for(i=0; i < A->n; i++)
+//	for(i=mpi_zonestart[mpi_rank]; i<mpi_zonestart[mpi_rank]+mpi_zonesize[mpi_rank]; i++)
+//	{
+//		printf("%4d   |  ", i);
+//
+//		for( j= A->r[i]; j < A->r[i+1]; j++)
+//			fprintf(f, " [%4d ] % 1.2e ", A->c[j], A->v[j]);
+//
+//		printf("\n");
+//	}
+
+	// hoping less than 100 items / line
+	int c[100], n=0, k;
+	double v[100];
+
+	for(i=mpi_zonestart[mpi_rank]; i < mpi_zonestart[mpi_rank] + mpi_zonesize[mpi_rank]; i++)
 	{
-		printf("%4d   |  ", i);
+		int same = n == A->r[i+1] - A->r[i];
 
-		for( j= A->r[i]; j < A->r[i+1]; j++)
-			fprintf(f, " [%4d ] % 1.2e ", A->c[j], A->v[j]);
+		for( j = A->r[i], k=0; same && j < A->r[i+1] && k < 100; j++, k++)
+			same &= (A->c[j]-i == c[k] && A->v[j] == v[k]);
 
-		printf("\n");
+		if( ! same )
+		{
+			fprintf(f, "%5d -- ", i);
+
+			n = A->r[i+1] - A->r[i];
+			for( j = A->r[i], k=0; j < A->r[i+1] && k < 100; j++, k++)
+			{
+				fprintf(f, " [%5d] % 1.2e ", A->c[j]-i, A->v[j]);
+				c[k] = A->c[j]-i;
+				v[k] = A->v[j];
+			}
+
+			fprintf(f, "\n");
+		}
 	}
+	fprintf(f, "%5d -- end\n", i);
 }
 
 // return pos in matrix ( so then you only have to take A->v[pos] ), -1 if does not exist
@@ -170,28 +198,78 @@ void read_matrix( const int n, const int m, const int nnz, const int symmetric, 
 
 // finite-difference method for a 3D Poisson's equation gives a SPD matrix with -6 on the diagonal, 
 // and 1s on the diagonal+1, diagonal+p and diagonal+p²
-void generate_Poisson3D(Matrix *A, const int p, const int start_row, const int end_row)
+void generate_Poisson3D(Matrix *A, const int p, const int stencil_points, const int start_row, const int end_row)
 {
-	int p2 = p * p, i, r=0, pos=0;
+	int p2 = p * p, i, j=0, pos=0;
 
-	int stenc_c[] = {-p2, -p, -1,  0, 1, p, p2};
-	int stenc_v[] = {  1,  1,  1, -6, 1, 1,  1};
-	
-	// let's only do the part here.
-	for(r=start_row; r<end_row; r++)
+	const int    *stenc_c;
+	const double *stenc_v;
+
+	const int    stenc_c7[]  = { -p2,  -p,  -1,   0,   1,   p,  p2};
+	const double stenc_v7[]  = { 1.0, 1.0, 1.0,-6.0, 1.0, 1.0, 1.0};
+
+	const double r = 1.0;
+	const int    stenc_c19[] =
 	{
-		A->r[r] = pos;
-		for(i=0; i<7; i++)
-			if( r + stenc_c[i] > 0 && r + stenc_c[i] < A->n )
+		       -p2-p,          -p2-1,  -p2+0, -p2+1,          -p2+p,
+		 -p-1,    -p,    -p+1,    -1,      0,     1,     p-1,     p,     p+1,   
+		        p2-p,           p2-1,   p2+0,  p2+1,           p2+p
+	};
+	const double stenc_v19[] =
+	{
+		     1+r,      1+r,    8*r-4,   1+r,      1+r,
+		2, 6-2*r, 2, 6-2*r, -32-16*r, 6-2*r, 2, 6-2*r, 2, 
+		     1+r,      1+r,    8*r-4,   1+r,      1+r
+	};
+
+	const int    stenc_c27[] =
+	{
+		-p2-p-1, -p2-p, -p2-p+1, -p2-1,  -p2+0, -p2+1, -p2+p-1, -p2+p, -p2+p+1,
+		   -p-1,    -p,    -p+1,    -1,      0,     1,     p-1,     p,     p+1,   
+		 p2-p-1,  p2-p,  p2-p+1,  p2-1,   p2+0,  p2+1,  p2+p-1,  p2+p,  p2+p+1
+	};
+	const double stenc_v27[] =
+	{
+		   2+r,  8-10*r,    2+r,  8-10*r,   100*r-40,  8-10*r,    2+r,  8-10*r,    2+r,
+		20-2*r, 80-20*r, 20-2*r, 80-20*r, -400-200*r, 80-20*r, 20-2*r, 80-20*r, 20-2*r,
+		   2+r,  8-10*r,    2+r,  8-10*r,   100*r-40,  8-10*r,    2+r,  8-10*r,    2+r 
+	};
+
+	if( stencil_points == 7 )
+	{
+		stenc_c = stenc_c7;
+		stenc_v = stenc_v7;
+	}
+	else if( stencil_points == 19 )
+	{
+		stenc_c = stenc_c19;
+		stenc_v = stenc_v19;
+	}
+	else if( stencil_points == 27 )
+	{
+		stenc_c = stenc_c27;
+		stenc_v = stenc_v27;
+	}
+	else
+		// this should be impossible, but silences compiler warnings
+		return;
+
+
+	// let's only do the part here.
+	for(j=start_row; j<end_row; j++)
+	{
+		A->r[j] = pos;
+		for(i=0; i<stencil_points; i++)
+			if( j + stenc_c[i] > 0 && j + stenc_c[i] < A->n )
 			{
-				A->c[pos] = r + stenc_c[i];
+				A->c[pos] = j + stenc_c[i];
 				A->v[pos] = stenc_v[i];
 				pos++;
 			}
 	}
 
 	// point to just beyond last element
-	A->r[r] = pos;
+	A->r[j] = pos;
 }
 
 void allocate_matrix(const int n, const int m, const long nnz, Matrix *A, int align_bytes )
@@ -229,7 +307,7 @@ void get_submatrix( const Matrix *A , const int *rows, const int nr, const int *
 
 	// i iterates each block of rows, ii each row in A that needs to be copied. Parallelly, k iterates each row in B corresponding to ii.
 	for(i=0, k=0; i<nr; i++)
-		for(ii=rows[i]; ii < rows[i] + bs && ii < A->n && k < B->n ; ii++, k++)
+		for(ii=rows[i]; ii < rows[i] + bs && ii < mpi_zonestart[mpi_rank]+mpi_zonesize[mpi_rank] && k < B->n ; ii++, k++)
 		{
 			B->r[k] = p;
 			
