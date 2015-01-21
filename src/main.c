@@ -437,9 +437,10 @@ int main(int argc, char* argv[])
 	fail_size = sysconf(_SC_PAGESIZE); // default page size ?
 	unsigned int seed = 1591613054 ;// time(NULL);
 
-	int mpi_args = 0, mpi_thread_level = MPI_THREAD_SINGLE/*SERIALIZED*/, mpi_size = 1;
+	int mpi_args = 0, mpi_thread_level = MPI_THREAD_FUNNELED/*SERIALIZED*/, mpi_size = 1;
 	MPI_Init_thread(&mpi_args, NULL, mpi_thread_level, &mpi_thread_level);
 	//assert( mpi_thread_level == MPI_THREAD_SERIALIZED );
+	printf("Asked for mpi thread level %d, got mpi_thread_level:%d\n", MPI_THREAD_FUNNELED, mpi_thread_level);
 
 	MPI_Comm_rank(MPI_COMM_WORLD, &mpi_rank);
 	MPI_Comm_size(MPI_COMM_WORLD, &mpi_size);
