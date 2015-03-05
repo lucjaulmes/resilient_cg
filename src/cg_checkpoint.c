@@ -6,7 +6,7 @@
 #include <errno.h>
 #endif
 
-void force_checkpoint(const int n, detect_error_data *err_data, double *iterate, double *gradient, double *p, double *Ap)
+void force_checkpoint(detect_error_data *err_data, double *iterate, double *gradient, double *p, double *Ap)
 {
 	int *behaviour = &(err_data->error_detected), *prev_error = &(err_data->prev_error);
 
@@ -38,10 +38,10 @@ void force_checkpoint(const int n, detect_error_data *err_data, double *iterate,
 		*prev_error = 0;
 	}
 
-	checkpoint_vectors(n, err_data, behaviour, iterate, gradient, p, Ap);
+	checkpoint_vectors(err_data, behaviour, iterate, gradient, p, Ap);
 }
 
-void due_checkpoint(const int n, detect_error_data *err_data, double *iterate, double *gradient, double *p, double *Ap)
+void due_checkpoint(detect_error_data *err_data, double *iterate, double *gradient, double *p, double *Ap)
 {
 	int *behaviour = &(err_data->error_detected);
 
@@ -69,10 +69,10 @@ void due_checkpoint(const int n, detect_error_data *err_data, double *iterate, d
 		}
 	}
 
-	checkpoint_vectors(n, err_data, behaviour, iterate, gradient, p, Ap);
+	checkpoint_vectors(err_data, behaviour, iterate, gradient, p, Ap);
 }
 
-void force_rollback(const int n, detect_error_data *err_data, double *iterate, double *gradient, double *p, double *Ap)
+void force_rollback(detect_error_data *err_data, double *iterate, double *gradient, double *p, double *Ap)
 {
 	int *behaviour = &(err_data->error_detected);
 	#if SDC
@@ -130,17 +130,15 @@ void force_rollback(const int n, detect_error_data *err_data, double *iterate, d
 		#endif
 	}
 
-	checkpoint_vectors(n, err_data, behaviour, iterate, gradient, p, Ap);
+	checkpoint_vectors(err_data, behaviour, iterate, gradient, p, Ap);
 }
 
-void checkpoint_vectors(const int n, detect_error_data *err_data, int *behaviour, double *iterate, double *gradient, double *p, double *Ap UNUSED)
+void checkpoint_vectors(detect_error_data *err_data, int *behaviour, double *iterate, double *gradient, double *p, double *Ap UNUSED)
 {
 	int i;
 	for(i=0; i < nb_blocks; i ++ )
 	{
 		int s = get_block_start(i), e = get_block_end(i);
-		if( e > n )
-			e = n;
 
 		#if SDC == SDC_ORTHO
 			#define PRAGMA_CKPT_VECT STRINGIFY(omp task in(*behaviour) inout(iterate[s:e-1], gradient[s:e-1], p[s:e-1]) firstprivate(i, s, e) label(checkpoint_vectors) priority(100) no_copy_deps)

@@ -115,7 +115,7 @@ void solve_cg( const Matrix *A, const double *b, double *iterate, double converg
 	#endif
 
 	// some parameters pre-computed, and show some informations
-	norm_b = scalar_product(n, b, b);
+	norm_b = norm(n, b);
 	thres_sq = convergence_thres * convergence_thres * norm_b;
 	{}//log_out("Error shown is ||Ax-b||^2, you should plot ||Ax-b||/||b||. (||b||^2 = %e)\n", norm_b);
 
@@ -149,11 +149,11 @@ void solve_cg( const Matrix *A, const double *b, double *iterate, double converg
 	{
 		if( --do_update_gradient > 0 )
 		{
-			update_iterate(n, iterate, wait_for_iterate, old_p, &alpha);
+			update_iterate(iterate, wait_for_iterate, old_p, &alpha);
 
-			update_gradient(n, gradient, Ap, &alpha, wait_for_iterate);
+			update_gradient(gradient, Ap, &alpha, wait_for_iterate);
 
-			norm_task(n, gradient, &err_sq);
+			norm_task(gradient, &err_sq);
 
 			// at this point, Ap = A * old_p
 			#if DUE == DUE_ASYNC || DUE == DUE_IN_PATH
@@ -169,9 +169,9 @@ void solve_cg( const Matrix *A, const double *b, double *iterate, double converg
 		else
 		{
 			if( r > 0 )
-				update_iterate(n, iterate, wait_for_iterate, old_p, &alpha);
+				update_iterate(iterate, wait_for_iterate, old_p, &alpha);
 
-			recompute_gradient_mvm(n, A, iterate, wait_for_iterate, wait_for_mvm, Aiterate);
+			recompute_gradient_mvm(A, iterate, wait_for_iterate, wait_for_mvm, Aiterate);
 
 			#if SDC == SDC_GRADIENT
 			do_check_sdc -= RECOMPUTE_GRADIENT_FREQ;
@@ -179,7 +179,7 @@ void solve_cg( const Matrix *A, const double *b, double *iterate, double converg
 			if(failures)
 			{
 				do_update_gradient = do_checkpoint = do_check_sdc = 0;
-				force_rollback(n, &err_data, iterate, gradient, old_p, Ap);
+				force_rollback(&err_data, iterate, gradient, old_p, Ap);
 			}
 			else
 			#endif
@@ -187,21 +187,21 @@ void solve_cg( const Matrix *A, const double *b, double *iterate, double converg
 			{
 				do_checkpoint -= CHECK_SDC_FREQ;
 
-				update_gradient(n, gradient, Ap, &alpha, wait_for_iterate);
+				update_gradient(gradient, Ap, &alpha, wait_for_iterate);
 
-				check_sdc_recompute_grad(n, do_checkpoint == 0, &err_data, b, iterate, gradient, old_p, Ap, wait_for_mvm, Aiterate, &old_err_sq, error_thres);
+				check_sdc_recompute_grad(do_checkpoint == 0, &err_data, b, iterate, gradient, old_p, Ap, wait_for_mvm, Aiterate, &old_err_sq, error_thres);
 			}
 			else
-				recompute_gradient_update(n, gradient, wait_for_mvm, Aiterate, b);
+				recompute_gradient_update(gradient, wait_for_mvm, Aiterate, b);
 			#else
-			recompute_gradient_update(n, gradient, wait_for_mvm, Aiterate, b);
+			recompute_gradient_update(gradient, wait_for_mvm, Aiterate, b);
 			#endif
 
-			norm_task(n, gradient, &err_sq);
+			norm_task(gradient, &err_sq);
 
 			#if CKPT
 			if( r == 0 )
-				force_checkpoint(n, &err_data, iterate, gradient, old_p, Ap);
+				force_checkpoint(&err_data, iterate, gradient, old_p, Ap);
 			#endif
 
 			#if DUE == DUE_ASYNC || DUE == DUE_IN_PATH
@@ -217,7 +217,7 @@ void solve_cg( const Matrix *A, const double *b, double *iterate, double converg
 				start_error_injection();
 		}
 
-		update_p(n, p, old_p, wait_for_p, gradient, &beta);
+		update_p(p, old_p, wait_for_p, gradient, &beta);
 
 		#if SDC == SDC_ORTHO
 		// should happen in between p and Ap, to check if the new p and old Ap are orthogonal
@@ -225,20 +225,20 @@ void solve_cg( const Matrix *A, const double *b, double *iterate, double converg
 		if(failures)
 		{
 			do_checkpoint = do_check_sdc = 0;
-			force_rollback(n, &err_data, iterate, gradient, p, Ap);
+			force_rollback(&err_data, iterate, gradient, p, Ap);
 		}
 		else
 		#endif
 		if( -- do_check_sdc == 0 )
 		{
 			do_checkpoint -= CHECK_SDC_FREQ ;
-			check_sdc_p_Ap_orthogonal(n, do_checkpoint == 0, &err_data, iterate, gradient, p, Ap, &err_sq, error_thres);
+			check_sdc_p_Ap_orthogonal(do_checkpoint == 0, &err_data, iterate, gradient, p, Ap, &err_sq, error_thres);
 		}
 		#endif
 
-		compute_Ap(n, A, p, wait_for_p, wait_for_mvm, Ap);
+		compute_Ap(A, p, wait_for_p, wait_for_mvm, Ap);
 
-		scalar_product_task(n, p, Ap, &normA_p_sq);
+		scalar_product_task(p, Ap, &normA_p_sq);
 
 		#if DUE == DUE_ASYNC || DUE == DUE_IN_PATH
 		recover_rectify_p_Ap(n, &mp, p, old_p, Ap, &normA_p_sq, wait_for_mvm, wait_for_iterate);
@@ -306,23 +306,23 @@ void solve_cg( const Matrix *A, const double *b, double *iterate, double converg
 		if(failures)
 		{
 			do_checkpoint = 0;
-			force_rollback(n, &err_data, iterate, gradient, old_p, Ap);
+			force_rollback(&err_data, iterate, gradient, old_p, Ap);
 		}
 		else if( --do_checkpoint == 0 )
-			due_checkpoint(n, &err_data, iterate, gradient, old_p, Ap);
+			due_checkpoint(&err_data, iterate, gradient, old_p, Ap);
 		#elif SDC == SDC_ALPHA
 		#if DUE == DUE_ROLLBACK // ALPHA + ROLLBACK
 		if(failures)
 		{
 			do_checkpoint = do_check_sdc = 0;
-			force_rollback(n, &err_data, iterate, gradient, old_p, Ap);
+			force_rollback(&err_data, iterate, gradient, old_p, Ap);
 		}
 		else 
 		#endif
 		if( -- do_check_sdc == 0 )
 		{
 			do_checkpoint -= CHECK_SDC_FREQ;
-			check_sdc_alpha_invariant(n, do_checkpoint == 0, &err_data, b, iterate, gradient, old_p, Ap, &old_err_sq, &alpha, error_thres);
+			check_sdc_alpha_invariant(do_checkpoint == 0, &err_data, b, iterate, gradient, old_p, Ap, &old_err_sq, &alpha, error_thres);
 		}
 		#endif
 	}

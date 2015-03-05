@@ -16,8 +16,8 @@ void hard_reset(magic_pointers *mp)
 
 	recover_x_lossy(mp, mp->x);
 
-	recompute_gradient_mvm(mp->A->n, mp->A, mp->x, NULL, NULL, mp->Ax);
-	recompute_gradient_update(mp->A->n, mp->g, NULL, mp->Ax, mp->b);
+	recompute_gradient_mvm(mp->A, mp->x, NULL, NULL, mp->Ax);
+	recompute_gradient_update(mp->g, NULL, mp->Ax, mp->b);
 	clear_failed( ~0 );
 	#endif
 }
@@ -129,7 +129,7 @@ void recover_rectify_g(const int n UNUSED, magic_pointers *mp, const double *p, 
 #else
 #pragma omp task inout([n]x) in(*wait_for_mvm) concurrent(*err_sq, [n]gradient) label(recover_xk_g) priority(5) no_copy_deps
 #endif
-void recover_rectify_x_g(const int n, magic_pointers *mp, double *x, double *gradient, double *err_sq, char *wait_for_mvm UNUSED)
+void recover_rectify_x_g(const int n UNUSED, magic_pointers *mp, double *x, double *gradient, double *err_sq, char *wait_for_mvm UNUSED)
 {
 	if( !get_nb_failed_blocks() )
 	{
@@ -206,7 +206,7 @@ void recover_rectify_x_g(const int n, magic_pointers *mp, double *x, double *gra
 #else
 #pragma omp task in(*wait_for_mvm, *wait_for_iterate) concurrent(*normA_p_sq, [n]p, [n]Ap) label(recover_p_Ap) priority(5) no_copy_deps
 #endif
-void recover_rectify_p_Ap(const int n, magic_pointers *mp, double *p, double *old_p, double *Ap, double *normA_p_sq, char *wait_for_mvm UNUSED, char *wait_for_iterate UNUSED)
+void recover_rectify_p_Ap(const int n UNUSED, magic_pointers *mp, double *p, double *old_p, double *Ap, double *normA_p_sq, char *wait_for_mvm UNUSED, char *wait_for_iterate UNUSED)
 {
 	if( !get_nb_failed_blocks() )
 	{

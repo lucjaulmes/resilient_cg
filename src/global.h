@@ -78,6 +78,7 @@
 
 #include <string.h>
 #include <stdlib.h>
+#include <errno.h>
 
 // a few global vars for parameters that everyone needs to know
 extern int nb_blocks;
@@ -102,16 +103,23 @@ static inline int get_block_end(const int b)
 	return block_ends[b];
 }
 
-static inline void* aligned_calloc(size_t alignment, size_t size)
+static inline size_t round_up(size_t size, size_t alignment)
 {
 	// alignment has to be a power of 2. We round size to the closest multiple of alignment
-	size_t alloc_size = size, need_uprounding = size & (alignment - 1);
-	
-	if( need_uprounding )
-		alloc_size = (size ^ need_uprounding) + alignment;
+	return ((size-1) | (alignment - 1)) + 1; // 4 ops
+	//return (size + (alignment - 1)) & ~(alignment - 1); // 4 ops also ? a-1, s+a, ~a, &
+}
 
-	void *ptr = aligned_alloc(alignment, alloc_size);
-	return memset(ptr, 0x00, alloc_size);
+static inline void* aligned_calloc(size_t alignment, size_t size)
+{
+	size_t aligned_size = round_up(size, alignment);
+	void *ptr = aligned_alloc(alignment, aligned_size);
+	if( ptr == NULL )
+	{
+		perror("aligned_alloc failed");
+		exit(errno);
+	}
+	return memset(ptr, 0, aligned_size);
 }
 
 static inline char* alloc_deptoken()

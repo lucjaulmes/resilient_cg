@@ -20,7 +20,7 @@ EXTRAE_HOME = /apps/CEPBATOOLS/extrae/latest/default/64
 e.g. :
 $ make NANOS_HOME=/usr/local
 
-Each different configuration will be compiled in a subdirectory, with 6 targets
+Each different configuration will be compiled in a subdirectory, with up to 6 targets
 
 - cg, parallel version that is compiled with the instrumentation library of nanox
 - cg_seq, sequential : same as above ignoring pragmas (entirely compiled with $(CC))
@@ -30,6 +30,8 @@ Each different configuration will be compiled in a subdirectory, with 6 targets
 
 - cg_conv, parallel version that writes convergence and resilience values to a trace (perf)
 - cg_seq_conv, sequential : same as above ignoring pragmas (entirely compiled with $(CC))
+
+Self explanatory targets to make one or more of the above are (plain|ompss)?(debug|conv|speedup|all)
 
 ######################################
 #             RESILIENCE             #
