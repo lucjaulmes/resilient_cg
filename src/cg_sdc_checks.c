@@ -1,12 +1,12 @@
-void check_sdc_recompute_grad(const int n, const int save, detect_error_data *err_data, const double *b, double *iterate, double *gradient, double *p, double *Ap, char *wait_for_mvm UNUSED, double *Aiterate, double *err_sq, const double threshold)
+void check_sdc_recompute_grad(const int save, detect_error_data *err_data, const double *b, double *iterate, double *gradient, double *p, double *Ap, char *wait_for_mvm UNUSED, double *Aiterate, double *err_sq, const double threshold)
 {
 	double *zero = &(err_data->helper_1), normAb = err_data->helper_4;
 	int *behaviour = &(err_data->error_detected), *prev_error = &(err_data->prev_error);
 	int i;
-	for(i=0; i < nb_blocks; i ++ )
+	for(i=0; i < nb_blocks; i ++)
 	{
 		int s = get_block_start(i), e = get_block_end(i);
-		if( e > n )
+		if(e > n)
 			e = n;
 
 		// gradient <- b - Aiterate
@@ -45,10 +45,10 @@ void check_sdc_recompute_grad(const int n, const int save, detect_error_data *er
 
 		*zero  = 0.0;
 
-		if( sdc )
+		if(sdc)
 		{
 			// if twice we're stuck : restart
-			if( *prev_error )
+			if(*prev_error)
 			{
 				*behaviour = RESTART_CHECKPOINT;
 				*err_sq = INFINITY;
@@ -63,7 +63,7 @@ void check_sdc_recompute_grad(const int n, const int save, detect_error_data *er
 
 			*prev_error = !*prev_error;
 		}
-		else if( save )
+		else if(save)
 		{
 			*behaviour = SAVE_CHECKPOINT;
 			*prev_error = 0;
@@ -76,16 +76,16 @@ void check_sdc_recompute_grad(const int n, const int save, detect_error_data *er
 	checkpoint_vectors(n, err_data, behaviour, iterate, gradient, p, Ap);
 }
 
-void check_sdc_alpha_invariant(const int n, const int save, detect_error_data *err_data, const double *b, double *iterate, double *gradient, double *p, double *Ap, double *err_sq, double *alpha, const double threshold)
+void check_sdc_alpha_invariant(const int save, detect_error_data *err_data, const double *b, double *iterate, double *gradient, double *p, double *Ap, double *err_sq, double *alpha, const double threshold)
 {
 	int i;
 	double *bp = &(err_data->helper_1), *xAp = &(err_data->helper_2);
 	int *behaviour = &(err_data->error_detected), *prev_error = &(err_data->prev_error);
 
-	for(i=0; i < nb_blocks; i ++ )
+	for(i=0; i < nb_blocks; i ++)
 	{
 		int s = get_block_start(i), e = get_block_end(i);
-		if( e > n )
+		if(e > n)
 			e = n;
 
 		#pragma omp task in(b[s:e-1], p[s:e-1]) concurrent(*bp) firstprivate(s,e) label(check_error_bp) priority(0) no_copy_deps
@@ -108,10 +108,10 @@ void check_sdc_alpha_invariant(const int n, const int save, detect_error_data *e
 		
 		double zero = fabs(*bp - *xAp - *err_sq), max = fabs(*bp);
 
-		if( fabs(*xAp) > max )
+		if(fabs(*xAp) > max)
 			max = fabs(*xAp);
 
-		if( fabs(*err_sq) > max )
+		if(fabs(*err_sq) > max)
 			max = fabs(*err_sq);
 		
 		int sdc = !isfinite(zero) || zero > threshold * max;
@@ -120,10 +120,10 @@ void check_sdc_alpha_invariant(const int n, const int save, detect_error_data *e
 		*bp  = 0.0;
 		*xAp = 0.0;
 
-		if( sdc )
+		if(sdc)
 		{
 			// if twice we're stuck : restart
-			if( *prev_error )
+			if(*prev_error)
 			{
 				*behaviour = RESTART_CHECKPOINT;
 				*err_sq = INFINITY;
@@ -140,7 +140,7 @@ void check_sdc_alpha_invariant(const int n, const int save, detect_error_data *e
 
 			*prev_error = !*prev_error;
 		}
-		else if( save )
+		else if(save)
 		{
 			*behaviour = SAVE_CHECKPOINT;
 			*prev_error = 0;
@@ -154,16 +154,16 @@ void check_sdc_alpha_invariant(const int n, const int save, detect_error_data *e
 	checkpoint_vectors(n, err_data, behaviour, iterate, gradient, p, Ap);
 }
 
-void check_sdc_p_Ap_orthogonal(const int n, const int save, detect_error_data *err_data, double *iterate, double *gradient, double *p, double *Ap, double *err_sq, const double threshold)
+void check_sdc_p_Ap_orthogonal(const int save, detect_error_data *err_data, double *iterate, double *gradient, double *p, double *Ap, double *err_sq, const double threshold)
 {
 	int i;
 	double *pAp = &(err_data->helper_1), *np = &(err_data->helper_2), *nAp = &(err_data->helper_3);
 	int *behaviour = &(err_data->error_detected), *prev_error = &(err_data->prev_error);
 
-	for(i=0; i < nb_blocks; i ++ )
+	for(i=0; i < nb_blocks; i ++)
 	{
 		int s = get_block_start(i), e = get_block_end(i);
-		if( e > n )
+		if(e > n)
 			e = n;
 
 		#pragma omp task in(Ap[s:e-1]) concurrent(*nAp) firstprivate(s,e) label(check_error_nAp) priority(0) no_copy_deps
@@ -186,7 +186,7 @@ void check_sdc_p_Ap_orthogonal(const int n, const int save, detect_error_data *e
 	{
 		// we should have *bp - *xAp - err_sq = 0
 		
-		double zero = fabs(*pAp), scale = sqrt( *np * *nAp );
+		double zero = fabs(*pAp), scale = sqrt(*np * *nAp);
 
 		int sdc = !isfinite(zero) || zero > threshold * scale;
 		log_sdc(zero/scale, sdc);
@@ -195,11 +195,11 @@ void check_sdc_p_Ap_orthogonal(const int n, const int save, detect_error_data *e
 		*nAp = 0.0;
 		*pAp = 0.0;
 
-		if( sdc )
+		if(sdc)
 		{
 			*err_sq = *err_data->save_err_sq;
 			// if twice we're stuck : restart
-			if( *prev_error )
+			if(*prev_error)
 			{
 				*behaviour = RESTART_CHECKPOINT;
 				log_err(SHOW_DBGINFO, "TWO SUCCESSIVE SDCs : RELOAD CHECKPOINT + CG RESTART\n");
@@ -212,7 +212,7 @@ void check_sdc_p_Ap_orthogonal(const int n, const int save, detect_error_data *e
 
 			*prev_error = !*prev_error;
 		}
-		else if( save )
+		else if(save)
 		{
 			*behaviour = SAVE_CHECKPOINT;
 			*prev_error = 0;

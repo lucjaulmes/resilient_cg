@@ -38,7 +38,7 @@ int mm_read_unsymmetric_sparse(const char *fname, int *M_, int *N_, int *nz_,
 
 
 
-	if ( !(mm_is_real(matcode) && mm_is_matrix(matcode) &&
+	if (!(mm_is_real(matcode) && mm_is_matrix(matcode) &&
 			mm_is_sparse(matcode)))
 	{
 		fprintf(stderr, "Sorry, this application does not support ");
@@ -187,7 +187,7 @@ int mm_write_mtx_crd_size(FILE *f, int M, int N, int nz)
 		return 0;
 }
 
-int mm_read_mtx_crd_size(FILE *f, int *M, int *N, int *nz )
+int mm_read_mtx_crd_size(FILE *f, int *M, int *N, int *nz)
 {
 	char line[MM_MAX_LINE_LENGTH];
 	int num_items_read;
@@ -391,7 +391,7 @@ int mm_write_banner(FILE *f, MM_typecode matcode)
 
 	ret_code = fprintf(f, "%s %s\n", MatrixMarketBanner, str);
 	free(str);
-	if (ret_code !=2 )
+	if (ret_code !=2)
 		return MM_COULD_NOT_WRITE_FILE;
 	else
 		return 0;

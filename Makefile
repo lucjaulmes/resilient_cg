@@ -62,10 +62,10 @@ space=$(empty) $(empty)
 # Finally defining directories and targets
 DESTDIR:=$(subst $(space),_,$(DIR))
 
-.PHONY : default clean all debug ompssdebug plaindebug conv ompssconv plainconv speedup ompssspeedup plainspeedup
-default:all
+.PHONY : default clean all ompssall plainall debug ompssdebug plaindebug conv ompssconv plainconv speedup ompssspeedup plainspeedup
+default:ompssall
 
-all debug ompssdebug plaindebug conv ompssconv plainconv speedup ompssspeedup plainspeedup: $(DESTDIR)
+all ompssall plainall debug ompssdebug plaindebug conv ompssconv plainconv speedup ompssspeedup plainspeedup: $(DESTDIR)
 	cd $(DESTDIR) && make -f ../Makefile.sub "FLAVOUR=$(FLAVOUR)" VPATH=.:..:../src $(@)
 
 clean:

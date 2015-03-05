@@ -7,8 +7,8 @@
 
 #include "matrix.h"
 
-// matrix-vector multiplication, row major ( W = A x V )
-void mult( const Matrix *A,  const double *V, double *W )
+// matrix-vector multiplication, row major (W = A x V)
+void mult(const Matrix *A,  const double *V, double *W)
 {
 	int i, j;
 
@@ -21,8 +21,8 @@ void mult( const Matrix *A,  const double *V, double *W )
 	}
 }
 
-// matrix-vector multiplication ( W = t(V) x A = t( t(A) x V ) )
-void mult_transposed ( const Matrix *A , const double *V, double *W )
+// matrix-vector multiplication (W = t(V) x A = t( t(A) x V ))
+void mult_transposed (const Matrix *A , const double *V, double *W)
 {
 	int i, j, col;
 
@@ -40,24 +40,24 @@ void mult_transposed ( const Matrix *A , const double *V, double *W )
 	}
 }
 
-void print_matrix( FILE* f, const Matrix *A )
+void print_matrix(FILE* f, const Matrix *A)
 {
 	int i, j;
 	for(i=0; i < A->n; i++)
 	{
 		printf("%4d   |  ", i);
 
-		for( j= A->r[i]; j < A->r[i+1]; j++)
+		for(j= A->r[i]; j < A->r[i+1]; j++)
 			fprintf(f, " [%4d ] % 1.2e ", A->c[j], A->v[j]);
 
 		printf("\n");
 	}
 }
 
-// return pos in matrix ( so then you only have to take A->v[pos] ), -1 if does not exist
-int find_in_matrix( const int row, const int col, const Matrix *A )
+// return pos in matrix (so then you only have to take A->v[pos] ), -1 if does not exist
+int find_in_matrix(const int row, const int col, const Matrix *A)
 {
-	if( row > A->n || col > A->m )
+	if(row > A->n || col > A->m)
 		return -1;
 	
 	int low = A->r[row], upp = A->r[row+1]-1, mid;
@@ -67,13 +67,13 @@ int find_in_matrix( const int row, const int col, const Matrix *A )
 	if(A->c[upp] == col)
 		return upp;
 
-	while( low+1 < upp )
+	while(low+1 < upp)
 	{
 		mid = (low + upp) / 2;
 
-		if( A->c[mid] > col )
+		if(A->c[mid] > col)
 			upp = mid;
-		else if( A->c[mid] < col )
+		else if(A->c[mid] < col)
 			low = mid;
 		else
 			return mid;
@@ -83,13 +83,13 @@ int find_in_matrix( const int row, const int col, const Matrix *A )
 }
 
 
-void read_matrix( const int n, const int m, const int nnz, const int symmetric, Matrix *A, FILE* input_file )
+void read_matrix(const int n, const int m, const int nnz, const int symmetric, Matrix *A, FILE* input_file)
 {
 	int Y, prevY = -1, X, i, j, k, pos = 0, *nb_subdiagonals = NULL;
 	double val;
 
-	if( symmetric )
-		nb_subdiagonals = (int*)calloc( n, sizeof(int) );
+	if(symmetric)
+		nb_subdiagonals = (int*)calloc(n, sizeof(int));
 
 	A->n = n;
 	A->m = m;
@@ -99,7 +99,7 @@ void read_matrix( const int n, const int m, const int nnz, const int symmetric, 
 
 	for (i=0; i<nnz; i++)
 	{
-		if( i > 0 && i % thres == 0 )
+		if(i > 0 && i % thres == 0)
 		{
 			ctr += 5;
 			{}//log_out(" %d%%", ctr);
@@ -110,15 +110,15 @@ void read_matrix( const int n, const int m, const int nnz, const int symmetric, 
 		Y--;
 
 		// for debug purposes
-		if( Y >= n || X >= m )
+		if(Y >= n || X >= m)
 			continue;
 
-		if( Y > prevY )
+		if(Y > prevY)
 		{
 			A->r[Y] = pos;
 
 			// leave space for the subdiagonals elements
-			if( symmetric )
+			if(symmetric)
 				pos += nb_subdiagonals[Y];
 
 			prevY = Y;
@@ -128,7 +128,7 @@ void read_matrix( const int n, const int m, const int nnz, const int symmetric, 
 		A->c[pos] = X;
 		pos ++;
 
-		if( symmetric && X > Y )
+		if(symmetric && X > Y)
 			nb_subdiagonals[X]++;
 	}
 
@@ -137,18 +137,18 @@ void read_matrix( const int n, const int m, const int nnz, const int symmetric, 
 
 	{}//log_out(" 100%%, filling symmetric part...");
 	
-	if( symmetric )
+	if(symmetric)
 	{
 		// now let's fill in the subdiagonal part
-		int *fill_row = malloc( n * sizeof(int) );
+		int *fill_row = malloc(n * sizeof(int));
 
-		for( j=0; j<A->n; j++ )
+		for(j=0; j<A->n; j++)
 			fill_row[j] = A->r[j];
 
-		for( i=0; i<A->n; i++ )
-			for( k = A->r[i] + nb_subdiagonals[i] ; k < A->r[i+1] ; k++ )
+		for(i=0; i<A->n; i++)
+			for(k = A->r[i] + nb_subdiagonals[i] ; k < A->r[i+1] ; k++)
 			{
-				if( i == A->c[k] )
+				if(i == A->c[k])
 					continue;
 
 				j = A->c[k];
@@ -167,19 +167,19 @@ void read_matrix( const int n, const int m, const int nnz, const int symmetric, 
 	}
 }
 
-void allocate_matrix(const int n, const int m, const int nnz, Matrix *A, int align_bytes )
+void allocate_matrix(const int n, const int m, const int nnz, Matrix *A, int align_bytes)
 {
 	A->n = n;
 	A->m = m;
 	A->nnz = nnz;
 
 
-	A->r = (int*)aligned_calloc( align_bytes, (n+1) * sizeof(int));
+	A->r = (int*)aligned_calloc(align_bytes, (n+1) * sizeof(int));
 
-	A->c = (int*)aligned_calloc( align_bytes, nnz * sizeof(int));
-	A->v = (double*)aligned_calloc( align_bytes, nnz * sizeof(double));
+	A->c = (int*)aligned_calloc(align_bytes, nnz * sizeof(int));
+	A->v = (double*)aligned_calloc(align_bytes, nnz * sizeof(double));
 
-	if( ! A->v || ! A->c || ! A->r )
+	if(! A->v || ! A->c || ! A->r)
 	{
 		fprintf(stderr, "Allocating sparse matrix of size %d rows and %d non-zeros failed !\n", n, nnz);
 		exit(2);
@@ -191,11 +191,11 @@ void deallocate_matrix(Matrix *A)
 	free(A->r);
 	free(A->c);
 
-	if( A->v )
+	if(A->v)
 		free(A->v);
 }
 
-void get_submatrix( const Matrix *A , const int *rows, const int nr, const int *cols, const int nc, const int bs, Matrix *B )
+void get_submatrix(const Matrix *A , const int *rows, const int nr, const int *cols, const int nc, const int bs, Matrix *B)
 {
 	// nb = Number of Blocks, bs = Block Size
 	int i, ii, j, jj, k, p = 0;
@@ -212,24 +212,24 @@ void get_submatrix( const Matrix *A , const int *rows, const int nr, const int *
 			{
 				/*
 				// remove above-diagonals, if we need just half the matrix
-				if( ii > A->c[j] )
+				if(ii > A->c[j])
 					continue;
 				*/
 			
-				while( jj < nc && A->c[j] >= cols[jj] + bs )
+				while(jj < nc && A->c[j] >= cols[jj] + bs)
 					jj++;
 
 				// from here on, we are sure that A->c[j] < cols[jj] + bs
 
 				// if we did all the blocks for row ii, go to next row
-				if( jj >= nc )
+				if(jj >= nc)
 					break;
 
-				if( A->c[j] >= cols[jj] )
+				if(A->c[j] >= cols[jj])
 				{
 					int col_in_B = jj * bs + (A->c[j] - cols[jj]);
 
-					if( col_in_B > B->m )
+					if(col_in_B > B->m)
 						break;
 
 					B->v[p] = A->v[j];

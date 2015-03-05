@@ -1,4 +1,5 @@
 #include <stdlib.h>
+#include <string.h>
 #include <stdio.h>
 #include <sys/time.h>
 #include <math.h>
@@ -16,9 +17,9 @@
 #include "backtrace.h"
 #include "page-collect.h"
 
-const char * const mask_names[] = { "0 ", 
-	"X ", "Ax", "G ", "P4", "P5", "Ap", "7 ", "8 ", 
-	"Sx", "10", "Sg", "Sp", "13", "Tp", "15", "16", 
+const char * const mask_names[] = { "0 ",
+	"X ", "Ax", "G ", "P4", "P5", "Ap", "7 ", "8 ",
+	"Sx", "10", "Sg", "Sp", "13", "Tp", "15", "16",
 	"Ng", "Np", "RC", "20", "21", "22", "23", "24",
 	"25", "26", "27", "28", "29", "Fg", "Fp" };
 
@@ -31,12 +32,12 @@ analyze_err errinfo;
 // N.B this is still __thread and not _Thread_local until mcc supports it : https://pm.bsc.es/projects/mcxx/ticket/404
 __thread sig_atomic_t out_vect = 0, exception_happened = 0;
 
-// from x a uniform distribution between 0 and 1, the weibull distribution 
-// is given by lambda * ( -ln( 1 - x ) )^(1/k)
+// from x a uniform distribution between 0 and 1, the weibull distribution
+// is given by lambda * (-ln( 1 - x ) )^(1/k)
 double weibull(const double lambda, const double k, const double x)
 {
 	double y, inv_k = 1 / k;
-	y = - log1p( - x ); // - log ( 1 - x )
+	y = - log1p(- x ); // - log ( 1 - x)
 	y = pow(y, inv_k);
 	y *= lambda; // where lambda ~ mean time between faults
 
@@ -45,10 +46,10 @@ double weibull(const double lambda, const double k, const double x)
 
 // lambda is as in weibull (so inverse to usual in exp) ~ mtbf
 // (i.e. scale parameter, not rate)
-// so if x uniform between 0 and 1, return - lambda * log ( 1 - x )
+// so if x uniform between 0 and 1, return - lambda * log (1 - x)
 double exponential(const double lambda, const double x)
 {
-	double y = - log1p( - x ); // - log ( 1 - x )
+	double y = - log1p(- x ); // - log ( 1 - x)
 	y *= lambda;
 
 	return y;
@@ -62,7 +63,7 @@ void populate_global(const int n, const int fail_size_bytes, const int fault_str
 		.ckpt = checkpoint_path
 		#endif
 	};
-	sim_err = aligned_calloc( sysconf(_SC_PAGESIZE), sizeof(error_sim_data) );
+	sim_err = aligned_calloc(sysconf(_SC_PAGESIZE), sizeof(error_sim_data));
 	*sim_err = (error_sim_data){ .lambda = lambda, .nerr = nerr, .info = &errinfo };
 }
 
@@ -72,18 +73,18 @@ void setup_resilience(const Matrix *A, const int nb, magic_pointers *mp)
 
 	#if DUE
 	// neighbourhood stuff in errinfo
-	errinfo.neighbours = (Matrix*)calloc( 1, sizeof(Matrix) );
+	errinfo.neighbours = (Matrix*)calloc(1, sizeof(Matrix));
 	// don't want A->v so we allocate manually
 	errinfo.neighbours->nnz = errinfo.nb_failblocks * errinfo.nb_failblocks;
 	errinfo.neighbours->n = errinfo.neighbours->m = errinfo.nb_failblocks;
-	errinfo.neighbours->r = (int*)calloc( (errinfo.nb_failblocks+1), sizeof(int) );
-	errinfo.neighbours->c = (int*)calloc( errinfo.nb_failblocks * errinfo.nb_failblocks, sizeof(int) );
+	errinfo.neighbours->r = (int*)calloc((errinfo.nb_failblocks+1), sizeof(int));
+	errinfo.neighbours->c = (int*)calloc(errinfo.nb_failblocks * errinfo.nb_failblocks, sizeof(int));
 	errinfo.neighbours->v = NULL;
 
 	compute_neighbourhoods(A, errinfo.failblock_size, errinfo.neighbours);
 
 	// now for storing infos about errors
-	errinfo.skipped_blocks = (int*)calloc( errinfo.nb_failblocks, sizeof(int) );
+	errinfo.skipped_blocks = (int*)calloc(errinfo.nb_failblocks, sizeof(int));
 	#endif
 
 	#if CKPT == CKPT_TO_DISK
@@ -98,13 +99,6 @@ void setup_resilience(const Matrix *A, const int nb, magic_pointers *mp)
 	ASSOC_CONST_MP
 	#undef X
 
-	// everything that is in a "reliable backing store" gets a free pass through error injection
-	mprotect((void*)A->c,	sizeof(A->c),	PROT_READ);
-	mprotect((void*)A->r,	sizeof(A->r),	PROT_READ);
-	mprotect((void*)A->v,	sizeof(A->v),	PROT_READ);
-	mprotect((void*)mp->b,	sizeof(mp->b),	PROT_READ);	
-
-
 	errinfo.in_recovery_errors = 0;
 	errinfo.errors = 0;
 	errinfo.skips = 0;
@@ -117,22 +111,78 @@ void setup_resilience(const Matrix *A, const int nb, magic_pointers *mp)
 	sigact.sa_flags = SA_SIGINFO;
 	sigact.sa_mask = empty;
 
-	if( sigaction(SIGBUS, &sigact, NULL) !=  0)
+	if(sigaction(SIGBUS, &sigact, NULL) !=  0)
 		fprintf(stderr, "error setting signal handler for %d (%s)\n", SIGBUS, strsignal(SIGBUS));
-	if( sigaction(SIGSEGV, &sigact, NULL) !=  0)
+	if(sigaction(SIGSEGV, &sigact, NULL) !=  0)
 		fprintf(stderr, "error setting signal handler for %d (%s)\n", SIGSEGV, strsignal(SIGSEGV));
 
 	// start semaphore locked : released in release_error_injection
 	sem_init(&(sim_err->start_sim), 0, 0);
 
 	// if simulating faults, create thread to do so
-	if( sim_err->lambda != 0 )
+	if(sim_err->lambda != 0)
 		pthread_create(&(sim_err->th), NULL, &simulate_failures, (void*)sim_err);
-	
-	intptr_t no_inject[] = {(intptr_t)A->c, (intptr_t)A->nnz, (intptr_t)A->v, (intptr_t)mp->b, (intptr_t)sim_err};
+
+	// everything that is in a "reliable backing store" becomes read-only. Also, get everyone's size.
+	size_t align = errinfo.failblock_size * sizeof(double),
+			vec_size = round_up(A->n    * sizeof(double) , align),
+			Ac_size  = round_up(A->nnz  * sizeof(A->c[0]), align),
+			Av_size  = round_up(A->nnz  * sizeof(A->v[0]), align),
+			Ar_size  = round_up((A->n+1) * sizeof(A->r[0]), align);
+
+	mprotect((void*)A->c,	Ac_size,  PROT_READ);
+	mprotect((void*)A->r,	Ar_size,  PROT_READ);
+	mprotect((void*)A->v,	Av_size,  PROT_READ);
+	mprotect((void*)mp->b,	vec_size, PROT_READ);
+
+	mprotect((void*)mp->x,		vec_size, PROT_READ);
+	mprotect((void*)mp->p,		vec_size, PROT_READ);
+	mprotect((void*)mp->old_p,	vec_size, PROT_READ);
+	mprotect((void*)mp->Ap,		vec_size, PROT_READ);
+	mprotect((void*)mp->g,		vec_size, PROT_READ);
+	mprotect((void*)mp->Ax,		vec_size, PROT_READ);
+
+	intptr_t no_inject[] = {
+		(intptr_t)sim_err, (intptr_t)A->c, (intptr_t)A->r, (intptr_t)A->v, (intptr_t)mp->b,
+		(intptr_t)mp->x, (intptr_t)mp->p, (intptr_t)mp->old_p, (intptr_t)mp->Ap, (intptr_t)mp->g, (intptr_t)mp->Ax
+	};
 
 	// here, everything should be allocated, it's a good time to know what our memory pages are.
-	sim_err->nb_range = retrieve_vm_ranges(sim_err->start_range, sim_err->end_range, sim_err->range_page_cumul, &sim_err->nb_pages, no_inject, sizeof(no_inject));
+	sim_err->nb_range = retrieve_vm_ranges(sim_err->start_range, sim_err->end_range, sim_err->range_page_cumul, &sim_err->nb_pages, no_inject, sizeof(no_inject)/sizeof(no_inject[0]));
+
+	mprotect((void*)mp->x,		vec_size, PROT_READ | PROT_WRITE);
+	mprotect((void*)mp->p,		vec_size, PROT_READ | PROT_WRITE);
+	mprotect((void*)mp->old_p,	vec_size, PROT_READ | PROT_WRITE);
+	mprotect((void*)mp->Ap,		vec_size, PROT_READ | PROT_WRITE);
+	mprotect((void*)mp->g,		vec_size, PROT_READ | PROT_WRITE);
+	mprotect((void*)mp->Ax,		vec_size, PROT_READ | PROT_WRITE);
+
+	mprotect((void*)A->c,	Ac_size,  PROT_READ | PROT_WRITE);
+	mprotect((void*)A->r,	Ar_size,  PROT_READ | PROT_WRITE);
+	mprotect((void*)A->v,	Av_size,  PROT_READ | PROT_WRITE);
+	mprotect((void*)mp->b,	vec_size, PROT_READ | PROT_WRITE);
+
+	printf(
+		"We have %d memory pages : %d vulnerable and %d protected (%lu ABFT-protected %lu constant data)\n",
+		sim_err->nb_pages, sim_err->nb_pages - sim_err->range_page_cumul[sim_err->nb_range-1],
+		sim_err->range_page_cumul[sim_err->nb_range-1], 6*vec_size/align, (Ac_size + Ar_size + Av_size + vec_size) / align
+	);
+
+	printf("A.c"	" [%p;%ld]\n", (void*)A->c,			Ac_size);
+	printf("A.r"	" [%p;%ld]\n", (void*)A->r,			Ar_size);
+	printf("A.v"	" [%p;%ld]\n", (void*)A->v,			Av_size);
+	printf("b"		" [%p;%ld]\n", (void*)mp->b,		vec_size);
+	printf("x"		" [%p;%ld]\n", (void*)mp->x,		vec_size);
+	printf("p"		" [%p;%ld]\n", (void*)mp->p,		vec_size);
+	printf("old_p"	" [%p;%ld]\n", (void*)mp->old_p,	vec_size);
+	printf("Ap"		" [%p;%ld]\n", (void*)mp->Ap,		vec_size);
+	printf("g"		" [%p;%ld]\n", (void*)mp->g,		vec_size);
+	printf("Ax"		" [%p;%ld]\n", (void*)mp->Ax,		vec_size);
+
+	// just cat the /proc/pid/maps to stdout
+	char cmd[FILENAMELEN] = "cat ";
+	mempage_file(cmd + strlen(cmd));
+	system(cmd);
 }
 
 void start_error_injection()
@@ -142,7 +192,7 @@ void start_error_injection()
 
 void unset_resilience()
 {
-	if( sim_err->lambda != 0 && sim_err->th )
+	if(sim_err->lambda != 0 && sim_err->th)
 	{
 		pthread_cancel(sim_err->th);
 		pthread_join(sim_err->th, NULL);
@@ -173,8 +223,8 @@ void unset_resilience()
 
 void resilience_sighandler(int signum, siginfo_t *info, void *context UNUSED)
 {
-	if( (signum == SIGBUS /* && (info->si_code == BUS_MCEER_AR || info->si_code == BUS_MCEER_A0 )*/) ||
-		(signum == SIGSEGV && info->si_code == SEGV_ACCERR) )
+	if((signum == SIGBUS /* && (info->si_code == BUS_MCEER_AR || info->si_code == BUS_MCEER_A0 )*/) ||
+		(signum == SIGSEGV && info->si_code == SEGV_ACCERR))
 	{
 		void * page = (void*)((long)info->si_addr - ((long)info->si_addr % (sizeof(double) << get_log2_failblock_size())));
 		//info.si_add_lsb contains lsb of corrupted data, e.g. log2(sysconf(_SC_PAGESIZE)) for a full page
@@ -184,16 +234,16 @@ void resilience_sighandler(int signum, siginfo_t *info, void *context UNUSED)
 		// check if error was in data that we know to recover
 		int block, vect = get_data_blockptr(page, &block);
 
-		if( vect < 0 )
+		if(vect < 0)
 		{
-			fprintf(stderr, "Error happened in memory that is not recoverable data : %p\n", page); 
+			fprintf(stderr, "Error happened in memory that is not recoverable data : %p\n", page);
 			crit_err_hdlr(signum, info, context);
 			return;
 		}
 
 	#if DUE
 		// mark vector of error and (pseudo-?)vector of output with error
-		mark_to_skip( block, (1 << out_vect) | (1 << vect) );
+		mark_to_skip(block, (1 << out_vect) | (1 << vect));
 	#endif
 
 		// notify globally
@@ -202,13 +252,13 @@ void resilience_sighandler(int signum, siginfo_t *info, void *context UNUSED)
 	#if DUE
 		// notify this thread
 		exception_happened++;
-		if( out_vect == RECOVERY )
+		if(out_vect == RECOVERY)
 			errinfo.in_recovery_errors++;
 	#endif
 
 
 		// old : unprotect, mess with data in the page
-		//if( signum == SIGSEGV )
+		//if(signum == SIGSEGV)
 		//	mprotect(page, sizeof(double) << get_log2_failblock_size(), PROT_READ | PROT_WRITE);
 		//memset(page, 0x00, sizeof(double) << get_log2_failblock_size());
 
@@ -216,7 +266,7 @@ void resilience_sighandler(int signum, siginfo_t *info, void *context UNUSED)
 		mmap(page, sizeof(double) << get_log2_failblock_size(), PROT_READ|PROT_WRITE, MAP_FIXED|MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
 
 
-		log_err(SHOW_DBGINFO, "Error has just been  signaled  on page %3d of vector %s (%d)\n", block, vect_name(vect), vect); 
+		log_err(SHOW_DBGINFO, "Error has just been  signaled  on page %3d of vector %s (%d)\n", block, vect_name(vect), vect);
 	}
 	else
 	{
@@ -230,7 +280,7 @@ void silent_deallocating_sighandler(int signum, siginfo_t *info, void *context U
 	// handler to silently deallocate memory even where we removed authorizations
 	if(signum == SIGSEGV && info->si_code == SEGV_ACCERR)
 	{
-		int block, vect = get_data_blockptr(info->si_addr, &block), r;
+		int block = -1, vect = get_data_blockptr(info->si_addr, &block), r;
 		void * page = (void*)((long)info->si_addr - ((long)info->si_addr % (sizeof(double) << get_log2_failblock_size())));
 		r = mprotect(page, sizeof(double) << get_log2_failblock_size(), PROT_READ | PROT_WRITE);
 
@@ -256,7 +306,7 @@ void* simulate_failures(void* ptr)
 	int i, nerr = sim_err->nerr;
 	long long faults_nsec[nerr+1];
 
-	if( nerr )
+	if(nerr)
 	{
 		double total_time = 0, mtbe = sim_err->lambda / (double)nerr, faults_unscaled[nerr+1];
 
@@ -296,26 +346,26 @@ void* simulate_failures(void* ptr)
 	while(1)
 	{
 		long long next_fault_nsec;
-		if( nerr )
+		if(nerr)
 		{
-			if( i > nerr )
+			if(i > nerr)
 				break;
 			else
 				next_fault_nsec = faults_nsec[i++];
 		}
 		else
-			next_fault_nsec = (long long)( exponential(sim_err->lambda, (double)rand()/(double)RAND_MAX) * 1e3);
+			next_fault_nsec = (long long)(exponential(sim_err->lambda, (double)rand()/(double)RAND_MAX) * 1e3);
 
 		next_sim_fault.tv_sec = next_fault_nsec / (long long)(1e9); // secs to next fault
 		next_sim_fault.tv_nsec = next_fault_nsec % (long long)(1e9); // nanosecs to next fault
 
 		int r = nanosleep(&next_sim_fault, &remainder);
-		if( r != 0 )
+		if(r != 0)
 		{
 			perror("nanosleep interrupted ");
 			r = nanosleep(&remainder, &remainder2);
 
-			if( r != 0 )
+			if(r != 0)
 				fprintf(stderr, "Nanosleep skipped %d.%09d of %d.%09d sleeping time because of 2 successive interruptions\n",
 						(int)remainder2.tv_sec, (int)remainder2.tv_nsec, (int)next_sim_fault.tv_sec, (int)next_sim_fault.tv_nsec);
 		}
@@ -323,16 +373,17 @@ void* simulate_failures(void* ptr)
 		// TODO switch between kinds of fault injections ?
 		cause_mpr(sim_err);
 		//flip_a_bit(sim_err->info);
-	}	
+	}
 
 	return NULL;
 }
 
 void cause_mpr(error_sim_data *sim_err)
 {
-	int rand_page = (int)( ((double)rand() / (double)RAND_MAX) * sim_err->nb_pages );
+	//int rand_page = (int)( ((double)rand() / (double)RAND_MAX) * sim_err->nb_pages );
+	int rand_page = (int)( ((double)rand() / (double)RAND_MAX) * sim_err->range_page_cumul[sim_err->nb_range-1] );
 
-	if( sim_err->range_page_cumul[sim_err->nb_range-1] < rand_page )
+	if(sim_err->range_page_cumul[sim_err->nb_range-1] < rand_page)
 	{
 		log_err(SHOW_DBGINFO, "Error is going to be triggered on page %d/%d that is assumed protected (beyond page %d) -- no injection\n",
 				rand_page, sim_err->nb_pages, sim_err->range_page_cumul[sim_err->nb_range-1]);
@@ -345,10 +396,11 @@ void cause_mpr(error_sim_data *sim_err)
 			i++;
 
 		// now rand_page in [ sim_err->range_page_cumul[i-1] , sim_err->range_page_cumul[i] ]
-		// compute from end of range, for the sake of not doing if( i > 0 )
+		// compute from end of range, for the sake of not doing if(i > 0)
 		intptr_t addr = sim_err->end_range[i] + (rand_page - sim_err->range_page_cumul[i]) * sysconf(_SC_PAGESIZE);
 
-		log_err(SHOW_DBGINFO, "Error is going to be triggered on page %d/%d %" PRIxPTR "\n", rand_page, sim_err->nb_pages, addr);
+		//log_err(SHOW_DBGINFO, "Error is going to be triggered on page %d/%d %" PRIxPTR "\n", rand_page, sim_err->nb_pages, addr);
+		printf("Error is going to be triggered on page %d/%d %" PRIxPTR "\n", rand_page, sim_err->nb_pages, addr);
 
 		mprotect((void*)addr, sizeof(double) << sim_err->info->log2fbs, PROT_NONE);
 		//madvise((void*)addr, sysconf(_SC_PAGESIZE), MADV_HWPOISON);
@@ -357,9 +409,9 @@ void cause_mpr(error_sim_data *sim_err)
 
 void flip_a_bit(analyze_err *info)
 {
-	int flip_pos = (int)( ((double)rand() / (double)RAND_MAX) * info->nb_failblocks * info->failblock_size ) ;
-	int vect     = (int)( ((double)rand() / (double)RAND_MAX) * info->nb_data ) ;
-	int flip_bit = (int)( ((double)rand() / (double)RAND_MAX) * 8 * sizeof(double) ) ;
+	int flip_pos = (int)(((double)rand() / (double)RAND_MAX) * info->nb_failblocks * info->failblock_size ) ;
+	int vect     = (int)(((double)rand() / (double)RAND_MAX) * info->nb_data ) ;
+	int flip_bit = (int)(((double)rand() / (double)RAND_MAX) * 8 * sizeof(double) ) ;
 
 	long long *victim = ((long long*)info->data[ vect ]) + flip_pos;
 
@@ -388,7 +440,7 @@ int get_data_blockptr(const void *vect, int *block)
 	{
 		pos = ptr - (intptr_t)errinfo.data[i];
 
-		if( pos >= 0 && pos < max_vect_size )
+		if(pos >= 0 && pos < max_vect_size)
 		{
 			*block = (int)(pos / block_size);
 			return i+1;
@@ -402,7 +454,7 @@ int get_data_vectptr(const double *vect)
 {
 	int i;
 	for(i=0; i<errinfo.nb_data; i++)
-		if( errinfo.data[i] == vect )
+		if(errinfo.data[i] == vect)
 			return i+1;
 
 	return -1;
@@ -413,14 +465,14 @@ int check_recovery_errors()
 {
 	int r = (int)errinfo.in_recovery_errors;
 	errinfo.in_recovery_errors = 0;
-	if( r ) fprintf(stderr, "ERROR DURING RECOVERY restart needed\n"); // this sufficiently bad to always show ?
+	if(r) fprintf(stderr, "ERROR DURING RECOVERY restart needed\n"); // this sufficiently bad to always show ?
 	return r;
 }
 
 int check_block(const int block, const int input_mask)
 {
 	// if fault happened in this task/thread, it is already marked with out_mask : nothing more to do
-	if( check_for_exceptions() )
+	if(check_for_exceptions())
 	{
 		return 1;
 		log_err(SHOW_FAILINFO, "\tMask %s skips block %2d, failed in this task [after  computing]\n", single_mask(COMPLETE_WITH_FAIL(1 << out_vect)), block);
@@ -434,7 +486,7 @@ int check_block(const int block, const int input_mask)
 	{
 		b = errinfo.skipped_blocks[block];
 	}
-	while( (b & input_mask) && ! __sync_bool_compare_and_swap( &(errinfo.skipped_blocks[block]), b, b | out_mask ) );
+	while((b & input_mask) && ! __sync_bool_compare_and_swap( &(errinfo.skipped_blocks[block]), b, b | out_mask ));
 
 	#if VERBOSE >= SHOW_FAILINFO
 	if(b & input_mask)
@@ -456,17 +508,17 @@ int should_skip_block(const int block, const int mask)
 	{
 		b = errinfo.skipped_blocks[block];
 	}
-	while( (b & mask) && ! __sync_bool_compare_and_swap( &(errinfo.skipped_blocks[block]), b, b | out_mask ) );
+	while((b & mask) && ! __sync_bool_compare_and_swap( &(errinfo.skipped_blocks[block]), b, b | out_mask ));
 
 	#if VERBOSE >= SHOW_FAILINFO
-	if( b & mask )
+	if(b & mask)
 	{
 		char mask_str[ 30 ];
 		log_err(SHOW_FAILINFO, "\tMask %s skips block %2d (was %s : %x) [before computing]\n", single_mask(out_mask), block, str_mask(mask_str, b), b);
 	}
 	#endif
 
-	return ( b & mask );
+	return (b & mask);
 }
 
 int count_neighbour_faults(const int block, const int mask)
@@ -481,9 +533,9 @@ int count_neighbour_faults(const int block, const int mask)
 
 void mark_to_skip(const int block, const int mask)
 {
-	int before = __sync_fetch_and_or( &(errinfo.skipped_blocks[block]), mask );
+	int before = __sync_fetch_and_or(&(errinfo.skipped_blocks[block]), mask);
 
-	if( before == 0 )
+	if(before == 0)
 	{
 		#pragma omp atomic
 			errinfo.skips ++ ;
@@ -498,10 +550,10 @@ void mark_to_skip(const int block, const int mask)
 void mark_corrected(const int block, const int mask)
 {
 	const int complete_mask = COMPLETE_WITH_FAIL(mask);
-	int before = __sync_fetch_and_and( &(errinfo.skipped_blocks[block]), ~ complete_mask );
+	int before = __sync_fetch_and_and(&(errinfo.skipped_blocks[block]), ~ complete_mask);
 
 	// if last thing skipped for this block was the one we just removed
-	if( before > 0 && (before & complete_mask) == before )
+	if(before > 0 && (before & complete_mask) == before)
 	{
 		#pragma omp atomic
 			errinfo.skips -- ;
@@ -526,7 +578,7 @@ int has_skipped_blocks(const int mask)
 {
 	int i, r = 0;
 	for(i=0; i<errinfo.nb_failblocks; i++)
-		if( errinfo.skipped_blocks[i] & mask )
+		if(errinfo.skipped_blocks[i] & mask)
 		{
 			r++;
 			break;
@@ -556,7 +608,7 @@ int overlapping_faults(const int mask_v, const int mask_w)
 	for(i=0; i<errinfo.nb_failblocks; i++)
 	{
 		block = errinfo.skipped_blocks[i];
-		if( block & mask_v && block & mask_w )
+		if(block & mask_v && block & mask_w)
 		{
 			r++;
 			break;
@@ -570,7 +622,7 @@ void clear_failed_blocks(const int mask, const int start, const int end)
 {
 	int i;
 	for(i = (start >> errinfo.log2fbs); i < (end >> errinfo.log2fbs) ; i++)
-		if( errinfo.skipped_blocks[i] & mask )
+		if(errinfo.skipped_blocks[i] & mask)
 			__sync_fetch_and_and(&(errinfo.skipped_blocks[i]), ~mask);
 }
 
@@ -578,26 +630,26 @@ void clear_failed(const int mask)
 {
 	int i;
 	for(i=0; i<errinfo.nb_failblocks; i++)
-		if( errinfo.skipped_blocks[i] & mask )
+		if(errinfo.skipped_blocks[i] & mask)
 			__sync_fetch_and_and(&(errinfo.skipped_blocks[i]), ~mask);
 }
 
 void clear_failed_vect(const double *vect)
 {
-	clear_failed( 1 << get_data_vectptr(vect) );
+	clear_failed(1 << get_data_vectptr(vect));
 }
 
 int get_all_failed_blocks(const int mask, int **lost_blocks)
 {
 	int total_skips = errinfo.skips;
-	if( ! total_skips )
+	if(! total_skips)
 		return 0;
 
-	*lost_blocks = (int*) calloc( total_skips, sizeof(int) );
+	*lost_blocks = (int*) calloc(total_skips, sizeof(int));
 
 	int i, j = 0;
 	for(i=0; i<errinfo.nb_failblocks && j < total_skips; i++)
-		if( errinfo.skipped_blocks[i] & mask )
+		if(errinfo.skipped_blocks[i] & mask)
 			(*lost_blocks)[ j++ ] = i;
 
 	return j;
@@ -607,7 +659,7 @@ int get_all_failed_blocks_vect(const double *v, int **lost_blocks)
 {
 	int vect = get_data_vectptr(v);
 
-	if( vect >= 0 )
+	if(vect >= 0)
 		return get_all_failed_blocks(1 << vect, lost_blocks);
 	else
 		return 0;
@@ -620,9 +672,9 @@ void get_recovering_blocks_bounds(int *start, int *end, const int *lost, const i
 
 	for(i=0; i<nb_lost; i++)
 	{
-		if( lost[i] < min_block )
+		if(lost[i] < min_block)
 			min_block = lost[i];
-		if( lost[i] > max_block )
+		if(lost[i] > max_block)
 			max_block = lost[i];
 	}
 
@@ -631,9 +683,9 @@ void get_recovering_blocks_bounds(int *start, int *end, const int *lost, const i
 	// link to blocks
 	for(b=0; b<nb_blocks; b++)
 	{
-		if( min_lost_item >= get_block_start(b) && min_lost_item < get_block_end(b) )
+		if(min_lost_item >= get_block_start(b) && min_lost_item < get_block_end(b))
 			*start = get_block_start(b);
-		if( max_lost_item >= get_block_start(b) && max_lost_item < get_block_end(b) )
+		if(max_lost_item >= get_block_start(b) && max_lost_item < get_block_end(b))
 			*end = get_block_end(b);
 	}
 }
@@ -654,10 +706,10 @@ void get_failed_neighbourset(const int *all_lost, const int nb_lost, const int s
 		// search the neighbours of set_k
 		// if set_k and i are neighbours and i is found in the failed blocks, add i to set
 		for(i=errinfo.neighbours->r[ set[k] ]; i < errinfo.neighbours->r[ set[k] + 1 ]; i++)
-			if( added[ errinfo.neighbours->c[i] ] == 0 )
+			if(added[ errinfo.neighbours->c[i] ] == 0)
 			{
 				for(j=0; j<nb_lost; j++)
-					if( all_lost[j] == errinfo.neighbours->c[i] )
+					if(all_lost[j] == errinfo.neighbours->c[i])
 					{
 						added[ errinfo.neighbours->c[i] ] = 1;
 						set[*num] = errinfo.neighbours->c[i];
@@ -666,12 +718,12 @@ void get_failed_neighbourset(const int *all_lost, const int nb_lost, const int s
 			}
 	}
 	// if a failed block in set has failed errinfo.neighbours, we should add them too
-	while( ++k < *num );
+	while(++k < *num);
 
 	// okay now we should really sort the set...
 	// should be mostly a small list, partly sorted already
 	// so kiss and go for an insertion sort
-	int insert; 
+	int insert;
 	for (i = 1; i < *num; i++)
 	{
 		insert = set[i];
@@ -688,25 +740,25 @@ void compute_neighbourhoods(const Matrix *mat, const int bs, Matrix *neighbours)
 	int i, ii, bi, k, bj, pos = 0, set_in_block[errinfo.nb_failblocks];
 
 	// iterate all lines, i points to the start of the block, ii to the line and bi to the number of the block
-	for(i=0, bi=0; i < mat->n; i += bs, bi++ )
+	for(i=0, bi=0; i < mat->n; i += bs, bi++)
 	{
 		neighbours->r[bi] = pos;
 
 		for(bj=0; bj<errinfo.nb_failblocks; bj++)
 			set_in_block[bj] = 0;
 
-		for( ii = i; ii < i+bs && ii < mat->n ; ii ++ )
+		for(ii = i; ii < i+bs && ii < mat->n ; ii ++)
 
 			// iterate all columns, k points to the position in mat, and bj to the number of the block
-			for(k = mat->r[ii] ; k < mat->r[ii+1] ; k++ )
+			for(k = mat->r[ii] ; k < mat->r[ii+1] ; k++)
 			{
 				bj = mat->c[k] / bs;
-				if( mat->v[k] != 0.0 && !set_in_block[bj])
+				if(mat->v[k] != 0.0 && !set_in_block[bj])
 					set_in_block[bj] = 1;
 			}
 
 		for(bj=0; bj<errinfo.nb_failblocks; bj++)
-			if( set_in_block[bj] )
+			if(set_in_block[bj])
 			{
 				neighbours->c[pos] = bj;
 				pos++;

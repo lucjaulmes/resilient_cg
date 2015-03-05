@@ -1,12 +1,10 @@
 
-void scalar_product_task(const int n, const double *p, const double *Ap, double* r)
+void scalar_product_task(const double *p, const double *Ap, double* r)
 {
 	int i;
-	for(i=0; i < nb_blocks; i ++ )
+	for(i=0; i < nb_blocks; i ++)
 	{
 		int s = get_block_start(i), e = get_block_end(i);
-		if( e > n )
-			e = n;
 
 		// r <- <p, Ap>
 		#pragma omp task concurrent(*r, p[s:e-1], Ap[s:e-1]) firstprivate(s, e) label(dotp) priority(10) no_copy_deps
@@ -19,14 +17,14 @@ void scalar_product_task(const int n, const double *p, const double *Ap, double*
 
 			for(j=s, page = s >> get_log2_failblock_size(); j<e; j+=fbs, page++)
 			{
-				if( should_skip_block(page, mask) )
+				if(should_skip_block(page, mask))
 					continue;
 
 				page_r = 0.0;
 				for(k=j; k < e && k < j + fbs ; k++)
 					page_r += p[k] * Ap[k];
 
-				if( !check_block(page, mask) )
+				if(!check_block(page, mask))
 					local_r += page_r;
 			}
 
@@ -39,14 +37,12 @@ void scalar_product_task(const int n, const double *p, const double *Ap, double*
 	}
 }
 
-void norm_task( const int n, const double *v, double* r)
+void norm_task(const double *v, double* r)
 {
 	int i;
-	for(i=0; i < nb_blocks; i ++ )
+	for(i=0; i < nb_blocks; i ++)
 	{
 		int s = get_block_start(i), e = get_block_end(i);
-		if( e > n )
-			e = n;
 
 		// r <- || v ||
 		#pragma omp task concurrent(*r, v[s:e-1]) firstprivate(s, e) label(norm) priority(10) no_copy_deps
@@ -59,14 +55,14 @@ void norm_task( const int n, const double *v, double* r)
 
 			for(j=s, page = s >> get_log2_failblock_size(); j<e; j+=fbs, page++)
 			{
-				if( should_skip_block(page, MASK_GRADIENT) )
+				if(should_skip_block(page, MASK_GRADIENT))
 					continue;
 
 				page_r = 0;
 				for(k=j; k < e && k < j + fbs ; k++)
 					page_r += v[k] * v[k];
 
-				if( !check_block(page, MASK_GRADIENT) )
+				if(!check_block(page, MASK_GRADIENT))
 					local_r += page_r;
 			}
 
@@ -79,14 +75,12 @@ void norm_task( const int n, const double *v, double* r)
 	}
 }
 
-void update_gradient(const int n, double *gradient, double *Ap, double *alpha, char *wait_for_iterate UNUSED)
+void update_gradient(double *gradient, double *Ap, double *alpha, char *wait_for_iterate UNUSED)
 {
 	int i;
-	for(i=0; i < nb_blocks; i ++ )
+	for(i=0; i < nb_blocks; i ++)
 	{
 		int s = get_block_start(i), e = get_block_end(i);
-		if( e > n )
-			e = n;
 
 		#pragma omp task in(*alpha, Ap[s:e-1]) concurrent(*wait_for_iterate) inout(gradient[s:e-1]) firstprivate(s, e) label(update_gradient) priority(10) no_copy_deps
 		{
@@ -97,7 +91,7 @@ void update_gradient(const int n, double *gradient, double *Ap, double *alpha, c
 
 			for(j=s, page = s >> get_log2_failblock_size(); j<e; j+=fbs, page++)
 			{
-				if( should_skip_block(page, MASK_GRADIENT | MASK_A_P) )
+				if(should_skip_block(page, MASK_GRADIENT | MASK_A_P))
 					continue;
 			
 				for(k=j; k<j+fbs; k++)
@@ -112,14 +106,12 @@ void update_gradient(const int n, double *gradient, double *Ap, double *alpha, c
 	}
 }
 
-void recompute_gradient_mvm(const int n, const Matrix *A, double *iterate, char *wait_for_iterate UNUSED, char *wait_for_mvm UNUSED, double *Aiterate)
+void recompute_gradient_mvm(const Matrix *A, double *iterate, char *wait_for_iterate UNUSED, char *wait_for_mvm UNUSED, double *Aiterate)
 {
 	int i;
-	for(i=0; i < nb_blocks; i ++ )
+	for(i=0; i < nb_blocks; i ++)
 	{
 		int s = get_block_start(i), e = get_block_end(i);
-		if( e > n )
-			e = n;
 
 		// Aiterate <- A * iterate
 		#pragma omp task in(iterate[s:e-1], *wait_for_iterate) concurrent(*wait_for_mvm) out(Aiterate[s:e-1]) firstprivate(s, e) label(AxIt) priority(10) no_copy_deps
@@ -131,13 +123,13 @@ void recompute_gradient_mvm(const int n, const Matrix *A, double *iterate, char 
 
 			for(j=s; j<e; j+=fbs, page++)
 			{
-				if( is_skipped_block( page, MASK_A_ITERATE ) )
+				if(is_skipped_block( page, MASK_A_ITERATE ))
 					continue;
 
-				skips = count_neighbour_faults( page, MASK_ITERATE );
-				if( skips )
+				skips = count_neighbour_faults(page, MASK_ITERATE);
+				if(skips)
 				{
-					mark_to_skip( page, MASK_A_ITERATE );
+					mark_to_skip(page, MASK_A_ITERATE);
 					continue;
 				}
 
@@ -150,8 +142,8 @@ void recompute_gradient_mvm(const int n, const Matrix *A, double *iterate, char 
 				}
 
 
-				if( skips != count_neighbour_faults( page, MASK_ITERATE ) )
-					mark_to_skip( page, MASK_A_ITERATE );
+				if(skips != count_neighbour_faults( page, MASK_ITERATE ))
+					mark_to_skip(page, MASK_A_ITERATE);
 			}
 
 			log_err(SHOW_TASKINFO, "A * x part %d finished = %e\n", i, norm(e-s, &(Aiterate[s])));
@@ -160,14 +152,12 @@ void recompute_gradient_mvm(const int n, const Matrix *A, double *iterate, char 
 	}
 }
 
-void recompute_gradient_update(const int n, double *gradient, char *wait_for_mvm UNUSED, double *Aiterate, const double *b)
+void recompute_gradient_update(double *gradient, char *wait_for_mvm UNUSED, double *Aiterate, const double *b)
 {
 	int i;
-	for(i=0; i < nb_blocks; i ++ )
+	for(i=0; i < nb_blocks; i ++)
 	{
 		int s = get_block_start(i), e = get_block_end(i);
-		if( e > n )
-			e = n;
 
 
 		// gradient <- b - Aiterate
@@ -183,7 +173,7 @@ void recompute_gradient_update(const int n, double *gradient, char *wait_for_mvm
 
 			for(j=s, page = s >> get_log2_failblock_size(); j<e; j+=fbs, page++)
 			{
-				if( should_skip_block(page, MASK_A_ITERATE) )
+				if(should_skip_block(page, MASK_A_ITERATE))
 					continue;
 
 				for (k=j; k< j + fbs; k++)
@@ -198,14 +188,12 @@ void recompute_gradient_update(const int n, double *gradient, char *wait_for_mvm
 	}
 }
 
-void update_p(const int n, double *p, double *old_p, char *wait_for_p UNUSED, double *gradient, double *beta)
+void update_p(double *p, double *old_p, char *wait_for_p UNUSED, double *gradient, double *beta)
 {
 	int i;
-	for(i=0; i < nb_blocks; i ++ )
+	for(i=0; i < nb_blocks; i ++)
 	{
 		int s = get_block_start(i), e = get_block_end(i);
-		if( e > n )
-			e = n;
 
 		// p <- beta * old_p + gradient
 		#pragma omp task in(*beta, gradient[s:e-1]) in(old_p[s:e-1]) out(p[s:e-1]) concurrent(*wait_for_p) firstprivate(s, e) label(update_p) priority(10) no_copy_deps
@@ -217,7 +205,7 @@ void update_p(const int n, double *p, double *old_p, char *wait_for_p UNUSED, do
 
 			for(j=s, page = s >> get_log2_failblock_size(); j<e; j+=fbs, page++)
 			{
-				if( should_skip_block(page, mask) )
+				if(should_skip_block(page, mask))
 				{
 					errcount ++;
 					continue;
@@ -233,20 +221,18 @@ void update_p(const int n, double *p, double *old_p, char *wait_for_p UNUSED, do
 			exit_task();
 
 			// Ap (= A * old_p at this time) might be needed for old_p recovery, and before Ap contains A * new_p
-			if( errcount )
+			if(errcount)
 				save_oldAp_for_old_p_recovery(&mp, old_p, s, e);
 		}
 	}
 }
 
-void compute_Ap(const int n, const Matrix *A, double *p, char *wait_for_p UNUSED, char *wait_for_mvm UNUSED, double *Ap)
+void compute_Ap(const Matrix *A, double *p, char *wait_for_p UNUSED, char *wait_for_mvm UNUSED, double *Ap)
 {
 	int i;
-	for(i=0; i < nb_blocks; i ++ )
+	for(i=0; i < nb_blocks; i ++)
 	{
 		int s = get_block_start(i), e = get_block_end(i);
-		if( e > n )
-			e = n;
 
 		// Ap <- A * p
 		#pragma omp task in(p[s:e-1], *wait_for_p) concurrent(*wait_for_mvm) out(Ap[s:e-1]) firstprivate(s, e) label(Axp) priority(20) no_copy_deps
@@ -258,9 +244,9 @@ void compute_Ap(const int n, const Matrix *A, double *p, char *wait_for_p UNUSED
 
 			for(j=s; j<e; j+=fbs, page++)
 			{
-				skips = count_neighbour_faults( page, mask );
-				if( skips )
-					mark_to_skip( page, MASK_A_P );
+				skips = count_neighbour_faults(page, mask);
+				if(skips)
+					mark_to_skip(page, MASK_A_P);
 
 				for(l=j; l<j+fbs && l < e; l++)
 				{
@@ -270,8 +256,8 @@ void compute_Ap(const int n, const Matrix *A, double *p, char *wait_for_p UNUSED
 						Ap[l] += A->v[k] * p[ A->c[k] ];
 				}
 				
-				if( skips != count_neighbour_faults( page, mask ) )
-					mark_to_skip( page, FAIL_A_P );
+				if(skips != count_neighbour_faults( page, mask ))
+					mark_to_skip(page, FAIL_A_P);
 			}
 
 			log_err(SHOW_TASKINFO, "A * p[%d] part %d finished = %e\n", get_data_vectptr(p), i, norm(e-s, &(Ap[s])));
@@ -280,14 +266,12 @@ void compute_Ap(const int n, const Matrix *A, double *p, char *wait_for_p UNUSED
 	}
 }
 
-void update_iterate(const int n, double *iterate, char *wait_for_iterate UNUSED, double *p, double *alpha)
+void update_iterate(double *iterate, char *wait_for_iterate UNUSED, double *p, double *alpha)
 {
 	int i;
-	for(i=0; i < nb_blocks; i ++ )
+	for(i=0; i < nb_blocks; i ++)
 	{
 		int s = get_block_start(i), e = get_block_end(i);
-		if( e > n )
-			e = n;
 
 		// iterate <- iterate - alpha * p
 		#pragma omp task in(*alpha, p[s:e-1]) inout(iterate[s:e-1]) concurrent(*wait_for_iterate) firstprivate(s, e) label(update_iterate) priority(5) no_copy_deps
@@ -299,7 +283,7 @@ void update_iterate(const int n, double *iterate, char *wait_for_iterate UNUSED,
 
 			for(j=s, page = s >> get_log2_failblock_size(); j<e; j+=fbs, page++)
 			{
-				if( should_skip_block(page, mask) )
+				if(should_skip_block(page, mask))
 					continue;
 
 				for(k=j; k<j+fbs; k++)

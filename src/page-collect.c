@@ -41,28 +41,20 @@
 #include <fcntl.h>
 #include <ctype.h>
 
-#define FILENAMELEN         256
-#define LINELEN             256
+#include "failinfo.h"
+#include "page-collect.h"
 
-#define PROC_DIR_NAME       "/proc"
-#define MAPS_NAME           "maps"
-
-
-static void init_static(char *m_name, int *page_size)
+void mempage_file(char *m_name)
 {
 	int pid = getpid();
-	*page_size = sysconf(_SC_PAGESIZE);
-
-	char dirname[FILENAMELEN];
-	sprintf(dirname, "%s/%d", PROC_DIR_NAME, pid);
-	sprintf(m_name, "%s/%d/%s", PROC_DIR_NAME, pid, MAPS_NAME);
+	sprintf(m_name, "%s/%d/", PROC_DIR_NAME, pid);
 	
     struct stat buf;
 
-    int n = stat(dirname, &buf);
+    int n = stat(m_name, &buf);
     int ok = (n == 0 && (buf.st_mode & S_IFDIR) != 0);
 
-	if( !ok || access((m_name), R_OK) != 0 )
+	if(!ok || access(strcat(m_name, MAPS_NAME), R_OK) != 0)
 	{
 		fprintf(stderr, "ERROR %d is not a valid pid right now !\n", pid);
 		// No point in going on. Sigh. Harakiri.
@@ -74,13 +66,12 @@ static void init_static(char *m_name, int *page_size)
 // and the number of pages in the ranges k=0..i (i included) in range_end[i]
 int retrieve_vm_ranges(intptr_t *start, intptr_t *end, int *range_end, int *total_pages, intptr_t *free_pass, int nb_free)
 {
-	static int page_size = 0;
-	static char m_name[FILENAMELEN] = "";
+	char m_name[FILENAMELEN] = "";
+	mempage_file(m_name);
 
-	if( page_size == 0 )
-		init_static(m_name, &page_size);
+	int page_size = sysconf(_SC_PAGESIZE);
 
-	int nb_range = 0, nb_vulnerable = 0;
+	int nb_range = 0, nb_vulnerable = 0, i;
 	FILE *m      = NULL;
 	*total_pages = 0;
 
@@ -92,6 +83,22 @@ int retrieve_vm_ranges(intptr_t *start, intptr_t *end, int *range_end, int *tota
 		fprintf(stderr, "Unable to open \"%s\" for reading (errno=%d).\n", m_name, errno);
 		return -1;
 	}
+
+	//int is_sorted = 0;
+	//// sort pointers for ease of use
+	//while(!is_sorted)
+	//{
+	//	is_sorted = 1;
+	//	for(i=1; i<nb_free; i++)
+	//		if(free_pass[i-1] > free_pass[i])
+	//		{
+	//			intptr_t ptemp = free_pass[i-1];
+	//			free_pass[i-1] = free_pass[i];
+	//			free_pass[i] = ptemp;
+	//
+	//			is_sorted = 0;
+	//		}
+	//}
 
 	// get lines of map file 
 	while(fgets(line, LINELEN, m) != NULL)
@@ -111,7 +118,7 @@ int retrieve_vm_ranges(intptr_t *start, intptr_t *end, int *range_end, int *tota
 		}
 
 		if(inode != 0 && !(dev_maj == 0 && dev_min == 4))
-			// file mapped, and not from /dev/zero : vulnerable iff( write != '-' )
+			// file mapped, and not from /dev/zero : vulnerable iff(write != '-')
 			range_vulnerable = (write == 'w');
 		else
 		{
@@ -121,11 +128,10 @@ int retrieve_vm_ranges(intptr_t *start, intptr_t *end, int *range_end, int *tota
 			// BUT let's remove the pages to which we give a "free pass"
 			// NB. to help identify, they are r--p, which should be rather rare
 			// Also, they have been allocated with boundary alignment on pages, so checking vma_start is enough
-			if( read == 'r' && write == '-' && exec == '-' && shared == 'p' )
+			if(read == 'r' && write == '-' && exec == '-' && shared == 'p')
 			{	
-				int i;
 				for(i=0; i<nb_free; i++)
-					if( free_pass[i] == (intptr_t)s )
+					if(free_pass[i] == (intptr_t)s)
 					{
 						range_vulnerable = 0;
 						break;
@@ -136,7 +142,7 @@ int retrieve_vm_ranges(intptr_t *start, intptr_t *end, int *range_end, int *tota
 		// each non-zero range, keep it, count pages
 		int num_pages = (e - s) / page_size;
 
-		if( num_pages <= 0 )
+		if(num_pages <= 0)
 			continue;
 
 		(*total_pages) += num_pages;
@@ -149,7 +155,6 @@ int retrieve_vm_ranges(intptr_t *start, intptr_t *end, int *range_end, int *tota
 			range_end[nb_range]	 = nb_vulnerable;
 			nb_range++;
 		}
-skip:
 	}
 
 	fclose(m);

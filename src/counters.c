@@ -110,7 +110,7 @@ void unset_measure()
 void setup_measure()
 {
 	#ifdef EXTRAE_EVENTS
-	if( !Extrae_is_initialized() )
+	if(!Extrae_is_initialized())
 	{
 		Extrae_set_threadid_function ((unsigned int (*)(void))&nanos_omp_get_thread_num);
 		Extrae_set_numthreads_function ((unsigned int (*)(void))&nanos_omp_get_num_threads);
@@ -131,13 +131,13 @@ void setup_measure()
 	extrae_value_t vals[] = {extrae_measure_start, extrae_measure_none, extrae_measure_stop};
 	char* explanations[] = {"solving", "other", "end solving"};
 
-	Extrae_define_event_type( &extrae_measure_event, "measure (P)CG solving", &nvals, vals, explanations);
+	Extrae_define_event_type(&extrae_measure_event, "measure (P)CG solving", &nvals, vals, explanations);
 
 	nvals = 0;
-	Extrae_define_event_type( &extrae_iteration_event, "iteration", &nvals, NULL, NULL);
-	Extrae_define_event_type( &extrae_convergence_power_event, "log2 of CG residual norm + 1023", &nvals, NULL, NULL);
-	Extrae_define_event_type( &extrae_convergence_significand_event, "significand of CG residual norm", &nvals, NULL, NULL);
-	Extrae_define_event_type( &extrae_failures_event, "number of failures in iteration", &nvals, NULL, NULL);
+	Extrae_define_event_type(&extrae_iteration_event, "iteration", &nvals, NULL, NULL);
+	Extrae_define_event_type(&extrae_convergence_power_event, "log2 of CG residual norm + 1023", &nvals, NULL, NULL);
+	Extrae_define_event_type(&extrae_convergence_significand_event, "significand of CG residual norm", &nvals, NULL, NULL);
+	Extrae_define_event_type(&extrae_failures_event, "number of failures in iteration", &nvals, NULL, NULL);
 
 	#endif
 }
@@ -149,7 +149,7 @@ void start_measure()
 	#endif
 
 	#ifdef GETTIMEOFDAY
-	gettimeofday( &start_time, NULL );
+	gettimeofday(&start_time, NULL);
 	#endif 
 
 	#ifdef EXTRAE_EVENTS
@@ -164,7 +164,7 @@ void stop_measure()
 	#endif
 
 	#ifdef GETTIMEOFDAY
-	gettimeofday( &stop_time, NULL );
+	gettimeofday(&stop_time, NULL);
 	printf("gettimeofday_Usecs:%e\n", (1e6 * (stop_time.tv_sec - start_time.tv_sec)) + stop_time.tv_usec - start_time.tv_usec);
 	#endif 
 

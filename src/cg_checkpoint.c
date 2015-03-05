@@ -6,7 +6,7 @@
 #include <errno.h>
 #endif
 
-void force_checkpoint(const int n, detect_error_data *err_data, double *iterate, double *gradient, double *p, double *Ap)
+void force_checkpoint(detect_error_data *err_data, double *iterate, double *gradient, double *p, double *Ap)
 {
 	int *behaviour = &(err_data->error_detected), *prev_error = &(err_data->prev_error);
 
@@ -21,7 +21,7 @@ void force_checkpoint(const int n, detect_error_data *err_data, double *iterate,
 		#define PRAGMA_CHECKPOINT STRINGIFY(omp task out(*behaviour) inout(*err_data, *alpha, *old_err_sq) label(force_checkpoint) no_copy_deps)
 	#endif
 
-	_Pragma( PRAGMA_CHECKPOINT )
+	_Pragma(PRAGMA_CHECKPOINT)
     #undef PRAGMA_CHECKPOINT
 	{
 		#if SDC == SDC_ORTHO
@@ -38,10 +38,10 @@ void force_checkpoint(const int n, detect_error_data *err_data, double *iterate,
 		*prev_error = 0;
 	}
 
-	checkpoint_vectors(n, err_data, behaviour, iterate, gradient, p, Ap);
+	checkpoint_vectors(err_data, behaviour, iterate, gradient, p, Ap);
 }
 
-void due_checkpoint(const int n, detect_error_data *err_data, double *iterate, double *gradient, double *p, double *Ap)
+void due_checkpoint(detect_error_data *err_data, double *iterate, double *gradient, double *p, double *Ap)
 {
 	int *behaviour = &(err_data->error_detected);
 
@@ -50,7 +50,7 @@ void due_checkpoint(const int n, detect_error_data *err_data, double *iterate, d
 	// reuse pragma check
 	#pragma omp task out(*behaviour) inout(*err_data, *old_err_sq) label(due_checkpoint) no_copy_deps
 	{
-		if( !aggregate_skips() )
+		if(!aggregate_skips())
 		{
 			log_err(SHOW_DBGINFO, "SAVING CHECKPOINT\n");
 
@@ -58,8 +58,8 @@ void due_checkpoint(const int n, detect_error_data *err_data, double *iterate, d
 			*err_data->save_err_sq = *old_err_sq;
 			*err_data->save_alpha = *alpha;
 		}
-		//else if( *prev_error ) -- we don't care about this in due_checkpoint : no sdc, thus no prev_error
-		else //if( *behaviour == RELOAD_CHECKPOINT )
+		//else if(*prev_error ) -- we don't care about this in due_checkpoint : no sdc, thus no prev_error
+		else //if(*behaviour == RELOAD_CHECKPOINT)
 		{
 			log_err(SHOW_DBGINFO, "LOADING CHECKPOINT\n");
 
@@ -69,10 +69,10 @@ void due_checkpoint(const int n, detect_error_data *err_data, double *iterate, d
 		}
 	}
 
-	checkpoint_vectors(n, err_data, behaviour, iterate, gradient, p, Ap);
+	checkpoint_vectors(err_data, behaviour, iterate, gradient, p, Ap);
 }
 
-void force_rollback(const int n, detect_error_data *err_data, double *iterate, double *gradient, double *p, double *Ap)
+void force_rollback(detect_error_data *err_data, double *iterate, double *gradient, double *p, double *Ap)
 {
 	int *behaviour = &(err_data->error_detected);
 	#if SDC
@@ -90,7 +90,7 @@ void force_rollback(const int n, detect_error_data *err_data, double *iterate, d
 		#define PRAGMA_CHECKPOINT STRINGIFY(omp task out(*behaviour) inout(*err_data, *alpha, *old_err_sq) label(force_rollback) no_copy_deps)
 	#endif
 
-	_Pragma( PRAGMA_CHECKPOINT )
+	_Pragma(PRAGMA_CHECKPOINT)
     #undef PRAGMA_CHECKPOINT
 	{
 		#if SDC == SDC_ORTHO
@@ -99,7 +99,7 @@ void force_rollback(const int n, detect_error_data *err_data, double *iterate, d
 
 		#if SDC
 		// if twice we're stuck : restart
-		if( *prev_error )
+		if(*prev_error)
 		{
 			#if SDC == SDC_GRADIENT
 			*old_err_sq = INFINITY;
@@ -130,17 +130,15 @@ void force_rollback(const int n, detect_error_data *err_data, double *iterate, d
 		#endif
 	}
 
-	checkpoint_vectors(n, err_data, behaviour, iterate, gradient, p, Ap);
+	checkpoint_vectors(err_data, behaviour, iterate, gradient, p, Ap);
 }
 
-void checkpoint_vectors(const int n, detect_error_data *err_data, int *behaviour, double *iterate, double *gradient, double *p, double *Ap UNUSED)
+void checkpoint_vectors(detect_error_data *err_data, int *behaviour, double *iterate, double *gradient, double *p, double *Ap UNUSED)
 {
 	int i;
-	for(i=0; i < nb_blocks; i ++ )
+	for(i=0; i < nb_blocks; i ++)
 	{
 		int s = get_block_start(i), e = get_block_end(i);
-		if( e > n )
-			e = n;
 
 		#if SDC == SDC_ORTHO
 			#define PRAGMA_CKPT_VECT STRINGIFY(omp task in(*behaviour) inout(iterate[s:e-1], gradient[s:e-1], p[s:e-1]) firstprivate(i, s, e) label(checkpoint_vectors) priority(100) no_copy_deps)
@@ -148,10 +146,10 @@ void checkpoint_vectors(const int n, detect_error_data *err_data, int *behaviour
 			#define PRAGMA_CKPT_VECT STRINGIFY(omp task in(*behaviour) inout(iterate[s:e-1], gradient[s:e-1], p[s:e-1], Ap[s:e-1]) firstprivate(i, s, e) label(checkpoint_vectors) priority(100) no_copy_deps)
 		#endif
 
-		_Pragma( PRAGMA_CKPT_VECT )
+		_Pragma(PRAGMA_CKPT_VECT)
 		{
 		#if CKPT == CKPT_IN_MEMORY
-			if( *behaviour == SAVE_CHECKPOINT )
+			if(*behaviour == SAVE_CHECKPOINT)
 			{
 				memcpy(err_data->save_x+s,  iterate+s,  (e-s) * sizeof(double));
 				memcpy(err_data->save_g+s,  gradient+s, (e-s) * sizeof(double));
@@ -160,12 +158,12 @@ void checkpoint_vectors(const int n, detect_error_data *err_data, int *behaviour
 				memcpy(err_data->save_Ap+s, Ap+s,       (e-s) * sizeof(double));
 				#endif
 			}
-			else if( *behaviour != DO_NOTHING )
+			else if(*behaviour != DO_NOTHING)
 			{
 				memcpy(iterate+s,  err_data->save_x+s,  (e-s) * sizeof(double));
 				memcpy(gradient+s, err_data->save_g+s,  (e-s) * sizeof(double));
 
-				if( *behaviour == RELOAD_CHECKPOINT )
+				if(*behaviour == RELOAD_CHECKPOINT)
 				{
 					// not restarting, just going back to last checkpoint
 					memcpy(p+s,    err_data->save_p+s,  (e-s) * sizeof(double));
@@ -189,12 +187,12 @@ void checkpoint_vectors(const int n, detect_error_data *err_data, int *behaviour
 			int ckpt_fd;
 			sprintf(path, "%s%d", err_data->checkpoint_path, i);
 
-			if( *behaviour == SAVE_CHECKPOINT )
+			if(*behaviour == SAVE_CHECKPOINT)
 			{
 				ckpt_fd = open(path, O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
 				log_err(SHOW_FAILINFO, "Open file %s to checkpoint : %d\n", path, ckpt_fd);
 
-				if( ckpt_fd < 0 )
+				if(ckpt_fd < 0)
 				{
 					fprintf(stderr, "ERROR Unable to open file %s to write checkpoint.\n", path);
 					perror("open() error message is ");
@@ -211,12 +209,12 @@ void checkpoint_vectors(const int n, detect_error_data *err_data, int *behaviour
 				fsync(ckpt_fd);
 				close(ckpt_fd);
 			}
-			else if( *behaviour != DO_NOTHING )
+			else if(*behaviour != DO_NOTHING)
 			{
 				ckpt_fd = open(path, O_RDONLY);
 				log_err(SHOW_FAILINFO, "Open file %s to rollback : %d\n", path, ckpt_fd);
 
-				if( ckpt_fd < 0 )
+				if(ckpt_fd < 0)
 				{
 					*(mp.err_sq) = 0.0; // fail
 					fprintf(stderr, "ERROR No checkpoint file %s or unable to open : error %d. Exiting.\n", path, errno);
@@ -227,7 +225,7 @@ void checkpoint_vectors(const int n, detect_error_data *err_data, int *behaviour
 				read(ckpt_fd,  iterate+s,  (e-s) * sizeof(double));
 				read(ckpt_fd, gradient+s,  (e-s) * sizeof(double));
 
-				if( *behaviour == RELOAD_CHECKPOINT )
+				if(*behaviour == RELOAD_CHECKPOINT)
 				{
 					// not restarting, just going back to last checkpoint
 					read(ckpt_fd,    p+s,  (e-s) * sizeof(double));

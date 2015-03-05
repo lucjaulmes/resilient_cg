@@ -19,7 +19,7 @@
 
 #include "recover.h"
 
-void prepare_x_decorrelated( double *x, const int n, const int *lost_blocks, const int nb_lost )
+void prepare_x_decorrelated(double *x, const int n, const int *lost_blocks, const int nb_lost)
 {
 	int b, i, log2fbs = get_log2_failblock_size();
 
@@ -30,7 +30,7 @@ void prepare_x_decorrelated( double *x, const int n, const int *lost_blocks, con
 	}
 }
 
-void prepare_x_uncorrelated( double *x, const double *initial_x, const int n, const int *lost_blocks, const int nb_lost )
+void prepare_x_uncorrelated(double *x, const double *initial_x, const int n, const int *lost_blocks, const int nb_lost)
 {
 	int b, i, log2fbs = get_log2_failblock_size();
 
@@ -41,17 +41,17 @@ void prepare_x_uncorrelated( double *x, const double *initial_x, const int n, co
 	}
 }
 
-void recover_direct( const Matrix *A, const int sgn, const double *u, const double *v, double *w, int lost_block )
+void recover_direct(const Matrix *A, const int sgn, const double *u, const double *v, double *w, int lost_block)
 {
 	// all this can be inside a task on a per-block fashion presumably, if needed
 	// if A u = v - w then depending if we want v or w :
 	// v = w + A u
 	// w = v - A u
-	// so s is +/- 1, we get w = v + sgn ( A u )
+	// so s is +/- 1, we get w = v + sgn (A u)
 	const int fbs = get_failblock_size();
 	int i, lost = lost_block << get_log2_failblock_size();
 	
-	if( lost > A->n )
+	if(lost > A->n)
 	{
 		fprintf(stderr, "Cannot interpolate since block starts at %d but matrix has size %d.\n"
 						"Check whether there are %d blocks.\n", lost, A->n, lost_block);
@@ -62,26 +62,26 @@ void recover_direct( const Matrix *A, const int sgn, const double *u, const doub
 	local.m = A->m;
 	local.n = fbs;
 
-	if( lost + fbs > A->n )
+	if(lost + fbs > A->n)
 		local.n = A->n - lost;
 
 	local.v = A->v;
 	local.c = A->c;
-	local.r = & ( A->r[lost] );
+	local.r = & (A->r[lost]);
 
-	mult(&local, u, &(w[lost]) );
+	mult(&local, u, &(w[lost]));
 	
-	if( v != NULL && sgn < 0 )
+	if(v != NULL && sgn < 0)
 	{
 		for(i=lost; i<lost+local.n; i++)
 			w[i] = v[i] - w[i];
 	}
-	else if( v != NULL && sgn >= 0 )
+	else if(v != NULL && sgn >= 0)
 	{
 		for(i=lost; i<lost+local.n; i++)
 			w[i] = v[i] + w[i];
 	}
-	else if( sgn < 0 )
+	else if(sgn < 0)
 	{
 		for(i=lost; i<lost+local.n; i++)
 			w[i] = - w[i];
@@ -89,7 +89,7 @@ void recover_direct( const Matrix *A, const int sgn, const double *u, const doub
 	//#pragma omp taskwait
 }
 
-void recover_inverse(const Matrix *A, const double *b, const double *g, double *x, int *lost_blocks, const int nb_lost )
+void recover_inverse(const Matrix *A, const double *b, const double *g, double *x, int *lost_blocks, const int nb_lost)
 {
 	int recovery_sizes[nb_lost], pos, i;
 
@@ -105,7 +105,7 @@ void recover_inverse(const Matrix *A, const double *b, const double *g, double *
 void cluster_neighbour_failures(const Matrix *A, const double *b, double *x, int *lost_blocks, const int nb_lost, int *recovery_sizes)
 {
 	int strategy = get_strategy();
-	if( nb_lost == 1 || strategy != MULTFAULTS_GLOBAL )
+	if(nb_lost == 1 || strategy != MULTFAULTS_GLOBAL)
 	{
 		int i;
 		// each block is recovered individually
@@ -113,10 +113,10 @@ void cluster_neighbour_failures(const Matrix *A, const double *b, double *x, int
 			recovery_sizes[i] = 1;
 
 		// prepare x if needed
-		if( nb_lost == 1 )
+		if(nb_lost == 1)
 			;
 
-		else if( strategy == MULTFAULTS_UNCORRELATED )
+		else if(strategy == MULTFAULTS_UNCORRELATED)
 			prepare_x_uncorrelated(x, b, A->n, lost_blocks, nb_lost);
 
 		else 
@@ -140,7 +140,7 @@ void cluster_neighbour_failures(const Matrix *A, const double *b, double *x, int
 			lost_blocks[id] = -1;
 			for(i=id+1; i < nb_lost; i++)
 				for(j=0; j<m; j++)
-					if( set[j] == lost_blocks[i] )
+					if(set[j] == lost_blocks[i])
 						lost_blocks[i] = -1;
 
 			// set this recovery in our sets
@@ -156,7 +156,7 @@ void cluster_neighbour_failures(const Matrix *A, const double *b, double *x, int
 	}
 }
 
-void do_interpolation( const Matrix *A, const double *b, const double *g, double *x, const int *lost_blocks, const int nb_lost )
+void do_interpolation(const Matrix *A, const double *b, const double *g, double *x, const int *lost_blocks, const int nb_lost)
 {
 	const int log2fbs = get_log2_failblock_size(), fbs = get_failblock_size();
 	int i, total_lost = nb_lost << log2fbs, lost[nb_lost];
@@ -165,24 +165,24 @@ void do_interpolation( const Matrix *A, const double *b, const double *g, double
 	for(i=0; i<nb_lost; i++)
 		lost[i] = lost_blocks[i] << log2fbs;
 
-	if( lost[nb_lost -1] > A->n )
+	if(lost[nb_lost -1] > A->n)
 	{
 		fprintf(stderr, "Cannot interpolate since block starts at %d but matrix has size %d.\n"
 						"Check whether there are %d blocks.\n", lost[nb_lost-1], A->n, lost_blocks[nb_lost-1]);
 		return ;
 	}
 
-	if( lost[nb_lost -1] + fbs > A->n )
+	if(lost[nb_lost -1] + fbs > A->n)
 		total_lost -= (lost[nb_lost -1] + fbs - A->n);
 	
 	Matrix recup;
-	double *rhs = (double*)aligned_calloc( sizeof(double) << log2fbs, total_lost * sizeof(double));
+	double *rhs = (double*)aligned_calloc(sizeof(double) << log2fbs, total_lost * sizeof(double));
 
 	int nnz = 0;
 	for(i=0; i<nb_lost; i++)
 	{
 		int max = lost[i] + fbs;
-		if( max > A->n )
+		if(max > A->n)
 			max = A->n ;
 		nnz += A->r[ max ] - A->r[ lost[i] ];
 	}
@@ -230,14 +230,14 @@ void get_rhs(const int n, const int *rows, const int m, const int *except_cols, 
 {
 	int i, ii, j, jj, k;
 
-	if( b != NULL )
+	if(b != NULL)
 		for(i=0, k=0; i<n; i++)
 		{
 			for(ii=rows[i]; ii < rows[i] + bs && ii<A->n; ii++, k++)
 				rhs[k] = b[ ii ] ;
 		}
 
-	if( g != NULL )
+	if(g != NULL)
 		for(i=0, k=0; i<n; i++)
 		{
 			for(ii=rows[i]; ii < rows[i] + bs && ii<A->n; ii++, k++)
@@ -253,20 +253,20 @@ void get_rhs(const int n, const int *rows, const int m, const int *except_cols, 
 			for(j=A->r[ ii ], jj=0; j<A->r[ ii+1 ]; j++)
 			{
 				// update jj so that except_cols[jj] + bs > A->c[j]
-				while( jj < m && except_cols[jj] + bs <= A->c[j] )
+				while(jj < m && except_cols[jj] + bs <= A->c[j])
 					jj++;
 
 
 				// if the column of item j is not in the [except_cols[jj],except_cols[jj]+bs-1] set
-				if( jj >= m || A->c[j] < except_cols[jj] )
+				if(jj >= m || A->c[j] < except_cols[jj])
 					rhs[k] -= A->v[j] * x[ A->c[j] ];
 			}
 		}
 }
 
 // remember definitions of recover_direct/inverse
-// recover_inverse(A,b,g,x,..) : recovering x using b - g = A * x (g may be NULL then b = A * x, e.g. use for Ap = A * p )
-// recover_direct(A,sgn,u,v,w,..) : w = v + sgn * ( A u ) 
+// recover_inverse(A,b,g,x,..) : recovering x using b - g = A * x (g may be NULL then b = A * x, e.g. use for Ap = A * p)
+// recover_direct(A,sgn,u,v,w,..) : w = v + sgn * (A u)
 
 // these functions return 0 if all is good -1 for impossible (so didn't try) and > 0 for number (at least) of blocks still failed
 
@@ -277,9 +277,9 @@ int recover_g_recompute(magic_pointers *mp, double *g, int block)
 	double *x = mp->x;
 	int r = -1;
 
-	if( !has_skipped_blocks(MASK_ITERATE) )
+	if(!has_skipped_blocks(MASK_ITERATE))
 	{
-		recover_direct( mp->A, -1, x, mp->b, g, block );
+		recover_direct(mp->A, -1, x, mp->b, g, block);
 		r = check_recovery_errors();
 	}
 
@@ -293,9 +293,9 @@ int recover_Ap(magic_pointers *mp, double *Ap, const double *p, int block)
 	// Ap = 0 + 1 * (A * p)
 	int r = -1;
 
-	if( !has_skipped_blocks(1 << get_data_vectptr(p) ) )
+	if(!has_skipped_blocks(1 << get_data_vectptr(p) ))
 	{
-		recover_direct( mp->A, 1, p, NULL, Ap, block );
+		recover_direct(mp->A, 1, p, NULL, Ap, block);
 		r = check_recovery_errors();
 	}
 
@@ -310,9 +310,9 @@ int recover_Ax(magic_pointers *mp, double *Ax, int block)
 	double *x = mp->x;
 	int r = -1;
 
-	if( !has_skipped_blocks(MASK_ITERATE) )
+	if(!has_skipped_blocks(MASK_ITERATE))
 	{
-		recover_direct( mp->A, 1, x, NULL, Ax, block );
+		recover_direct(mp->A, 1, x, NULL, Ax, block);
 
 		r = check_recovery_errors();
 	}
@@ -329,10 +329,10 @@ int recover_g_update(magic_pointers *mp, double *g, int block)
 	double *Ap = mp->Ap;
 	int r = -1;
 
-	if( !is_skipped_block(block, MASK_A_P) )
+	if(!is_skipped_block(block, MASK_A_P))
 	{
 		int fbs = get_failblock_size(), blockpos = block << get_log2_failblock_size();
-		if( blockpos + fbs > mp->A->n )
+		if(blockpos + fbs > mp->A->n)
 			fbs = mp->A->n - blockpos;
 
 		daxpy(fbs, -(*mp->alpha), Ap + blockpos, g + blockpos, g + blockpos);
@@ -351,10 +351,10 @@ int recover_p_repeat(magic_pointers *mp, double *p, const double *old_p, int blo
 	double *g = mp->g;
 	int r = -1;
 
-	if( !is_skipped_block(block, 1 << get_data_vectptr(old_p)) && !is_skipped_block(block, MASK_GRADIENT) )
+	if(!is_skipped_block(block, 1 << get_data_vectptr(old_p)) && !is_skipped_block(block, MASK_GRADIENT))
 	{
 		int fbs = get_failblock_size(), blockpos = block << get_log2_failblock_size();
-		if( blockpos + fbs > mp->A->n )
+		if(blockpos + fbs > mp->A->n)
 			fbs = mp->A->n - blockpos;
 
 		daxpy(fbs, *(mp->beta), old_p + blockpos, g + blockpos, p + blockpos);
@@ -372,10 +372,10 @@ int recover_x_lossy(magic_pointers *mp, double *x)
 	// yay, can't fail ! A and b from "safe backup store"
 	int *lost_blocks, nb_lost = get_all_failed_blocks(MASK_ITERATE, &lost_blocks);
 
-	recover_inverse( mp->A, mp->b, NULL, x, lost_blocks, nb_lost );
+	recover_inverse(mp->A, mp->b, NULL, x, lost_blocks, nb_lost);
 
-	if( nb_lost )
-		free( lost_blocks );
+	if(nb_lost)
+		free(lost_blocks);
 
 	clear_failed(MASK_ITERATE);
 
@@ -391,27 +391,27 @@ int recover_x_lossy(magic_pointers *mp, double *x)
 
 int recover_full_xk(magic_pointers *mp, double *x, const int mark_clean)
 {
-	// x = A^-1 (b - g - sum(x) )
+	// x = A^-1 (b - g - sum(x))
 	double *g = mp->g;
 	int r = -1, nb_lost = 0, *lost_blocks;
 
-	if( !overlapping_faults(MASK_GRADIENT, MASK_ITERATE) )
+	if(!overlapping_faults(MASK_GRADIENT, MASK_ITERATE))
 	{
 		nb_lost = get_all_failed_blocks(MASK_ITERATE, &lost_blocks);
 
-		recover_inverse( mp->A, mp->b, g, x, lost_blocks, nb_lost );
+		recover_inverse(mp->A, mp->b, g, x, lost_blocks, nb_lost);
 
 		r = check_recovery_errors();
 
-		if( !r && mark_clean )
+		if(!r && mark_clean)
 		{
 			int i;
 			for(i=0; i<nb_lost; i++)
 				mark_corrected(lost_blocks[i], MASK_ITERATE);
 		}
 
-		if( nb_lost )
-			free( lost_blocks );
+		if(nb_lost)
+			free(lost_blocks);
 	}
 
 	#if VERBOSE >= SHOW_FAILINFO
@@ -427,26 +427,26 @@ int recover_full_xk(magic_pointers *mp, double *x, const int mark_clean)
 
 int recover_full_p_invert(magic_pointers *mp, double *p, const int mark_clean)
 {
-	// p = A^-1 (Ap - sum(A * p) )
+	// p = A^-1 (Ap - sum(A * p))
 	double *Ap = mp->Ap;
 	int i, r = -1, nb_lost = 0, *lost_blocks, mask = 1 << get_data_vectptr(p);
 
-	if( !overlapping_faults(MASK_A_P, mask) )
+	if(!overlapping_faults(MASK_A_P, mask))
 	{
 		nb_lost = get_all_failed_blocks(mask, &lost_blocks);
 
-		recover_inverse( mp->A, Ap, NULL, p, lost_blocks, nb_lost );
+		recover_inverse(mp->A, Ap, NULL, p, lost_blocks, nb_lost);
 
 		r = check_recovery_errors();
 
-		if( !r && mark_clean )
+		if(!r && mark_clean)
 		{
 			for(i=0; i<nb_lost; i++)
 				mark_corrected(lost_blocks[i], mask);
 		}
 
-		if( nb_lost )
-			free( lost_blocks );
+		if(nb_lost)
+			free(lost_blocks);
 	}
 
 	#if VERBOSE >= SHOW_FAILINFO
@@ -470,19 +470,19 @@ int recover_full_old_p_invert(magic_pointers *mp, double *old_p, const int mark_
 	nb_lost = get_all_failed_blocks_vect(old_p, &lost_blocks);
 
 	for(i=0; i<nb_lost; i++)
-		if( old_Ap[ lost_blocks[i] << get_log2_failblock_size() ] == NAN )
+		if(old_Ap[ lost_blocks[i] << get_log2_failblock_size() ] == NAN)
 		{
 			r = -1;
 			break;
 		}
 
-	if( r == 0 )
+	if(r == 0)
 	{
-		recover_inverse( mp->A, old_Ap, NULL, old_p, lost_blocks, nb_lost );
+		recover_inverse(mp->A, old_Ap, NULL, old_p, lost_blocks, nb_lost);
 
 		r = check_recovery_errors();
 
-		if( !r && mark_clean )
+		if(!r && mark_clean)
 		{
 			for(i=0; i<nb_lost; i++)
 				mark_corrected(lost_blocks[i], mask);
@@ -512,15 +512,15 @@ void save_oldAp_for_old_p_recovery(magic_pointers *mp, double *old_p, const int 
 
 	for(i=(s >> log2fbs), start_block = s; start_block < e; i++, start_block += fbs)
 	{
-		if( ! is_skipped_block(i, mask) )
+		if(! is_skipped_block(i, mask))
 			continue;
 
-		if( e - start_block < fbs)
+		if(e - start_block < fbs)
 			bs_bytes = (e - start_block) * sizeof(double);
 
-		if( !is_skipped_block(i, MASK_A_P) )
+		if(!is_skipped_block(i, MASK_A_P))
 		{
-			memcpy( &( old_p[start_block] ), &(mp->Ap[start_block]), bs_bytes );
+			memcpy(&( old_p[start_block] ), &(mp->Ap[start_block]), bs_bytes);
 
 			#if VERBOSE >= SHOW_FAILINFO
 			sprintf(str+strlen(str),  "%d, ", i);
@@ -545,12 +545,12 @@ int recover_full_p_repeat(magic_pointers *mp, double *p, const double *old_p, co
 
 	for(i=0; i < get_nb_failblocks(); i++)
 	{
-		if( ! is_skipped_block(i, mask) )
+		if(! is_skipped_block(i, mask))
 			continue;
 
 		rr = recover_p_repeat(mp, p, old_p, i);
 
-		if( mark_clean && !rr )
+		if(mark_clean && !rr)
 			mark_corrected(i, mask);
 
 		r += abs(rr);
@@ -565,12 +565,12 @@ int recover_full_g_recompute(magic_pointers *mp, double *g, const int mark_clean
 
 	for(i=0; i < get_nb_failblocks(); i++)
 	{
-		if( ! is_skipped_block(i, MASK_GRADIENT) )
+		if(! is_skipped_block(i, MASK_GRADIENT))
 			continue;
 
 		rr = recover_g_recompute(mp, g, i);
 
-		if( mark_clean && !rr )
+		if(mark_clean && !rr)
 			mark_corrected(i, MASK_GRADIENT);
 
 		r += abs(rr);
@@ -585,12 +585,12 @@ int recover_full_g_update(magic_pointers *mp, double *g, const int mark_clean)
 
 	for(i=0; i < get_nb_failblocks(); i++)
 	{
-		if( ! is_skipped_block(i, MASK_GRADIENT) )
+		if(! is_skipped_block(i, MASK_GRADIENT))
 			continue;
 
 		rr = recover_g_update(mp, g, i);
 
-		if( mark_clean && !rr )
+		if(mark_clean && !rr)
 			mark_corrected(i, MASK_GRADIENT);
 
 		r += abs(rr);
@@ -604,12 +604,12 @@ int recover_mvm_skips_g(magic_pointers *mp, double *g, const int mark_clean)
 	int i, r = 0, rr;
 
 	for(i=0; i < get_nb_failblocks(); i++)
-		if( is_skipped_not_failed_block(i, MASK_GRADIENT) )
+		if(is_skipped_not_failed_block(i, MASK_GRADIENT))
 		{
 
 			rr = recover_g_update(mp, g, i);
 
-			if( mark_clean && !rr )
+			if(mark_clean && !rr)
 				mark_corrected(i, MASK_GRADIENT);
 
 			r += abs(rr);
@@ -624,12 +624,12 @@ int recover_full_Ap(magic_pointers *mp, double *Ap, const double *p, const int m
 
 	for(i=0; i < get_nb_failblocks(); i++)
 	{
-		if( ! is_skipped_block(i, MASK_A_P) )
+		if(! is_skipped_block(i, MASK_A_P))
 			continue;
 
 		rr = recover_Ap(mp, Ap, p, i);
 
-		if( mark_clean && !rr )
+		if(mark_clean && !rr)
 			mark_corrected(i, MASK_A_P);
 
 		r += abs(rr);

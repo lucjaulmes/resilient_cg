@@ -55,30 +55,30 @@ typedef struct magic_pointers
 #define NORM_A_P       18
 #define RECOVERY       19
 
-void solve_cg( const Matrix *A, const double *b, double *iterate, double convergence_thres, double error_thres );
+void solve_cg(const Matrix *A, const double *b, double *iterate, double convergence_thres, double error_thres);
 
 // all the algorithmical steps of CG that will be subdivided into tasks : 
-void update_gradient(const int n, double *gradient, double *Ap, double *alpha, char *wait_for_iterate);
-void recompute_gradient_mvm(const int n, const Matrix *A, double *iterate, char *wait_for_iterate, char *wait_for_mvm, double *Aiterate);
-void recompute_gradient_update(const int n, double *gradient, char *wait_for_mvm, double *Aiterate, const double *b);
-void update_p(const int n, double *p, double *old_p, char *wait_for_p, double *gradient, double *beta);
-void update_iterate(const int n, double *iterate, char *wait_for_iterate, double *p, double *alpha);
-void compute_Ap(const int n, const Matrix *A, double *p, char *wait_for_p, char *wait_for_mvm, double *Ap);
+void update_gradient(double *gradient, double *Ap, double *alpha, char *wait_for_iterate);
+void recompute_gradient_mvm(const Matrix *A, double *iterate, char *wait_for_iterate, char *wait_for_mvm, double *Aiterate);
+void recompute_gradient_update(double *gradient, char *wait_for_mvm, double *Aiterate, const double *b);
+void update_p(double *p, double *old_p, char *wait_for_p, double *gradient, double *beta);
+void update_iterate(double *iterate, char *wait_for_iterate, double *p, double *alpha);
+void compute_Ap(const Matrix *A, double *p, char *wait_for_p, char *wait_for_mvm, double *Ap);
 
-void scalar_product_task(const int n, const double *p, const double *Ap, double* r);
-void norm_task(const int n, const double *v, double* r );
+void scalar_product_task(const double *p, const double *Ap, double* r);
+void norm_task(const double *v, double* r );
 
 void compute_beta(const double *err_sq, const double *old_err_sq, double *beta);
 void compute_alpha(double *err_sq, double *normA_p_sq, double *old_err_sq, double *old_err_sq2, double *alpha);
 
-void check_sdc_alpha_invariant(const int n, const int save, detect_error_data *err_data, const double *b, double *iterate, double *gradient, double *p, double *Ap, double *err_sq, double *alpha, const double threshold);
-void check_sdc_p_Ap_orthogonal(const int n, const int save, detect_error_data *err_data, double *iterate, double *gradient, double *p, double *Ap, double *err_sq, const double threshold);
-void check_sdc_recompute_grad(const int n, const int save, detect_error_data *err_data, const double *b, double *iterate, double *gradient, double *p, double *Ap, char *wait_for_mvm, double *Aiterate, double *err_sq, const double threshold);
+void check_sdc_alpha_invariant(const int save, detect_error_data *err_data, const double *b, double *iterate, double *gradient, double *p, double *Ap, double *err_sq, double *alpha, const double threshold);
+void check_sdc_p_Ap_orthogonal(const int save, detect_error_data *err_data, double *iterate, double *gradient, double *p, double *Ap, double *err_sq, const double threshold);
+void check_sdc_recompute_grad(const int save, detect_error_data *err_data, const double *b, double *iterate, double *gradient, double *p, double *Ap, char *wait_for_mvm, double *Aiterate, double *err_sq, const double threshold);
 
-void force_rollback(const int n, detect_error_data *err_data, double *iterate, double *gradient, double *p, double *Ap);
-void force_checkpoint(const int n, detect_error_data *err_data, double *iterate, double *gradient, double *p, double *Ap);
-void due_checkpoint(const int n, detect_error_data *err_data, double *iterate, double *gradient, double *p, double *Ap);
-void checkpoint_vectors(const int n, detect_error_data *err_data, int *behaviour, double *iterate, double *gradient, double *p, double *Ap);
+void force_rollback(detect_error_data *err_data, double *iterate, double *gradient, double *p, double *Ap);
+void force_checkpoint(detect_error_data *err_data, double *iterate, double *gradient, double *p, double *Ap);
+void due_checkpoint(detect_error_data *err_data, double *iterate, double *gradient, double *p, double *Ap);
+void checkpoint_vectors(detect_error_data *err_data, int *behaviour, double *iterate, double *gradient, double *p, double *Ap);
 
 void recover_rectify_xk(const int n, magic_pointers *mp, double *x, char *wait_for_iterate);
 void recover_rectify_g(const int n, magic_pointers *mp, const double *p, double *Ap, double *gradient, double *err_sq, char *wait_for_iterate);

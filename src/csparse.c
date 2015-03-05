@@ -5,7 +5,7 @@
 
 # include "csparse.h"
 
-cs *cs_add ( const cs *A, const cs *B, double alpha, double beta )
+cs *cs_add (const cs *A, const cs *B, double alpha, double beta)
 	/*
 	   Purpose:
 
@@ -81,7 +81,7 @@ static int cs_diag (int i, int j, double aij, void *other)
 }
 
 /* p = amd(A+A') if symmetric is true, or amd(A'A) otherwise */
-int *cs_amd ( const cs *A, int order )  
+int *cs_amd (const cs *A, int order)
 	/*
 	   Purpose:
 
@@ -128,7 +128,7 @@ int *cs_amd ( const cs *A, int order )
 			p = ATp [j] ;		    /* column j of AT starts here */
 			ATp [j] = p2 ;		    /* new column j starts here */
 			if (ATp [j+1] - p > dense) continue ;   /* skip dense col j */
-			for ( ; p < ATp [j+1] ; p++) ATi [p2++] = ATi [p] ;
+			for (; p < ATp [j+1] ; p++) ATi [p2++] = ATi [p] ;
 		}
 		ATp [m] = p2 ;			    /* finalize AT */
 		A2 = cs_transpose (AT, 0) ;	    /* A2 = AT' */
@@ -368,7 +368,7 @@ int *cs_amd ( const cs *A, int order )
 			h = last [i] ;			/* scan hash bucket of node i */
 			i = hhead [h] ;
 			hhead [h] = -1 ;			/* hash bucket will be empty */
-			for ( ; i != -1 && next [i] != -1 ; i = next [i], mark++)
+			for (; i != -1 && next [i] != -1 ; i = next [i], mark++)
 			{
 				ln = len [i] ;
 				eln = elen [i] ;
@@ -498,7 +498,7 @@ csn *cs_chol (const cs *A, const css *S)
 		d = x [k] ;		    /* d = C(k,k) */
 		x [k] = 0 ;		    /* clear workspace for k+1st iteration */
 		/* --- Triangular solve --------------------------------------------- */
-		for ( ; top < n ; top++)    /* solve L(0:k-1,0:k-1) * x = C(:,k) */
+		for (; top < n ; top++)    /* solve L(0:k-1,0:k-1) * x = C(:,k) */
 		{
 			i = s [top] ;	    /* s [top..n-1] is pattern of L(k,:) */
 			lki = x [i] / Lx [Lp [i]] ; /* L(k,i) = x (i) / L(i,i) */
@@ -591,7 +591,7 @@ int *cs_counts (const cs *A, const int *parent, const int *post, int ata)
 	{
 		j = post [k] ;
 		delta [j] = (first [j] == -1) ? 1 : 0 ;  /* delta[j]=1 if j is a leaf */
-		for ( ; j != -1 && first [j] == -1 ; j = parent [j]) first [j] = k ;
+		for (; j != -1 && first [j] == -1 ; j = parent [j]) first [j] = k ;
 	}
 	ATp = AT->p ; ATi = AT->i ;
 	if (ata)
@@ -926,7 +926,7 @@ int *cs_etree (const cs *A, int ata)
 		for (p = Ap [k] ; p < Ap [k+1] ; p++)
 		{
 			i = ata ? (prev [Ai [p]]) : (Ai [p]) ;
-			for ( ; i != -1 && i < k ; i = inext)   /* traverse from i to k */
+			for (; i != -1 && i < k ; i = inext)   /* traverse from i to k */
 			{
 				inext = ancestor [i] ;		    /* inext = ancestor of i */
 				ancestor [i] = k ;		    /* path compression */
@@ -949,7 +949,7 @@ int cs_fkeep (cs *A, int (*fkeep) (int, int, double, void *), void *other)
 	{
 		p = Ap [j] ;			    /* get current location of col j */
 		Ap [j] = nz ;			    /* record new location of col j */
-		for ( ; p < Ap [j+1] ; p++)
+		for (; p < Ap [j+1] ; p++)
 		{
 			if (fkeep (Ai [p], j, Ax ? Ax [p] : 1, other))
 			{
@@ -1028,7 +1028,7 @@ int cs_ipvec (int n, const int *P, const double *b, double *x)
 	for (k = 0 ; k < n ; k++) x [P ? P [k] : k] = b [k] ;
 	return (1) ;
 }
-cs *cs_load ( FILE *f )
+cs *cs_load (FILE *f)
 	/*
 	   Purpose:
 
@@ -1052,7 +1052,7 @@ cs *cs_load ( FILE *f )
 	}
 	return (T) ;
 }
-int cs_lsolve ( const cs *L, double *x )
+int cs_lsolve (const cs *L, double *x)
 	/*
 	   Purpose:
 
@@ -1083,7 +1083,7 @@ int cs_lsolve ( const cs *L, double *x )
 	}
 	return (1) ;
 }
-int cs_ltsolve ( const cs *L, double *x )
+int cs_ltsolve (const cs *L, double *x)
 	/*
 	   Purpose:
 
@@ -1949,7 +1949,7 @@ int cs_updown (cs *L, int sigma, const cs *C, const int *parent)
 	w = cs_malloc (n, sizeof (double)) ;
 	if (!w) return (0) ;
 	f = Ci [p] ;
-	for ( ; p < Cp [1] ; p++) f = CS_MIN (f, Ci [p]) ;	/* f = min (find (C)) */
+	for (; p < Cp [1] ; p++) f = CS_MIN (f, Ci [p]) ;	/* f = min (find (C)) */
 	for (j = f ; j != -1 ; j = parent [j]) w [j] = 0 ;	/* clear workspace w */
 	for (p = Cp [0] ; p < Cp [1] ; p++) w [Ci [p]] = Cx [p] ; /* w = C */
 	for (j = f ; j != -1 ; j = parent [j])	    /* walk path f up to root */
