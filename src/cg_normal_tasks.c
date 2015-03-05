@@ -1,12 +1,10 @@
 
-void scalar_product_task(const int n, const double *p, const double *Ap, double* r)
+void scalar_product_task(const double *p, const double *Ap, double* r)
 {
 	int i;
 	for(i=0; i < nb_blocks; i ++ )
 	{
 		int s = get_block_start(i), e = get_block_end(i);
-		if( e > n )
-			e = n;
 
 		// r <- <p, Ap>
 		#pragma omp task concurrent(*r, p[s:e-1], Ap[s:e-1]) firstprivate(s, e) label(dotp) priority(10) no_copy_deps
@@ -24,14 +22,12 @@ void scalar_product_task(const int n, const double *p, const double *Ap, double*
 	}
 }
 
-void norm_task( const int n, const double *v, double* r)
+void norm_task(const double *v, double* r)
 {
 	int i;
 	for(i=0; i < nb_blocks; i ++ )
 	{
 		int s = get_block_start(i), e = get_block_end(i);
-		if( e > n )
-			e = n;
 
 		// r <- || v ||
 		#pragma omp task concurrent(*r, v[s:e-1]) firstprivate(s, e) label(norm) priority(10) no_copy_deps
@@ -49,14 +45,12 @@ void norm_task( const int n, const double *v, double* r)
 	}
 }
 
-void update_gradient(const int n, double *gradient, double *Ap, double *alpha, char *wait_for_iterate UNUSED)
+void update_gradient(double *gradient, double *Ap, double *alpha, char *wait_for_iterate UNUSED)
 {
 	int i;
 	for(i=0; i < nb_blocks; i ++ )
 	{
 		int s = get_block_start(i), e = get_block_end(i);
-		if( e > n )
-			e = n;
 
 		#pragma omp task in(*alpha, Ap[s:e-1]) concurrent(*wait_for_iterate) inout(gradient[s:e-1]) firstprivate(s, e) label(update_gradient) priority(10) no_copy_deps
 		{
@@ -69,20 +63,20 @@ void update_gradient(const int n, double *gradient, double *Ap, double *alpha, c
 	}
 }
 
-void recompute_gradient_mvm(const int n, const Matrix *A, double *iterate, char *wait_for_iterate UNUSED, char *wait_for_mvm UNUSED, double *Aiterate)
+void recompute_gradient_mvm(const Matrix *A, double *iterate, char *wait_for_iterate UNUSED, char *wait_for_mvm UNUSED, double *Aiterate)
 {
-	#pragma omp task inout(iterate[0:n-1], *wait_for_iterate, *wait_for_mvm) label(exchange_x)
+	// note that this is an mvm function, so iterate is global
+
+	#pragma omp task inout(iterate[0:A->n-1], *wait_for_iterate, *wait_for_mvm) label(exchange_x)
 	MPI_Allgatherv(MPI_IN_PLACE, 0/*ignored*/, MPI_DOUBLE, iterate, mpi_zonesize, mpi_zonestart, MPI_DOUBLE, MPI_COMM_WORLD);
 
 	int i;
 	for(i=0; i < nb_blocks; i ++ )
 	{
 		int s = get_block_start(i), e = get_block_end(i);
-		if( e > n )
-			e = n;
 
 		// Aiterate <- A * iterate
-		#pragma omp task in(iterate[s:e-1], *wait_for_iterate) concurrent(*wait_for_mvm) out(Aiterate[s:e-1]) firstprivate(s, e) label(AxIt) priority(10) no_copy_deps
+		#pragma omp task in(iterate[0:A->n-1], *wait_for_iterate) concurrent(*wait_for_mvm) out(Aiterate[s:e-1]) firstprivate(s, e) label(AxIt) priority(10) no_copy_deps
 		{
 			int k, l;
 			for(l=s; l<e; l++)
@@ -98,14 +92,12 @@ void recompute_gradient_mvm(const int n, const Matrix *A, double *iterate, char 
 	}
 }
 
-void recompute_gradient_update(const int n, double *gradient, char *wait_for_mvm UNUSED, double *Aiterate, const double *b)
+void recompute_gradient_update(double *gradient, char *wait_for_mvm UNUSED, double *Aiterate, const double *b)
 {
 	int i;
 	for(i=0; i < nb_blocks; i ++ )
 	{
 		int s = get_block_start(i), e = get_block_end(i);
-		if( e > n )
-			e = n;
 
 
 		// gradient <- b - Aiterate
@@ -120,14 +112,12 @@ void recompute_gradient_update(const int n, double *gradient, char *wait_for_mvm
 	}
 }
 
-void update_p(const int n, double *p, double *old_p, char *wait_for_p UNUSED, double *gradient, double *beta)
+void update_p(double *p, double *old_p, char *wait_for_p UNUSED, double *gradient, double *beta)
 {
 	int i;
 	for(i=0; i < nb_blocks; i ++ )
 	{
 		int s = get_block_start(i), e = get_block_end(i);
-		if( e > n )
-			e = n;
 
 		// p <- beta * old_p + gradient
 		#pragma omp task in(*beta, gradient[s:e-1]) in(old_p[s:e-1]) out(p[s:e-1]) concurrent(*wait_for_p) firstprivate(s, e) label(update_p) priority(10) no_copy_deps
@@ -141,17 +131,20 @@ void update_p(const int n, double *p, double *old_p, char *wait_for_p UNUSED, do
 	}
 }
 
-void compute_Ap(const int n, const Matrix *A, double *p, char *wait_for_p UNUSED, char *wait_for_mvm UNUSED, double *Ap)
+void compute_Ap(const Matrix *A, double *p, char *wait_for_p UNUSED, char *wait_for_mvm UNUSED, double *Ap)
 {
+	// note that this is an mvm function, so iterate is global
+
+	#pragma omp task inout(*wait_for_p, p[0:A->n-1]) label(exchange_p)
+	MPI_Allgatherv(MPI_IN_PLACE, 0/*ignored*/, MPI_DOUBLE, p, mpi_zonesize, mpi_zonestart, MPI_DOUBLE, MPI_COMM_WORLD);
+
 	int i;
 	for(i=0; i < nb_blocks; i ++ )
 	{
 		int s = get_block_start(i), e = get_block_end(i);
-		if( e > n )
-			e = n;
 
 		// Ap <- A * p
-		#pragma omp task in(p[s:e-1], *wait_for_p) concurrent(*wait_for_mvm) out(Ap[s:e-1]) firstprivate(s, e) label(Axp) priority(20) no_copy_deps
+		#pragma omp task in(p[0:A->n-1], *wait_for_p) concurrent(*wait_for_mvm) out(Ap[s:e-1]) firstprivate(s, e) label(Axp) priority(20) no_copy_deps
 		{
 			int k, l;
 			for(l=s; l<e; l++)
@@ -167,14 +160,12 @@ void compute_Ap(const int n, const Matrix *A, double *p, char *wait_for_p UNUSED
 	}
 }
 
-void update_iterate(const int n, double *iterate, char *wait_for_iterate UNUSED, double *p, double *alpha)
+void update_iterate(double *iterate, char *wait_for_iterate UNUSED, double *p, double *alpha)
 {
 	int i;
 	for(i=0; i < nb_blocks; i ++ )
 	{
 		int s = get_block_start(i), e = get_block_end(i);
-		if( e > n )
-			e = n;
 
 		// iterate <- iterate - alpha * p
 		#pragma omp task in(*alpha, p[s:e-1]) inout(iterate[s:e-1]) concurrent(*wait_for_iterate) firstprivate(s, e) label(update_iterate) priority(5) no_copy_deps

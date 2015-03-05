@@ -8,12 +8,13 @@
 
 #include "matrix.h"
 
-// matrix-vector multiplication, row major ( W = A x V )
-void mult( const Matrix *A,  const double *V, double *W )
+// matrix-vector multiplication, row major (W = A x V)
+// takes in local W but global V
+void mult(const Matrix *A, const double *V, double *W)
 {
 	int i, j;
 
-	for(i=mpi_zonestart[mpi_rank]; i<mpi_zonestart[mpi_rank]+mpi_zonesize[mpi_rank]; i++)
+	for(i=0; i<mpi_zonesize[mpi_here]; i++)
 	{
 		W[i] = 0;
 
@@ -22,15 +23,16 @@ void mult( const Matrix *A,  const double *V, double *W )
 	}
 }
 
-// matrix-vector multiplication ( W = t(V) x A = t( t(A) x V ) )
-void mult_transposed ( const Matrix *A , const double *V, double *W )
+// matrix-vector multiplication ( W = t(V) x A = t(t(A) x V ))
+// takes in global W but local V
+void mult_transposed(const Matrix *A , const double *V, double *W)
 {
 	int i, j, col;
 
 	for(i=0; i < A->m; i++)
 		W[i] = 0;
 
-	for(i=mpi_zonestart[mpi_rank]; i<mpi_zonestart[mpi_rank]+mpi_zonesize[mpi_rank]; i++)
+	for(i=0; i<mpi_zonesize[mpi_here]; i++)
 	{
 		for(j=A->r[i]; j < A->r[i+1]; j++)
 		{
@@ -41,33 +43,38 @@ void mult_transposed ( const Matrix *A , const double *V, double *W )
 	}
 }
 
-void print_matrix( FILE* f, const Matrix *A )
+void print_matrix_abs(FILE *f, const Matrix *A)
 {
 	int i, j;
-//	for(i=mpi_zonestart[mpi_rank]; i<mpi_zonestart[mpi_rank]+mpi_zonesize[mpi_rank]; i++)
-//	{
-//		printf("%4d   |  ", i);
-//
-//		for( j= A->r[i]; j < A->r[i+1]; j++)
-//			fprintf(f, " [%4d ] % 1.2e ", A->c[j], A->v[j]);
-//
-//		printf("\n");
-//	}
+	for(i=0; i<block_bounds[nb_blocks]; i++)
+	{
+		fprintf(f, "%4d   |  ", mpi_zonestart[mpi_here]+i);
 
+		for(j= A->r[i]; j < A->r[i+1]; j++)
+			fprintf(f, " [%4d ] % 1.2e ", A->c[j], A->v[j]);
+
+		fprintf(f, "\n");
+	}
+}
+
+void print_matrix_rel(FILE* f, const Matrix *A)
+{
 	// hoping less than 100 items / line
-	int c[100], n=0, k;
+	int c[100], n=0, i, j, k;
 	double v[100];
 
-	for(i=mpi_zonestart[mpi_rank]; i < mpi_zonestart[mpi_rank] + mpi_zonesize[mpi_rank]; i++)
+	for(i=0; i<block_bounds[nb_blocks]; i++)
 	{
+		// check if this row is the same as previous : compare lengths, then all columns (relative to diagonal) and values
 		int same = n == A->r[i+1] - A->r[i];
 
 		for( j = A->r[i], k=0; same && j < A->r[i+1] && k < 100; j++, k++)
 			same &= (A->c[j]-i == c[k] && A->v[j] == v[k]);
 
+		// if different, print new line number and contents
 		if( ! same )
 		{
-			fprintf(f, "%5d -- ", i);
+			fprintf(f, "%5d -- ", mpi_zonestart[mpi_here]+i);
 
 			n = A->r[i+1] - A->r[i];
 			for( j = A->r[i], k=0; j < A->r[i+1] && k < 100; j++, k++)
@@ -80,11 +87,13 @@ void print_matrix( FILE* f, const Matrix *A )
 			fprintf(f, "\n");
 		}
 	}
+
+	// print last line
 	fprintf(f, "%5d -- end\n", i);
 }
 
-// return pos in matrix ( so then you only have to take A->v[pos] ), -1 if does not exist
-int find_in_matrix( const int row, const int col, const Matrix *A )
+// return pos in matrix (so then you only have to take A->v[pos] ), -1 if does not exist
+int find_in_matrix(const int row, const int col, const Matrix *A)
 {
 	if( row > A->n || col > A->m )
 		return -1;
@@ -112,95 +121,133 @@ int find_in_matrix( const int row, const int col, const Matrix *A )
 }
 
 
-void read_matrix( const int n, const int m, const int nnz, const int symmetric, Matrix *A, FILE* input_file )
+void read_matrix(const int n, const int m, const int nnz, const int symmetric, Matrix *A, FILE* input_file, const int offset UNUSED)
 {
-	int Y, prevY = -1, X, i, j, k, pos = 0, *nb_subdiagonals = NULL;
+	// n is number of local rows, m number of cols (and number of total rows, thus m == A->n == A->m )
+	int Y, prevY = -1, X, i, j, k, pos = 0, pos_subdiag = 0, row, col, *nb_subdiag = NULL;
 	double val;
+	Matrix subdiag;
 
 	if( symmetric )
-		nb_subdiagonals = (int*)calloc( n, sizeof(int) );
-
-	A->n = n;
-	A->m = m;
-
-	int ctr = 0, thres = (nnz+19)/20;
-	{}//log_out("Reading file ...");
-
-	for (i=0; i<nnz; i++)
 	{
-		if( i > 0 && i % thres == 0 )
+		// for symmetric matrices; first loop, gathering elements below diagonal into subdiag, but only for the elements
+		// a) with columns such that they will end up in our block of rows once transposed b) in rows before our block of rows
+
+		allocate_matrix(m, n, nnz, &subdiag, sizeof(double));
+		nb_subdiag  = (int*)calloc(n, sizeof(int));
+
+		while( fscanf(input_file, "%d %d %lg\n", &X, &Y, &val) == 3 )
 		{
-			ctr += 5;
-			{}//log_out(" %d%%", ctr);
+			if( Y-1 >= mpi_zonestart[mpi_here] )
+				break;
+
+			// file is 1-based
+			X--;
+			Y--;
+
+			if( Y > prevY )
+			{
+				// on new rows, update row pointer
+				prevY = Y;
+				subdiag.r[Y] = pos_subdiag;
+			}
+
+			// transpose X -> row -> offset row, Y -> col
+			col = X - mpi_zonestart[mpi_here];
+
+			if( col >= 0 && col < n )
+			{
+				subdiag.c[pos_subdiag] = col;
+				subdiag.v[pos_subdiag] = val;
+				pos_subdiag ++;
+				nb_subdiag[col]++;
+			}
 		}
-
-		fscanf(input_file, "%d %d %lg\n", &X, &Y, &val);
-		X--;  /* adjust from 1-based to 0-based */
-		Y--;
-
-		// for debug purposes
-		if( Y >= n || X >= m )
-			continue;
-
-		if( Y > prevY )
-		{
-			A->r[Y] = pos;
-
-			// leave space for the subdiagonals elements
-			if( symmetric )
-				pos += nb_subdiagonals[Y];
-
-			prevY = Y;
-		}
-
-		A->v[pos] = val;
-		A->c[pos] = X;
-		pos ++;
-
-		if( symmetric && X > Y )
-			nb_subdiagonals[X]++;
 	}
+	else
+		// alternatively, on non-symmetric matrices, skip everything that is before our block of rows
+		while( fscanf(input_file, "%d %d %lg\n", &X, &Y, &val) == 3 && Y-1 < mpi_zonestart[mpi_here] )
+			;
 
-	A->nnz = pos;
-	A->r[A->n] = pos;
+	// start at our block of rows : first value already read in X, Y, val
+	prevY = -1;
+	do
+	{
+		// coordinates in file are 1-based. Shift Y to local representation in row.
+		X --;
+		Y --;
+		row = Y - mpi_zonestart[mpi_here];
 
-	{}//log_out(" 100%%, filling symmetric part...");
+		if( row > prevY )
+		{
+			// on new rows, update row pointers
+			prevY = row;
+			A->r[row] = pos;
+
+			if( symmetric )
+			{
+				pos += nb_subdiag[row];
+				subdiag.r[Y] = pos_subdiag;
+			}
+		}
+
+		A->c[pos] = X;
+		A->v[pos] = val;
+		pos++;
+
+		// transpose X -> row -> offset row, Y -> col
+		col = X - mpi_zonestart[mpi_here];
+
+		if( symmetric && X > Y && col < n )
+		{
+			subdiag.c[pos_subdiag] = col;
+			subdiag.v[pos_subdiag] = val;
+			pos_subdiag++;
+			nb_subdiag[col]++;
+		}
+	}
+	// exit if new row is beyond the local block of rows, or at end of file
+	while( fscanf(input_file, "%d %d %lg\n", &X, &Y, &val) == 3 && Y-1 < mpi_zonestart[mpi_here] + n);
+
+	// mark the end of regions read by setting the pointer past considered rows
+	A->r[row+1] = pos;
+	if( symmetric )
+		subdiag.r[mpi_zonestart[mpi_here]+row+1] = pos_subdiag;
 	
 	if( symmetric )
 	{
 		// now let's fill in the subdiagonal part
 		int *fill_row = malloc( n * sizeof(int) );
 
-		for( j=0; j<A->n; j++ )
+		for( j=0; j<n; j++ )
 			fill_row[j] = A->r[j];
 
-		for( i=0; i<A->n; i++ )
-			for( k = A->r[i] + nb_subdiagonals[i] ; k < A->r[i+1] ; k++ )
+		for(i=0; i<mpi_zonestart[mpi_here] + n; i++ )
+			for( k = subdiag.r[i] ; k < subdiag.r[i+1] ; k++ )
 			{
-				if( i == A->c[k] )
-					continue;
-
-				j = A->c[k];
+				j = subdiag.c[k];
 				// now put (i,j) in (j,i)
 
 				pos = fill_row[j];
 				A->c[pos] = i;
-				A->v[pos] = A->v[k];
+				A->v[pos] = subdiag.v[k];
 
 				fill_row[j]++;
 			}
 
-		free(nb_subdiagonals);
 		free(fill_row);
-		{}//log_out(" done.\n");
+		deallocate_matrix(&subdiag);
+		free(nb_subdiag);
 	}
+
+	fclose(input_file);
 }
 
 // finite-difference method for a 3D Poisson's equation gives a SPD matrix with -6 on the diagonal, 
 // and 1s on the diagonal+1, diagonal+p and diagonal+p²
-void generate_Poisson3D(Matrix *A, const int p, const int stencil_points, const int start_row, const int end_row)
+void generate_Poisson3D(Matrix *A, const int p, const int stencil_points, const int start_row, const int n_rows)
 {
-	int p2 = p * p, i, j=0, pos=0;
+	int p2 = p * p, i, j=0, pos, diag;
 
 	const int    *stenc_c;
 	const double *stenc_v;
@@ -255,14 +302,18 @@ void generate_Poisson3D(Matrix *A, const int p, const int stencil_points, const 
 		return;
 
 
-	// let's only do the part here.
-	for(j=start_row; j<end_row; j++)
+	pos = 0;
+	for(j=0; j<n_rows; j++)
 	{
+		// row j is really row start_row+j, and though rows are locally offset, columns are numbered globally 
+		// so the diagonal element at current row is [diag,diag], represented by [diag-offset = j, diag]
 		A->r[j] = pos;
+		diag = start_row + j;
+
 		for(i=0; i<stencil_points; i++)
-			if( j + stenc_c[i] > 0 && j + stenc_c[i] < A->n )
+			if( diag + stenc_c[i] > 0 && diag + stenc_c[i] < A->n )
 			{
-				A->c[pos] = j + stenc_c[i];
+				A->c[pos] = diag + stenc_c[i];
 				A->v[pos] = stenc_v[i];
 				pos++;
 			}
@@ -272,21 +323,21 @@ void generate_Poisson3D(Matrix *A, const int p, const int stencil_points, const 
 	A->r[j] = pos;
 }
 
-void allocate_matrix(const int n, const int m, const long nnz, Matrix *A, int align_bytes )
+void allocate_matrix(const int n, const int m, const long nnz, Matrix *A, int align_bytes)
 {
 	A->n = n;
 	A->m = m;
 	A->nnz = nnz;
 
 
-	A->r = (int*)aligned_calloc( align_bytes, (n+1) * sizeof(int));
+	A->r = (int*)aligned_calloc(align_bytes, (n+1) * sizeof(int));
 
-	A->c = (int*)aligned_calloc( align_bytes, nnz * sizeof(int));
-	A->v = (double*)aligned_calloc( align_bytes, nnz * sizeof(double));
+	A->c = (int*)aligned_calloc(align_bytes, nnz * sizeof(int));
+	A->v = (double*)aligned_calloc(align_bytes, nnz * sizeof(double));
 
 	if( ! A->v || ! A->c || ! A->r )
 	{
-		fprintf(stderr, "Allocating sparse matrix of size %d rows and %ld non-zeros failed !\n", n, nnz);
+		fprintf(stderr, "Allocating sparse matrix of size %dx%d and %ld non-zeros failed !\n", n, m, nnz);
 		exit(2);
 	}
 }
@@ -300,14 +351,14 @@ void deallocate_matrix(Matrix *A)
 		free(A->v);
 }
 
-void get_submatrix( const Matrix *A , const int *rows, const int nr, const int *cols, const int nc, const int bs, Matrix *B )
+void get_submatrix(const Matrix *A , const int *rows, const int nr, const int *cols, const int nc, const int bs, Matrix *B)
 {
 	// nb = Number of Blocks, bs = Block Size
 	int i, ii, j, jj, k, p = 0;
 
 	// i iterates each block of rows, ii each row in A that needs to be copied. Parallelly, k iterates each row in B corresponding to ii.
 	for(i=0, k=0; i<nr; i++)
-		for(ii=rows[i]; ii < rows[i] + bs && ii < mpi_zonestart[mpi_rank]+mpi_zonesize[mpi_rank] && k < B->n ; ii++, k++)
+		for(ii=rows[i]; ii < rows[i] + bs && ii < mpi_zonesize[mpi_here] && k < B->n ; ii++, k++)
 		{
 			B->r[k] = p;
 			

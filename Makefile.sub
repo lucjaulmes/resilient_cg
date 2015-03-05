@@ -94,7 +94,7 @@ ompssdebug : M_CFLAGS += --output-dir=.objs/ompssdebug --instrumentation
 # -DVERBOSE=x make it talk, x a bitmask (see debug.h for values)
 
 #both debug builds
-%debug : CFLAGS += -rdynamic -g -O2 -DVERBOSE=0 $(USE_TIMEOFDAY)
+%debug : CFLAGS += -rdynamic -g -O0 -DVERBOSE=4 $(USE_TIMEOFDAY)
 %debug : LDFLAGS +=
 #both conv builds
 %conv : CFLAGS += -O2 -DPERFORMANCE $(USE_EXTRAE)
@@ -107,16 +107,17 @@ ompssdebug : M_CFLAGS += --output-dir=.objs/ompssdebug --instrumentation
 
 
 #target hiercarchies
-actual : all
+default:ompssall
 	
 #all : debug conv speedup
 all: conv speedup debug
 
+plainall : plaindebug plainconv plainspeedup
+ompssall : ompssdebug ompssconv ompssspeedup
+
 conv : plainconv ompssconv
 speedup : plainspeedup ompssspeedup
 debug : plaindebug ompssdebug
-allplain : plaindebug plainconv plainspeedup
-allompss : ompssdebug ompssconv ompssspeedup
 
 plaindebug : dirs cg_seq_cg
 plainconv : dirs cg_seq_conv
