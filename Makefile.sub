@@ -94,7 +94,7 @@ ompssdebug : M_CFLAGS += --output-dir=.objs/ompssdebug --instrumentation
 # -DVERBOSE=x make it talk, x a bitmask (see debug.h for values)
 
 #both debug builds
-%debug : CFLAGS += -rdynamic -g -O0 -DVERBOSE=4 $(USE_TIMEOFDAY)
+%debug : CFLAGS += -rdynamic -g -O0 -DVERBOSE=3 $(USE_TIMEOFDAY)
 %debug : LDFLAGS +=
 #both conv builds
 %conv : CFLAGS += -O2 -DPERFORMANCE $(USE_EXTRAE)

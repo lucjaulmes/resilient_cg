@@ -15,7 +15,7 @@
 #define RESTART_CHECKPOINT 3
 
 #ifndef RECOMPUTE_GRADIENT_FREQ
-#define RECOMPUTE_GRADIENT_FREQ 50
+#define RECOMPUTE_GRADIENT_FREQ 200
 #endif
 
 #define SDC_NONE	 0
@@ -84,7 +84,7 @@
 extern int nb_blocks;
 extern int MAXIT;
 extern int *block_bounds;
-extern int mpi_here, *mpi_zonestart, *mpi_zonesize;
+extern int mpi_rank, *mpi_zonestart, *mpi_zonesize;
 
 static inline int get_block_start(const int b)
 {
@@ -96,27 +96,31 @@ static inline int get_block_end(const int b)
 	return block_bounds[b+1];
 }
 
-static inline size_t round_up(size_t size, size_t alignment)
+static inline int world_block(const int b)
 {
-	// alignment has to be a power of 2. We round size to the closest multiple of alignment
-	return ((size-1) | (alignment - 1)) + 1; // 4 ops
-	//return (size + (alignment - 1)) & ~(alignment - 1); // 4 ops also ? a-1, s+a, ~a, &
+	return nb_blocks * mpi_rank + b;
 }
 
 static inline void* aligned_calloc(size_t alignment, size_t size)
 {
-	size_t aligned_size = round_up(size, alignment);
-	void *ptr = aligned_alloc(alignment, aligned_size);
+	// alignment has to be a power of 2. We round size to the closest multiple of alignment
+	size_t alloc_size = size, need_uprounding = size & (alignment - 1);
+	
+	if( need_uprounding )
+		alloc_size = (size ^ need_uprounding) + alignment;
+
+	void *ptr = aligned_alloc(alignment, alloc_size);
 	if( ptr == NULL )
 	{
 		perror("aligned_alloc failed");
 		exit(errno);
 	}
-	return memset(ptr, 0, aligned_size);
+	return ptr;
 }
 
 static inline char* alloc_deptoken()
 {
+	// enough aligned size to avoir false-sharing-ish problems at dependency resolver level
 	char *deptoken = aligned_alloc(64, 64);
 
 	return deptoken;

@@ -32,65 +32,65 @@
 // globals
 int nb_blocks;
 int *block_bounds;
-int mpi_here = 0, *mpi_zonestart, *mpi_zonesize;
+int mpi_rank = 0, *mpi_zonestart, *mpi_zonesize;
 
-void set_blocks_sparse(const int n, int nb_blocks, const int fail_size, const int mpi_here, const int mpi_size)
+void set_blocks_sparse(Matrix *A, int nb_blocks, const int fail_size, const int mpi_rank, const int mpi_size)
 {
 	block_bounds  = (int*)malloc( (nb_blocks+1) * sizeof(int));
 	mpi_zonestart = (int*)malloc( (  mpi_size  ) * sizeof(int));
 	mpi_zonesize  = (int*)malloc( (  mpi_size  ) * sizeof(int));
+	int mpiworld_blocks = (nb_blocks) * mpi_size;
 
-	int mpiworld_blocks = nb_blocks * mpi_size;
+	printf("mpi rank is %d out of %d : with %d blocks per rank, we have %d total blocks\n", mpi_rank, mpi_size, nb_blocks, mpiworld_blocks);
 
-	printf("mpi rank is %d out of %d : with %d blocks per rank, we have %d total blocks\n", mpi_here, mpi_size, nb_blocks, mpiworld_blocks);
+	// compute block repartition now we have the matrix, arrange for block limits to be on fail block limits
+	int i, r, b, pos = 0, next_stop = 0, ideal_bs, inc_pos;
 
-	// We did not read the matrix yet, thus we have to assume an equal distribution of memory pages
-	int page_size = fail_size / sizeof(double);
-	int number_pages = (n + page_size - 1) / page_size;
+	ideal_bs = (A->nnz + mpiworld_blocks / 2) / mpiworld_blocks;
+	inc_pos = fail_size / sizeof(double);
 
-	// so we have a number of pages per block, and leftovers
-	int page_per_rank   = number_pages / mpi_size;
-	int extra_rank_page = number_pages % mpi_size;
-
-	mpi_zonestart[0] = 0;
-	int r, i;
-	for(r=0; r<mpi_size; r++)
+	for(r=0, i=0; r<mpi_size; r++)
 	{
-		if( r > 0 )
-			mpi_zonestart[r] = mpi_zonestart[r-1] + mpi_zonesize[r-1];
+		mpi_zonestart[r] = pos;
 
-		int page_here = page_per_rank + ( r < extra_rank_page ? 1 : 0);
+		// positions in real vectors will be block_bounds[i] + pos
+		// however locally just block_bounds[i]
 
-		if( r == mpi_here )
+		if( r == mpi_rank )
+			block_bounds[0] = pos;
+
+		for(b=0; b<nb_blocks; b++, i++)
 		{
-			int page_per_block   = page_here / nb_blocks;
-			int extra_block_page = page_here % nb_blocks;
+			next_stop += ideal_bs;
 
-			// we know pages_extra_here <= nb_blocks, so no need for a / and %
-			// (at worst we add the extra +1 every time, but never lose pages)
+			// force to increment by at least 1
+			pos += inc_pos;
 
-			block_bounds[0] = 0;
-			for(i=0; i<nb_blocks; i++)
-				block_bounds[i+1] = block_bounds[i] + page_size * (page_per_block + (i < extra_block_page ? 1 : 0));
+			// increment until we are highest possible below next_stop
+			while( pos + inc_pos <= A->n && A->r[pos + inc_pos] < next_stop )
+				pos += inc_pos;
+
+			// choose which of just below or just above next_stop is closest
+			if( pos + inc_pos <= A->n && A->r[pos + inc_pos] - next_stop < -(A->r[pos] - next_stop) )
+				pos += inc_pos;
+
+			if(pos >= A->n && i+1 != mpiworld_blocks)
+			{
+				fprintf(stderr, "Error while making blocks : end of block %d/%d is %d, beyond size of matrix %d."
+								" Try reducing -ps\n", i+1, nb_blocks, pos, A->n);
+
+				exit(EXIT_FAILURE);
+			}
+
+			if( r == mpi_rank )
+				block_bounds[b+1] = pos;
 		}
 
-		mpi_zonesize[r] = page_size * page_here;
+		mpi_zonesize[r] = pos - mpi_zonestart[r];
 	}
 
-	// eventually adjust the very last page of the matrix, which was rounded up for our computations here
-	if( mpi_size == mpi_here+1 )
-		block_bounds[nb_blocks] = n - mpi_zonestart[mpi_here];
-
-	#if VERBOSE >= SHOW_DBGINFO
-	fprintf(stderr, "Repartition of %d rows of matrix per rank is as follows :", n);
-	for(r=0; r<mpi_size; r++)
-		fprintf(stderr, "\t[%d] %d-%d", r, mpi_zonestart[r], mpi_zonestart[r]+mpi_zonesize[r]);
-
-	fprintf(stderr, "\nRepartition on rank %d of %d local rows of matrix is as follows :", mpi_here, block_bounds[nb_blocks]);
-	for(i=0; i<nb_blocks; i++)
-		fprintf(stderr, "\t[%d] %d-%d", i, mpi_zonestart[mpi_here]+block_bounds[i], mpi_zonestart[mpi_here]+block_bounds[i+1]);
-	fprintf(stderr, "\n");
-	#endif
+	if( mpi_rank == mpi_size-1 )
+		block_bounds[ nb_blocks ] = A->n;
 }
  
 int MAXIT = 0;
@@ -427,7 +427,7 @@ int main(int argc, char* argv[])
 	int nb_threads = nb_blocks = 1;
 	#endif
 
-	int fault_strat = MULTFAULTS_GLOBAL, nerr = 0, stencil_points, matrix_size;
+	int fault_strat = MULTFAULTS_GLOBAL, nerr = 0, stencil_points, size_param;
 	matrix_type matsource = FROM_FILE;
 	long fail_size;
 	double lambda = 0, cv_thres = 1e-10, err_thres = 1e-12;
@@ -441,87 +441,123 @@ int main(int argc, char* argv[])
 	fail_size = sysconf(_SC_PAGESIZE); // default page size ?
 	unsigned int seed = 1591613054 ;// time(NULL);
 
-	int mpi_args = 0, mpi_thread_level = MPI_THREAD_FUNNELED/*SERIALIZED*/, mpi_size = 1;
-	MPI_Init_thread(&mpi_args, NULL, mpi_thread_level, &mpi_thread_level);
+	//int mpi_args = 0, mpi_thread_level = MPI_THREAD_FUNNELED/*SINGLE,FUNNELED,SERIALIZED,MULTIPLE*/, mpi_size = 1;
+	//MPI_Init_thread(&mpi_args, NULL, mpi_thread_level, &mpi_thread_level);
 	//assert( mpi_thread_level == MPI_THREAD_SERIALIZED );
-	printf("Asked for mpi thread level %d, got mpi_thread_level:%d\n", MPI_THREAD_FUNNELED, mpi_thread_level);
+	//printf("Asked for mpi thread level %d, got mpi_thread_level:%d\n", MPI_THREAD_FUNNELED, mpi_thread_level);
+	int mpi_args = 0, mpi_size = 1;
+	MPI_Init(&mpi_args, NULL);
 
-	MPI_Comm_rank(MPI_COMM_WORLD, &mpi_here);
+	MPI_Comm_rank(MPI_COMM_WORLD, &mpi_rank);
 	MPI_Comm_size(MPI_COMM_WORLD, &mpi_size);
 
 	// Iterate over parameters (usually open files)
 	for(f=1; f<argc; f += nb_read )
 	{
 		nb_read = read_param(argc - f, &argv[f], &lambda, &runs, &nb_threads, &nb_blocks, &fail_size, &fault_strat, &nerr, &seed,
-							&cv_thres, &err_thres, &checkpoint_path, &checkpoint_prefix, &matsource, &stencil_points, &matrix_size);
+							&cv_thres, &err_thres, &checkpoint_path, &checkpoint_prefix, &matsource, &stencil_points, &size_param);
 
 		// error happened
 		if( nb_read < 0 )
 			usage(argv[0], argv[f]);
 
 		// no parameters read : next param must be a matrix file. Read it (and consume parameter)
-		else if( nb_read == 0 || matsource != FROM_FILE )
+		else if( nb_read == 0 || matsource != FROM_FILE)
 		{
-			int n, symmetric;
-			long nnz, nnz_here;
-			FILE *input_file = NULL;
-			char mat_name[200];
+			int n;
 			Matrix matrix;
+			char mat_name[200];
 
 			if( matsource == FROM_FILE )
 			{
 				nb_read = 1;
-				int m, lines_in_file;
-				input_file = get_infos_matrix(argv[f], &n, &m, &lines_in_file, &symmetric);
+				int m, lines_in_file, symmetric;
+				FILE* input_file = get_infos_matrix(argv[f], &n, &m, &lines_in_file, &symmetric);
 
 				if( input_file == NULL )
 					usage(argv[0], NULL);
 
-				strcpy(mat_name, strrchr(argv[f], '/'));
-				char *end = strstr(mat_name, ".mtx");
-				if( end != NULL )
-					*end = '\0';
+				// DEBUG TO MODIFY PROBLEM
+				// n = m = 128;
 
-				nnz = (long)lines_in_file * (1 + symmetric);
+				allocate_matrix(n, m, lines_in_file * (1 + symmetric), &matrix, fail_size);
+				read_matrix(n, m, lines_in_file, symmetric, &matrix, input_file);
 
-				set_blocks_sparse(n, nb_blocks, fail_size, mpi_here, mpi_size);
+				set_blocks_sparse(&matrix, nb_blocks, fail_size, mpi_rank, mpi_size);
 
-				// take some margin in case nnz/line isn't really constant. 20% ?
-				// nnz/n is per-line nnz, * mpi_zonesize is for here
-				nnz_here = (mpi_zonesize[mpi_here] * nnz * 12) / (10 * (long)n);
+				fclose(input_file);
 
-				// allocate a [local_rows x global_rows] matrix with room for nnz_here elements
-				allocate_matrix(mpi_zonesize[mpi_here], n, nnz_here, &matrix, fail_size);
-				// then set its parameters to those of the global matrix
-				matrix.n = n;
-				matrix.nnz = nnz;
-
-				read_matrix(block_bounds[nb_blocks], n, nnz_here, symmetric, &matrix, input_file, 0);
+				strcpy(mat_name, argv[f]);
 			}
-			else // if( matsource == POISSON3D )
+			else // if matsource == POISSON3D
 			{
 				matsource = FROM_FILE;
 
-				n = matrix_size * matrix_size * matrix_size;
-				nnz = (long)n * stencil_points;
-				nnz_here = (nnz + mpi_size - 1) / mpi_size;
+				// here all block etc. repartition is static, so we can load balance in advance
+				n = size_param * size_param * size_param;
 
-				set_blocks_sparse(n, nb_blocks, fail_size, mpi_here, mpi_size);
+				// number of mem. pages per vector on one side, total number of threads on the other
+				if( n / (fail_size/sizeof(double)) % (mpi_size * nb_blocks) != 0 )
+				{
+					char err_msg[50];
+					sprintf(err_msg, "Poisson3D size (%d = %d^3) incompatible with alignment of memory page per block", n, size_param);
+					usage(argv[0], err_msg);
+				}
 
-				// allocate a [local_rows x global_rows] matrix with room for nnz_here elements
-				allocate_matrix(mpi_zonesize[mpi_here], n, nnz_here, &matrix, fail_size);
-				// then set its parameters to those of the global matrix
-				matrix.n = n;
-				matrix.nnz = nnz;
+				int rows_per_rank = n / mpi_size, rows_per_block = rows_per_rank / nb_blocks;
+				long nnz_here = stencil_points * rows_per_rank;
 
-				// finally, populate matrix
-				generate_Poisson3D(&matrix, matrix_size, stencil_points, mpi_zonestart[mpi_here], mpi_zonesize[mpi_here]);
+				block_bounds  = (int*)malloc( (nb_blocks+1) * sizeof(int));
+				mpi_zonestart = (int*)malloc( (  mpi_size  ) * sizeof(int));
+				mpi_zonesize  = (int*)malloc( (  mpi_size  ) * sizeof(int));
 
+				mpi_zonestart[0] = 0;
+				for(i=1; i<mpi_size; i++)
+				{
+					mpi_zonestart[i] = mpi_zonestart[i-1] + rows_per_rank;
+					mpi_zonesize[i-1] = rows_per_rank;
+				}
+				mpi_zonesize[i-1] = rows_per_rank;
+
+				block_bounds[0] = mpi_zonestart[mpi_rank];
+				for(i=1; i<nb_blocks+1; i++)
+					block_bounds[i] = block_bounds[i-1] + rows_per_block;
+				
+				allocate_matrix(n, n, nnz_here, &matrix, fail_size);
+				generate_Poisson3D(&matrix, size_param, stencil_points, mpi_zonestart[mpi_rank], mpi_zonestart[mpi_rank] + rows_per_rank);
+
+				int max_here = mpi_zonestart[mpi_rank] + mpi_zonesize[mpi_rank],
+					min_here = mpi_zonestart[mpi_rank],
+					max_dist = size_param * size_param;
+
+				for(i=0; i<mpi_size; i++)
+					if(i!=mpi_rank)
+					{
+						// if the zone i is too far from our own to communicate, consider its size to be 0
+						int max_there = mpi_zonestart[i] + mpi_zonesize[i],
+							min_there = mpi_zonestart[i];
+
+						if( max_there + max_dist < min_here || max_here + max_dist < min_there )
+						{
+							mpi_zonesize[i] = 0;
+							printf("From mpi rank %d we consider no interaction with rank %d\n", mpi_rank, i);
+						}
+					}
+
+				sprintf(mat_name, "Poisson3D-%d-%d", stencil_points, size_param);
 			}
 
 			#if VERBOSE >= SHOW_TOOMUCH
-			print_matrix_abs(stderr, &matrix);
-			exit(0);
+			fprintf(stderr, "On mpi rank %d block bounds are: %d", mpi_rank, block_bounds[0]);
+			for(i=1; i<nb_blocks+1; i++)
+				fprintf(stderr, ", %d", block_bounds[i]);
+			fprintf(stderr, "\n");
+
+			char log_mat[20];
+			sprintf(log_mat, "%s.%d", mat_name, mpi_rank);
+			FILE *lm_handle = fopen(log_mat, "w");
+			print_matrix(lm_handle, &matrix);
+			fclose(lm_handle);
 			#endif
 
 			// now show infos
@@ -568,9 +604,9 @@ int main(int argc, char* argv[])
 		
 			// a few vectors for rhs of equation, solution and verification
 			double *b, *x, *s;
+			b = (double*)aligned_calloc( fail_size, n * sizeof(double));
 			x = (double*)aligned_calloc( fail_size, n * sizeof(double));
-			b = (double*)aligned_calloc( fail_size, mpi_zonesize[mpi_here] * sizeof(double));
-			s = (double*)aligned_calloc( fail_size, mpi_zonesize[mpi_here] * sizeof(double));
+			s = (double*)aligned_calloc( fail_size, n * sizeof(double));
 
 			// interesting stuff is here
 			for(j=0;j<runs;j++)
@@ -585,11 +621,16 @@ int main(int argc, char* argv[])
 				// generate random rhs to problem
 				double range = (double) 1;
 
-				for(i=0; i<mpi_zonesize[mpi_here]; i++)
-				{
-					b[i] = ((double)rand() / (double)RAND_MAX ) * range - range/2;
-					x[i] = 0.0;
-				}
+				//for(i=mpi_zonestart[mpi_rank]; i<mpi_zonestart[mpi_rank]+mpi_zonesize[mpi_rank]; i++)
+				// to keep the determinism of seed() and not have the same b on every mpi rank
+				for(i=0; i<n; i++)
+					if(i>=mpi_zonestart[mpi_rank] && i<mpi_zonestart[mpi_rank]+mpi_zonesize[mpi_rank])
+					{
+						b[i] = ((double)rand() / (double)RAND_MAX ) * range - range/2;
+						x[i] = 0.0;
+					}
+					else
+						rand();
 
 				solve_cg(&matrix, b, x, cv_thres, err_thres);
 
@@ -600,8 +641,8 @@ int main(int argc, char* argv[])
 				mult(&matrix, x, s);
 
 				// do displays (verification, error)
-				double t, err = 0, norm_b = norm(mpi_zonesize[mpi_here], b);
-				for(i=0; i<mpi_zonesize[mpi_here]; i++)
+				double t, err = 0, norm_b = norm(mpi_zonesize[mpi_rank], b + mpi_zonestart[mpi_rank]);
+				for(i=mpi_zonestart[mpi_rank]; i<mpi_zonestart[mpi_rank]+mpi_zonesize[mpi_rank]; i++)
 				{
 					double e_i = b[i] - s[i];
 					err += e_i * e_i;

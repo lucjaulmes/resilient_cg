@@ -48,7 +48,7 @@ struct timeval start_time, stop_time;
 int nanos_omp_get_thread_num () { return 0; }
 int nanos_omp_get_num_threads() { return 1; }
 #endif
-int get_rank_num () { int mpi_here; MPI_Comm_rank(MPI_COMM_WORLD, &mpi_here); return mpi_here; }
+int get_rank_num () { int mpi_rank; MPI_Comm_rank(MPI_COMM_WORLD, &mpi_rank); return mpi_rank; }
 int get_num_ranks() { int mpi_size; MPI_Comm_size(MPI_COMM_WORLD, &mpi_size); return mpi_size; }
 
 

@@ -46,15 +46,14 @@ void compute_beta(double *err_sq, const double *old_err_sq, double *beta)
 	log_err(SHOW_TASKINFO, "Computing beta finished : err_sq = %e ; old_err_sq = %e ; beta = %e \n", *err_sq, *old_err_sq, *beta);
 }
 
-#pragma omp task inout(*normA_p_sq, *err_sq) out(*alpha, *old_err_sq, *old_err_sq2) label(compute_alpha) priority(100) no_copy_deps
-void compute_alpha(double *err_sq, double *normA_p_sq, double *old_err_sq, double *old_err_sq2, double *alpha)
+#pragma omp task inout(*normA_p_sq, *err_sq) out(*alpha, *old_err_sq) label(compute_alpha) priority(100) no_copy_deps
+void compute_alpha(double *err_sq, double *normA_p_sq, double *old_err_sq, double *alpha)
 {
 	double loc_normA_p_sq = *normA_p_sq;
 	MPI_Allreduce(&loc_normA_p_sq, normA_p_sq, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
 
 	*alpha = *err_sq / *normA_p_sq ;
 	*old_err_sq = *err_sq;
-	*old_err_sq2 = *err_sq;
 
 	#if DUE
 	int state = aggregate_skips();
@@ -84,15 +83,15 @@ static inline void swap(double **v, double **w)
 	*w = swap;
 }
 
-void solve_cg(const Matrix *A, const double *b, double *iterate_glob, double convergence_thres, double error_thres UNUSED)
+void solve_cg( const Matrix *A, const double *b, double *iterate, double convergence_thres, double error_thres UNUSED)
 {
 	// do some memory allocations
-	const int n = A->n, offset_here = mpi_zonestart[mpi_here], n_here = mpi_zonesize[mpi_here];
+	double norm_b, thres_sq;
+	const int n = A->n;
 	int r = -1, total_failures = 0, failures = 0;
 	int do_update_gradient = 0;
-	double *p, *old_p, *Ap, normA_p_sq, *gradient, *Aiterate, *p_glob, *old_p_glob, *iterate;
-	double norm_b, thres_sq, err_sq = 0.0, old_err_sq = INFINITY, old_err_sq2 = DBL_MAX, alpha = 0.0, beta = 0.0;
-	char *wait_for_p = alloc_deptoken(), *wait_for_iterate = alloc_deptoken(), *wait_for_mvm = alloc_deptoken();
+	double *p, *old_p, *Ap, normA_p_sq, *gradient, *Aiterate, err_sq = 0.0, old_err_sq = INFINITY, alpha = 0.0, beta = 0.0;
+	char *wait_for_p = alloc_deptoken(), *wait_for_iterate = alloc_deptoken(), *wait_for_mvm = alloc_deptoken(), *start_rt_work = alloc_deptoken();
 	#if CKPT == CKPT_IN_MEMORY
 	double *save_it, *save_g, *save_p, *save_Ap, save_err_sq, save_alpha;
 	int do_checkpoint = 0;
@@ -104,29 +103,25 @@ void solve_cg(const Matrix *A, const double *b, double *iterate_glob, double con
 	int do_check_sdc = CHECK_SDC_FREQ;
 	#endif
 
-	p_glob     = (double*)aligned_calloc( sizeof(double) << get_log2_failblock_size(), n * sizeof(double));
-	old_p_glob = (double*)aligned_calloc( sizeof(double) << get_log2_failblock_size(), n * sizeof(double));
-	Ap         = (double*)aligned_calloc( sizeof(double) << get_log2_failblock_size(), n_here * sizeof(double));
-	gradient   = (double*)aligned_calloc( sizeof(double) << get_log2_failblock_size(), n_here * sizeof(double));
-	Aiterate   = (double*)aligned_calloc( sizeof(double) << get_log2_failblock_size(), n_here * sizeof(double));
-
-	p          = p_glob       + offset_here;
-	old_p      = old_p_glob   + offset_here;
-	iterate    = iterate_glob + offset_here;
+	p        = (double*)aligned_calloc( sizeof(double) << get_log2_failblock_size(), n * sizeof(double));
+	old_p    = (double*)aligned_calloc( sizeof(double) << get_log2_failblock_size(), n * sizeof(double));
+	Ap       = (double*)aligned_calloc( sizeof(double) << get_log2_failblock_size(), n * sizeof(double));
+	gradient = (double*)aligned_calloc( sizeof(double) << get_log2_failblock_size(), n * sizeof(double));
+	Aiterate = (double*)aligned_calloc( sizeof(double) << get_log2_failblock_size(), n * sizeof(double));
 
 	#if CKPT == CKPT_IN_MEMORY
-	save_it  = (double*)aligned_calloc( sizeof(double) << get_log2_failblock_size(), n_here * sizeof(double));
-	save_g   = (double*)aligned_calloc( sizeof(double) << get_log2_failblock_size(), n_here * sizeof(double));
-	save_p   = (double*)aligned_calloc( sizeof(double) << get_log2_failblock_size(), n_here * sizeof(double));
+	save_it  = (double*)aligned_calloc( sizeof(double) << get_log2_failblock_size(), n * sizeof(double));
+	save_g   = (double*)aligned_calloc( sizeof(double) << get_log2_failblock_size(), n * sizeof(double));
+	save_p   = (double*)aligned_calloc( sizeof(double) << get_log2_failblock_size(), n * sizeof(double));
 	#if SDC == SDC_ORTHO
 	save_Ap  = NULL;
 	#else
-	save_Ap  = (double*)aligned_calloc( sizeof(double) << get_log2_failblock_size(), n_here * sizeof(double));
+	save_Ap  = (double*)aligned_calloc( sizeof(double) << get_log2_failblock_size(), n * sizeof(double));
 	#endif
 	#endif
 
 	// some parameters pre-computed, and show some informations (borrow thres_sq to be out_buf, norm in norm_b)
-	thres_sq = norm(mpi_zonesize[mpi_here], b + mpi_zonestart[mpi_here]);
+	thres_sq = norm(mpi_zonesize[mpi_rank], b + mpi_zonestart[mpi_rank]);
     MPI_Allreduce(&thres_sq, &norm_b, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
 
 	thres_sq = convergence_thres * convergence_thres * norm_b;
@@ -162,30 +157,42 @@ void solve_cg(const Matrix *A, const double *b, double *iterate_glob, double con
 	{
 		if( --do_update_gradient > 0 )
 		{
-			update_iterate(iterate, wait_for_iterate, old_p, &alpha);
-
+			// wait_for_iterate postpones recovery tasks until all update_x,g are done
 			update_gradient(gradient, Ap, &alpha, wait_for_iterate);
 
 			norm_task(gradient, &err_sq);
 
 			// at this point, Ap = A * old_p
 			#if DUE == DUE_ASYNC || DUE == DUE_IN_PATH
-			recover_rectify_g(n_here, &mp, old_p, Ap, gradient, &err_sq, wait_for_iterate);
+			recover_rectify_g(n, &mp, old_p, Ap, gradient, &err_sq, wait_for_iterate);
 			#endif
 
 			compute_beta(&err_sq, &old_err_sq, &beta);
 
+			// execute iterate update as late as possible
+			update_iterate(iterate, wait_for_iterate, &beta, old_p, &alpha);
+
 			#if DUE == DUE_ASYNC
-			recover_rectify_xk(n_here, &mp, iterate, wait_for_iterate);
+			recover_rectify_xk(n, &mp, iterate, wait_for_iterate);
 			#endif
 		}
 		else
 		{
+			// wait_for_mvm postpones recovery tasks until all update_x,g are done
+			// wait_for_iterate allows to wait for all parts of x before doing A*x
 			if( r > 0 )
-				update_iterate(iterate, wait_for_iterate, old_p, &alpha);
+			{
+				update_iterate(iterate, wait_for_iterate, &beta, old_p, &alpha);
 
-			recompute_gradient_mvm(A, iterate_glob, wait_for_iterate, wait_for_mvm, Aiterate);
+				// our initial guess is always 0, don't bother exchanging it
+				#pragma omp task inout(iterate[0:n-1]) in(*wait_for_iterate) out(*wait_for_mvm) label(exchange_x) priority(100) no_copy_deps
+				MPI_Allgatherv(MPI_IN_PLACE, 0/*ignored*/, MPI_DOUBLE, iterate, mpi_zonesize, mpi_zonestart, MPI_DOUBLE, MPI_COMM_WORLD);
+			}
 
+			// first part of recompute g : A*x
+			recompute_gradient_mvm(A, iterate, wait_for_iterate, wait_for_mvm, Aiterate);
+
+			// second part of recompute g : b - Ax, sometimes more complicated or replaced due to SDC/DUE
 			#if SDC == SDC_GRADIENT
 			do_check_sdc -= RECOMPUTE_GRADIENT_FREQ;
 			#if DUE == DUE_ROLLBACK
@@ -202,7 +209,7 @@ void solve_cg(const Matrix *A, const double *b, double *iterate_glob, double con
 
 				update_gradient(gradient, Ap, &alpha, wait_for_iterate);
 
-				check_sdc_recompute_grad(do_checkpoint == 0, &err_data, b, iterate, gradient, old_p, Ap, wait_for_mvm, Aiterate, &old_err_sq, error_thres);
+				check_sdc_recompute_grad(n, do_checkpoint == 0, &err_data, b, iterate, gradient, old_p, Ap, wait_for_mvm, Aiterate, &old_err_sq, error_thres);
 			}
 			else
 				recompute_gradient_update(gradient, wait_for_mvm, Aiterate, b);
@@ -218,7 +225,7 @@ void solve_cg(const Matrix *A, const double *b, double *iterate_glob, double con
 			#endif
 
 			#if DUE == DUE_ASYNC || DUE == DUE_IN_PATH
-			recover_rectify_x_g(n_here, &mp, iterate, gradient, &err_sq, wait_for_mvm);
+			recover_rectify_x_g(n, &mp, iterate, gradient, &err_sq, wait_for_mvm);
 			#endif
 
 			compute_beta(&err_sq, &old_err_sq, &beta);
@@ -230,7 +237,15 @@ void solve_cg(const Matrix *A, const double *b, double *iterate_glob, double con
 				start_error_injection();
 		}
 
-		update_p(p, old_p, wait_for_p, gradient, &beta);	
+		// wait_for_p postpones communications 
+		update_p(p, old_p, wait_for_p, start_rt_work, gradient, &beta);
+
+		#pragma omp task inout(p[0:n-1]) in(*wait_for_p) out(*wait_for_mvm) label(exchange_p) priority(100) no_copy_deps
+		MPI_Allgatherv(MPI_IN_PLACE, 0/*ignored*/, MPI_DOUBLE, p, mpi_zonesize, mpi_zonestart, MPI_DOUBLE, MPI_COMM_WORLD);
+
+		// In the hybrid version, there is an overlapping opportunity for the runtime work
+		// which is during the communication (MPI_Allgartherv)
+		#pragma omp taskwait on(*start_rt_work, *wait_for_iterate)
 
 		#if SDC == SDC_ORTHO
 		// should happen in between p and Ap, to check if the new p and old Ap are orthogonal
@@ -245,49 +260,27 @@ void solve_cg(const Matrix *A, const double *b, double *iterate_glob, double con
 		if( -- do_check_sdc == 0 )
 		{
 			do_checkpoint -= CHECK_SDC_FREQ ;
-			check_sdc_p_Ap_orthogonal(do_checkpoint == 0, &err_data, iterate, gradient, p, Ap, &err_sq, error_thres);
+			check_sdc_p_Ap_orthogonal(n, do_checkpoint == 0, &err_data, iterate, gradient, p, Ap, &err_sq, error_thres);
 		}
 		#endif
 
-		compute_Ap(A, p_glob, wait_for_p, wait_for_mvm, Ap);
+		compute_Ap(A, p, wait_for_p, wait_for_mvm, Ap);
 
 		scalar_product_task(p, Ap, &normA_p_sq);
 
 		#if DUE == DUE_ASYNC || DUE == DUE_IN_PATH
-		recover_rectify_p_Ap(n_here, &mp, p, old_p, Ap, &normA_p_sq, wait_for_mvm, wait_for_iterate);
+		recover_rectify_p_Ap(n, &mp, p, old_p, Ap, &normA_p_sq, wait_for_mvm, wait_for_iterate);
 		#endif
-
-		// when reaching this point, all tasks of loop should be created.
-		// then waiting start : should be released halfway through the loop.
-		// We want this to be after alpha on normal iterations, after AxIt, and after checking sdc 
-		// but it should not wait for recovery to finish on recovery iterations
-		if( !do_update_gradient )
-		{
-			#if SDC == SDC_ALPHA
-			_Pragma( STRINGIFY(omp taskwait on(old_err_sq2, err_data.prev_error, *wait_for_iterate)) )
-			#else
-			_Pragma( STRINGIFY(omp taskwait on(old_err_sq2, *wait_for_iterate)) )
-			#endif
-		}
-		else
-		{
-			#if SDC == SDC_ALPHA
-			_Pragma( STRINGIFY(omp taskwait on(old_err_sq2, err_data.prev_error)) )
-			#else
-			_Pragma( STRINGIFY(omp taskwait on(old_err_sq2)) )
-			#endif
-		}
 
 		// swapping p's so we reduce pressure on the execution of the update iterate tasks
 		// now output-dependencies is not conflicting with the next iteration but the one after
 		{
 			swap(&p, &old_p);
-			swap(&p_glob, &old_p_glob);
 			
 			failures = check_errors_signaled();
 
 			if( r > 0 )
-				log_convergence(r-1, old_err_sq2, failures);
+				log_convergence(r-1, old_err_sq, failures);
 
 			log_err(SHOW_TASKINFO, "\n\n");
 
@@ -300,7 +293,7 @@ void solve_cg(const Matrix *A, const double *b, double *iterate_glob, double con
 				do_update_gradient = RECOMPUTE_GRADIENT_FREQ;
 			#if DUE == DUE_IN_PATH
 			else
-				recover_rectify_xk(n_here, &mp, iterate, (char*)&normA_p_sq);
+				recover_rectify_xk(n, &mp, iterate, (char*)&normA_p_sq);
 			#endif
 			#if CKPT
 			if( do_checkpoint <= 0 )
@@ -312,7 +305,7 @@ void solve_cg(const Matrix *A, const double *b, double *iterate_glob, double con
 			#endif
 		}
 
-		compute_alpha(&err_sq, &normA_p_sq, &old_err_sq, &old_err_sq2, &alpha);
+		compute_alpha(&err_sq, &normA_p_sq, &old_err_sq, &alpha);
 
 		// should happen after p, Ap are ready and before (post-alpha) iterate and gradient updates
 		// so just after (or just before) alpha basically
@@ -336,7 +329,7 @@ void solve_cg(const Matrix *A, const double *b, double *iterate_glob, double con
 		if( -- do_check_sdc == 0 )
 		{
 			do_checkpoint -= CHECK_SDC_FREQ;
-			check_sdc_alpha_invariant(do_checkpoint == 0, &err_data, b, iterate, gradient, old_p, Ap, &old_err_sq, &alpha, error_thres);
+			check_sdc_alpha_invariant(n, do_checkpoint == 0, &err_data, b, iterate, gradient, old_p, Ap, &old_err_sq, &alpha, error_thres);
 		}
 		#endif
 	}
@@ -346,7 +339,7 @@ void solve_cg(const Matrix *A, const double *b, double *iterate_glob, double con
 	stop_measure();
 	
 	failures = check_errors_signaled();
-	log_convergence(r-1, old_err_sq2, failures);
+	log_convergence(r-1, old_err_sq, failures);
 
 	{}//log_out("\n\n------\nConverged at rank %d\n------\n\n", r);
 
@@ -362,6 +355,7 @@ void solve_cg(const Matrix *A, const double *b, double *iterate_glob, double con
 	free(Aiterate);
 	free(wait_for_p);
 	free(wait_for_mvm);
+	free(start_rt_work);
 	free(wait_for_iterate);
 
 	#if CKPT == CKPT_IN_MEMORY

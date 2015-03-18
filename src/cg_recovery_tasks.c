@@ -4,7 +4,7 @@ void hard_reset(magic_pointers *mp)
 	// This method can be used as a fallback when DUE techniques don't work.
 	// Primary use is to implement other techniques (against which to compare) 
 	#if CKPT
-	force_rollback(mp->err_data, mp->x, mp->g, mp->old_p, mp->Ap);
+	force_rollback(mp->A->n, mp->err_data, mp->x, mp->g, mp->old_p, mp->Ap);
 	#else
 	// here we are called at alpha (the function will finish executing normally)
 	// we want ||p||_A = INF to have alpha = 0, err_sq = INF so that next beta = 0
@@ -129,7 +129,7 @@ void recover_rectify_g(const int n UNUSED, magic_pointers *mp, const double *p, 
 #else
 #pragma omp task inout([n]x) in(*wait_for_mvm) concurrent(*err_sq, [n]gradient) label(recover_xk_g) priority(5) no_copy_deps
 #endif
-void recover_rectify_x_g(const int n UNUSED, magic_pointers *mp, double *x, double *gradient, double *err_sq, char *wait_for_mvm UNUSED)
+void recover_rectify_x_g(const int n, magic_pointers *mp, double *x, double *gradient, double *err_sq, char *wait_for_mvm UNUSED)
 {
 	if( !get_nb_failed_blocks() )
 	{
@@ -206,7 +206,7 @@ void recover_rectify_x_g(const int n UNUSED, magic_pointers *mp, double *x, doub
 #else
 #pragma omp task in(*wait_for_mvm, *wait_for_iterate) concurrent(*normA_p_sq, [n]p, [n]Ap) label(recover_p_Ap) priority(5) no_copy_deps
 #endif
-void recover_rectify_p_Ap(const int n UNUSED, magic_pointers *mp, double *p, double *old_p, double *Ap, double *normA_p_sq, char *wait_for_mvm UNUSED, char *wait_for_iterate UNUSED)
+void recover_rectify_p_Ap(const int n, magic_pointers *mp, double *p, double *old_p, double *Ap, double *normA_p_sq, char *wait_for_mvm UNUSED, char *wait_for_iterate UNUSED)
 {
 	if( !get_nb_failed_blocks() )
 	{

@@ -1,4 +1,4 @@
-void check_sdc_recompute_grad(const int save, detect_error_data *err_data, const double *b, double *iterate, double *gradient, double *p, double *Ap, char *wait_for_mvm UNUSED, double *Aiterate, double *err_sq, const double threshold)
+void check_sdc_recompute_grad(const int n, const int save, detect_error_data *err_data, const double *b, double *iterate, double *gradient, double *p, double *Ap, char *wait_for_mvm UNUSED, double *Aiterate, double *err_sq, const double threshold)
 {
 	double *zero = &(err_data->helper_1), normAb = err_data->helper_4;
 	int *behaviour = &(err_data->error_detected), *prev_error = &(err_data->prev_error);
@@ -6,6 +6,8 @@ void check_sdc_recompute_grad(const int save, detect_error_data *err_data, const
 	for(i=0; i < nb_blocks; i ++ )
 	{
 		int s = get_block_start(i), e = get_block_end(i);
+		if( e > n )
+			e = n;
 
 		// gradient <- b - Aiterate
 		#pragma omp task in(b[s:e-1], Aiterate[s:e-1]) inout(gradient[s:e-1]) concurrent(*wait_for_mvm, *zero) firstprivate(s, e) label(b-AxIt_check_sdc) priority(10) no_copy_deps
@@ -29,7 +31,7 @@ void check_sdc_recompute_grad(const int save, detect_error_data *err_data, const
 				*zero += local_zero;
 
 			exit_task();
-			log_err(SHOW_TASKINFO, "b - Ax with SDC_CHECK part %d finished = %e, check = %e\n", i, norm(e-s, &(gradient[s])), local_zero);
+			log_err(SHOW_TASKINFO, "b - Ax with SDC_CHECK part %d finished = %e, check = %e\n", world_block(i), norm(e-s, &(gradient[s])), local_zero);
 		}
 	}
 
@@ -71,10 +73,10 @@ void check_sdc_recompute_grad(const int save, detect_error_data *err_data, const
 			*behaviour = DO_NOTHING;
 	}
 
-	checkpoint_vectors(err_data, behaviour, iterate, gradient, p, Ap);
+	checkpoint_vectors(n, err_data, behaviour, iterate, gradient, p, Ap);
 }
 
-void check_sdc_alpha_invariant(const int save, detect_error_data *err_data, const double *b, double *iterate, double *gradient, double *p, double *Ap, double *err_sq, double *alpha, const double threshold)
+void check_sdc_alpha_invariant(const int n, const int save, detect_error_data *err_data, const double *b, double *iterate, double *gradient, double *p, double *Ap, double *err_sq, double *alpha, const double threshold)
 {
 	int i;
 	double *bp = &(err_data->helper_1), *xAp = &(err_data->helper_2);
@@ -83,6 +85,8 @@ void check_sdc_alpha_invariant(const int save, detect_error_data *err_data, cons
 	for(i=0; i < nb_blocks; i ++ )
 	{
 		int s = get_block_start(i), e = get_block_end(i);
+		if( e > n )
+			e = n;
 
 		#pragma omp task in(b[s:e-1], p[s:e-1]) concurrent(*bp) firstprivate(s,e) label(check_error_bp) priority(0) no_copy_deps
 		{
@@ -147,10 +151,10 @@ void check_sdc_alpha_invariant(const int save, detect_error_data *err_data, cons
 			*behaviour = DO_NOTHING;
 	}
 
-	checkpoint_vectors(err_data, behaviour, iterate, gradient, p, Ap);
+	checkpoint_vectors(n, err_data, behaviour, iterate, gradient, p, Ap);
 }
 
-void check_sdc_p_Ap_orthogonal(const int save, detect_error_data *err_data, double *iterate, double *gradient, double *p, double *Ap, double *err_sq, const double threshold)
+void check_sdc_p_Ap_orthogonal(const int n, const int save, detect_error_data *err_data, double *iterate, double *gradient, double *p, double *Ap, double *err_sq, const double threshold)
 {
 	int i;
 	double *pAp = &(err_data->helper_1), *np = &(err_data->helper_2), *nAp = &(err_data->helper_3);
@@ -159,6 +163,8 @@ void check_sdc_p_Ap_orthogonal(const int save, detect_error_data *err_data, doub
 	for(i=0; i < nb_blocks; i ++ )
 	{
 		int s = get_block_start(i), e = get_block_end(i);
+		if( e > n )
+			e = n;
 
 		#pragma omp task in(Ap[s:e-1]) concurrent(*nAp) firstprivate(s,e) label(check_error_nAp) priority(0) no_copy_deps
 		{
@@ -216,6 +222,6 @@ void check_sdc_p_Ap_orthogonal(const int save, detect_error_data *err_data, doub
 			*behaviour = DO_NOTHING;
 	}
 
-	checkpoint_vectors(err_data, behaviour, iterate, gradient, p, NULL);
+	checkpoint_vectors(n, err_data, behaviour, iterate, gradient, p, NULL);
 }
 
