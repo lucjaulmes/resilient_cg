@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <math.h>
 #include <float.h>
+#include <assert.h>
 #include "mpi.h"
 
 #include "global.h"
@@ -13,6 +14,51 @@
 
 magic_pointers mp;
 
+void determine_mpi_neighbours(const Matrix *A, const int mpi_rank, const int mpi_size, int *first, int *last)
+{
+	// find our furthest neighbour in both direction
+	int max_col = 0, min_col = A->n, i;
+	for(i=0; i<mpi_zonesize[mpi_rank]; i++)
+	{
+		// using the fact that each A->c is sorted on A->r[i]..A->r[i+1]-1
+		if( A->c[A->r[i]] < min_col )
+			min_col = A->c[A->r[i]];
+
+		if( A->c[A->r[i+1]-1] > max_col )
+			max_col = A->c[A->r[i+1]-1];
+	}
+
+	// now check with which MPI block we communicate, depending on its rows
+	// this is reflexive since the matrix is symmetric
+	*first = -1;
+	for(i=0; i<mpi_size; i++)
+		// if self or there is an overlap, we are 'neighbours'
+		if( i==mpi_rank || (! (mpi_zonestart[i] + mpi_zonesize[i] < min_col || max_col < mpi_zonestart[i]) ))
+		{
+			if( *first < 0 )
+				*first = i;
+
+			*last = i;
+		}
+}
+
+void setup_exchange(const int mpi_rank, const int first, const int last, const int tag, double *v, MPI_Request v_req[])
+{
+	int i, j=0;
+
+	// now check with which MPI block we communicate, depending on its rows
+	// this is reflexive since the matrix is symmetric
+	for(i=first; i<=last; i++)
+		if(i!=mpi_rank)
+		{
+			// sends are always from mpi_rank start,size
+			MPI_Send_init(v + mpi_zonestart[mpi_rank], mpi_zonesize[mpi_rank], MPI_DOUBLE, i, tag, MPI_COMM_WORLD, v_req+(j++));
+
+			// recvs are always from i start,size
+			MPI_Recv_init(v + mpi_zonestart[   i    ], mpi_zonesize[   i    ], MPI_DOUBLE, i, tag, MPI_COMM_WORLD, v_req+(j++));
+		}
+}
+ 
 #if DUE && DUE != DUE_ROLLBACK
 #include "cg_resilient_tasks.c"
 #include "cg_recovery_tasks.c"
@@ -83,14 +129,14 @@ static inline void swap(double **v, double **w)
 	*w = swap;
 }
 
-void solve_cg( const Matrix *A, const double *b, double *iterate, double convergence_thres, double error_thres UNUSED)
+void solve_cg(const Matrix *A, const double *b, double *it_glob, double convergence_thres, double error_thres UNUSED)
 {
 	// do some memory allocations
 	double norm_b, thres_sq;
 	const int n = A->n;
 	int r = -1, total_failures = 0, failures = 0;
 	int do_update_gradient = 0;
-	double *p, *old_p, *Ap, normA_p_sq, *gradient, *Aiterate, err_sq = 0.0, old_err_sq = INFINITY, alpha = 0.0, beta = 0.0;
+	double *iterate, *p_glob, *old_p_glob, *p, *old_p, *Ap, normA_p_sq, *gradient, *Aiterate, err_sq = 0.0, old_err_sq = INFINITY, alpha = 0.0, beta = 0.0;
 	char *wait_for_p = alloc_deptoken(), *wait_for_iterate = alloc_deptoken(), *wait_for_mvm = alloc_deptoken(), *start_rt_work = alloc_deptoken();
 	#if CKPT == CKPT_IN_MEMORY
 	double *save_it, *save_g, *save_p, *save_Ap, save_err_sq, save_alpha;
@@ -102,27 +148,46 @@ void solve_cg( const Matrix *A, const double *b, double *iterate, double converg
 	#if SDC
 	int do_check_sdc = CHECK_SDC_FREQ;
 	#endif
+	
+	int first_mpix, last_mpix, count_mpix;
+	determine_mpi_neighbours(A, mpi_rank, mpi_size, &first_mpix, &last_mpix);
+	count_mpix = last_mpix - first_mpix;
 
-	p        = (double*)aligned_calloc( sizeof(double) << get_log2_failblock_size(), n * sizeof(double));
-	old_p    = (double*)aligned_calloc( sizeof(double) << get_log2_failblock_size(), n * sizeof(double));
-	Ap       = (double*)aligned_calloc( sizeof(double) << get_log2_failblock_size(), n * sizeof(double));
-	gradient = (double*)aligned_calloc( sizeof(double) << get_log2_failblock_size(), n * sizeof(double));
-	Aiterate = (double*)aligned_calloc( sizeof(double) << get_log2_failblock_size(), n * sizeof(double));
+	p_glob     = (double*)aligned_calloc( sizeof(double) << get_log2_failblock_size(), n * sizeof(double));
+	old_p_glob = (double*)aligned_calloc( sizeof(double) << get_log2_failblock_size(), n * sizeof(double));
+
+	p          = p_glob 	+ mpi_zonestart[mpi_rank];
+	old_p      = old_p_glob	+ mpi_zonestart[mpi_rank];
+	iterate    = it_glob	+ mpi_zonestart[mpi_rank];
+
+	Ap         = (double*)aligned_calloc( sizeof(double) << get_log2_failblock_size(), mpi_zonesize[mpi_rank] * sizeof(double));
+	gradient   = (double*)aligned_calloc( sizeof(double) << get_log2_failblock_size(), mpi_zonesize[mpi_rank] * sizeof(double));
+	Aiterate   = (double*)aligned_calloc( sizeof(double) << get_log2_failblock_size(), mpi_zonesize[mpi_rank] * sizeof(double));
 
 	#if CKPT == CKPT_IN_MEMORY
-	save_it  = (double*)aligned_calloc( sizeof(double) << get_log2_failblock_size(), n * sizeof(double));
-	save_g   = (double*)aligned_calloc( sizeof(double) << get_log2_failblock_size(), n * sizeof(double));
-	save_p   = (double*)aligned_calloc( sizeof(double) << get_log2_failblock_size(), n * sizeof(double));
+	save_it  = (double*)aligned_calloc( sizeof(double) << get_log2_failblock_size(), mpi_zonesize[mpi_rank] * sizeof(double));
+	save_g   = (double*)aligned_calloc( sizeof(double) << get_log2_failblock_size(), mpi_zonesize[mpi_rank] * sizeof(double));
+	save_p   = (double*)aligned_calloc( sizeof(double) << get_log2_failblock_size(), mpi_zonesize[mpi_rank] * sizeof(double));
 	#if SDC == SDC_ORTHO
 	save_Ap  = NULL;
 	#else
-	save_Ap  = (double*)aligned_calloc( sizeof(double) << get_log2_failblock_size(), n * sizeof(double));
+	save_Ap  = (double*)aligned_calloc( sizeof(double) << get_log2_failblock_size(), mpi_zonesize[mpi_rank] * sizeof(double));
 	#endif
 	#endif
 
-	// some parameters pre-computed, and show some informations (borrow thres_sq to be out_buf, norm in norm_b)
-	thres_sq = norm(mpi_zonesize[mpi_rank], b + mpi_zonestart[mpi_rank]);
+	// setting up communications for x and p exchanges
+	MPI_Request x_req[2*count_mpix], p1_req[2*count_mpix], p2_req[2*count_mpix], *p_req;
+	setup_exchange(mpi_rank, first_mpix, last_mpix, 1, it_glob,		x_req);
+	setup_exchange(mpi_rank, first_mpix, last_mpix, 2, p_glob,		p1_req);
+	setup_exchange(mpi_rank, first_mpix, last_mpix, 3, old_p_glob,	p2_req);
+
+	p_req = p1_req;
+
+	// some parameters pre-computed, and show some informations (borrow thres_sq to be out_buf, get norm in norm_b)
+	thres_sq = norm(mpi_zonesize[mpi_rank], b);
     MPI_Allreduce(&thres_sq, &norm_b, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+
+	log_err(SHOW_FAILINFO, "||b||=%f\n", norm_b);
 
 	thres_sq = convergence_thres * convergence_thres * norm_b;
 	{}//log_out("Error shown is ||Ax-b||^2, you should plot ||Ax-b||/||b||. (||b||^2 = %e)\n", norm_b);
@@ -138,8 +203,8 @@ void solve_cg( const Matrix *A, const double *b, double *iterate, double converg
 							.alpha = &alpha, .beta = &beta, .err_sq = &err_sq, .old_err_sq = &old_err_sq, .normA_p_sq = &normA_p_sq};
 
 	#if SDC == SDC_GRADIENT
-	double norm_A = 0.0; // A spd : row norm <=> col norm , ||A|| = max || A_col i || forall i
 	int i;
+	double norm_A = 0.0; // A spd : row norm <=> col norm , ||A|| = max || A_col i || forall i
 	for(i=0; i<A->n; i++)
 		norm_A = fmax(norm_A, sqrt(norm( A->r[i+1] - A->r[i], A->v + A->r[i] )));
 		//norm_A += sqrt(norm( A->r[i+1] - A->r[i], A->v + A->r[i] ));
@@ -147,7 +212,7 @@ void solve_cg( const Matrix *A, const double *b, double *iterate, double converg
 	MPI_Allreduce(&norm_A, &(err_data.helper_4), 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
 	err_data.helper_4 *= sqrt(norm_b);
 	#endif
-	
+
 	setup_resilience(A, 6, &mp);
 	start_measure();
 
@@ -157,6 +222,8 @@ void solve_cg( const Matrix *A, const double *b, double *iterate, double converg
 	{
 		if( --do_update_gradient > 0 )
 		{
+			update_iterate(iterate, wait_for_iterate, (double*)NULL, old_p, &alpha);
+
 			// wait_for_iterate postpones recovery tasks until all update_x,g are done
 			update_gradient(gradient, Ap, &alpha, wait_for_iterate);
 
@@ -169,8 +236,6 @@ void solve_cg( const Matrix *A, const double *b, double *iterate, double converg
 
 			compute_beta(&err_sq, &old_err_sq, &beta);
 
-			// execute iterate update as late as possible
-			update_iterate(iterate, wait_for_iterate, &beta, old_p, &alpha);
 
 			#if DUE == DUE_ASYNC
 			recover_rectify_xk(n, &mp, iterate, wait_for_iterate);
@@ -180,17 +245,23 @@ void solve_cg( const Matrix *A, const double *b, double *iterate, double converg
 		{
 			// wait_for_mvm postpones recovery tasks until all update_x,g are done
 			// wait_for_iterate allows to wait for all parts of x before doing A*x
+
+			// our initial guess is always 0, don't bother updating and exchanging it
 			if( r > 0 )
 			{
 				update_iterate(iterate, wait_for_iterate, &beta, old_p, &alpha);
+			}
 
-				// our initial guess is always 0, don't bother exchanging it
-				#pragma omp task inout(iterate[0:n-1]) in(*wait_for_iterate) out(*wait_for_mvm) label(exchange_x) priority(100) no_copy_deps
-				MPI_Allgatherv(MPI_IN_PLACE, 0/*ignored*/, MPI_DOUBLE, iterate, mpi_zonesize, mpi_zonestart, MPI_DOUBLE, MPI_COMM_WORLD);
+			#pragma omp task inout(it_glob[0:n-1]) in(*wait_for_iterate) out(*wait_for_mvm) firstprivate(x_req, count_mpix) label(exchange_x) priority(100) no_copy_deps
+			{
+				//MPI_Allgatherv(MPI_IN_PLACE, 0/*ignored*/, MPI_DOUBLE, it_glob, mpi_zonesize, mpi_zonestart, MPI_DOUBLE, MPI_COMM_WORLD);
+
+				MPI_Startall(2*count_mpix, x_req);
+				MPI_Waitall(2*count_mpix, x_req, MPI_STATUSES_IGNORE);
 			}
 
 			// first part of recompute g : A*x
-			recompute_gradient_mvm(A, iterate, wait_for_iterate, wait_for_mvm, Aiterate);
+			recompute_gradient_mvm(A, it_glob, wait_for_iterate, wait_for_mvm, Aiterate);
 
 			// second part of recompute g : b - Ax, sometimes more complicated or replaced due to SDC/DUE
 			#if SDC == SDC_GRADIENT
@@ -240,12 +311,17 @@ void solve_cg( const Matrix *A, const double *b, double *iterate, double converg
 		// wait_for_p postpones communications 
 		update_p(p, old_p, wait_for_p, start_rt_work, gradient, &beta);
 
-		#pragma omp task inout(p[0:n-1]) in(*wait_for_p) out(*wait_for_mvm) label(exchange_p) priority(100) no_copy_deps
-		MPI_Allgatherv(MPI_IN_PLACE, 0/*ignored*/, MPI_DOUBLE, p, mpi_zonesize, mpi_zonestart, MPI_DOUBLE, MPI_COMM_WORLD);
+		#pragma omp task inout(p_glob[0:n-1]) in(*wait_for_p) out(*wait_for_mvm) firstprivate(p_req, count_mpix) label(exchange_p) priority(100) no_copy_deps
+		{
+			//MPI_Allgatherv(MPI_IN_PLACE, 0/*ignored*/, MPI_DOUBLE, p_glob, mpi_zonesize, mpi_zonestart, MPI_DOUBLE, MPI_COMM_WORLD);
+
+			MPI_Startall(2*count_mpix, p_req);
+			MPI_Waitall(2*count_mpix, p_req, MPI_STATUSES_IGNORE);
+		}
 
 		// In the hybrid version, there is an overlapping opportunity for the runtime work
 		// which is during the communication (MPI_Allgartherv)
-		#pragma omp taskwait on(*start_rt_work, *wait_for_iterate)
+		//#pragma omp taskwait on(*start_rt_work, *wait_for_iterate)
 
 		#if SDC == SDC_ORTHO
 		// should happen in between p and Ap, to check if the new p and old Ap are orthogonal
@@ -264,7 +340,7 @@ void solve_cg( const Matrix *A, const double *b, double *iterate, double converg
 		}
 		#endif
 
-		compute_Ap(A, p, wait_for_p, wait_for_mvm, Ap);
+		compute_Ap(A, p_glob, wait_for_p, wait_for_mvm, Ap);
 
 		scalar_product_task(p, Ap, &normA_p_sq);
 
@@ -274,8 +350,11 @@ void solve_cg( const Matrix *A, const double *b, double *iterate, double converg
 
 		// swapping p's so we reduce pressure on the execution of the update iterate tasks
 		// now output-dependencies is not conflicting with the next iteration but the one after
+		#pragma omp taskwait on(alpha)
 		{
 			swap(&p, &old_p);
+			swap(&p_glob, &old_p_glob);
+			p_req = (p_req == p1_req) ? p2_req : p1_req;
 			
 			failures = check_errors_signaled();
 
@@ -305,6 +384,7 @@ void solve_cg( const Matrix *A, const double *b, double *iterate, double converg
 			#endif
 		}
 
+		// if we will recompute the gradient, prepare to listen for incoming iterate exchanges in compute_alpha
 		compute_alpha(&err_sq, &normA_p_sq, &old_err_sq, &alpha);
 
 		// should happen after p, Ap are ready and before (post-alpha) iterate and gradient updates
@@ -348,8 +428,20 @@ void solve_cg( const Matrix *A, const double *b, double *iterate, double converg
 	// stop resilience stuff that's still going on
 	unset_resilience();
 
-	free(p);
-	free(old_p);
+	// This is after solving, to be able to compute the verification later on
+	//MPI_Allgatherv(MPI_IN_PLACE, 0/*ignored*/, MPI_DOUBLE, it_glob, mpi_zonesize, mpi_zonestart, MPI_DOUBLE, MPI_COMM_WORLD);
+	MPI_Startall(2*count_mpix, x_req);
+	MPI_Waitall(2*count_mpix, x_req, MPI_STATUSES_IGNORE);
+
+	for(r=0; r<2*count_mpix; r++)
+	{
+		MPI_Request_free(x_req+r);
+		MPI_Request_free(p1_req+r);
+		MPI_Request_free(p2_req+r);
+	}
+
+	free(p_glob);
+	free(old_p_glob);
 	free(Ap);
 	free(gradient);
 	free(Aiterate);

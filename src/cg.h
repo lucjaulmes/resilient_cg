@@ -1,6 +1,8 @@
 #ifndef CG_H_INCLUDED
 #define CG_H_INCLUDED
 
+#include <mpi.h>
+
 #include "global.h"
 #include "matrix.h"
 
@@ -57,6 +59,9 @@ typedef struct magic_pointers
 
 void solve_cg(const Matrix *A, const double *b, double *iterate, double convergence_thres, double error_thres);
 
+void determine_mpi_neighbours(const Matrix *A, const int mpi_rank, const int mpi_size, int *first, int *last);
+void setup_exchange(const int mpi_rank, const int first, const int last, const int tag, double *v, MPI_Request v_req[]);
+
 // all the algorithmical steps of CG that will be subdivided into tasks : 
 void update_gradient(double *gradient, double *Ap, double *alpha, char *wait_for_iterate);
 void recompute_gradient_mvm(const Matrix *A, double *iterate, char *wait_for_iterate, char *wait_for_mvm, double *Aiterate);
@@ -70,6 +75,9 @@ void norm_task(const double *v, double* r);
 
 void compute_beta(double *err_sq, const double *old_err_sq, double *beta);
 void compute_alpha(double *err_sq, double *normA_p_sq, double *old_err_sq, double *alpha);
+
+void exchange_iterate(const int n, const int mpi_exchanges, double *iterate, char *wait_for_iterate, char *wait_for_mvm, MPI_Request *mpi_request);
+void exchange_p(const int n, const int mpi_exchanges, double *p, char *wait_for_p, char *wait_for_mvm, MPI_Request *mpi_request);
 
 void check_sdc_alpha_invariant(const int save, detect_error_data *err_data, const double *b, double *iterate, double *gradient, double *p, double *Ap, double *err_sq, double *alpha, const double threshold);
 void check_sdc_p_Ap_orthogonal(const int save, detect_error_data *err_data, double *iterate, double *gradient, double *p, double *Ap, double *err_sq, const double threshold);

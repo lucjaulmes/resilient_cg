@@ -13,7 +13,7 @@ void mult(const Matrix *A,  const double *V, double *W)
 {
 	int i, j;
 
-	for(i=mpi_zonestart[mpi_rank]; i<mpi_zonestart[mpi_rank]+mpi_zonesize[mpi_rank]; i++)
+	for(i=0; i<mpi_zonesize[mpi_rank]; i++)
 	{
 		W[i] = 0;
 
@@ -22,31 +22,12 @@ void mult(const Matrix *A,  const double *V, double *W)
 	}
 }
 
-// matrix-vector multiplication ( W = t(V) x A = t( t(A) x V ) )
-void mult_transposed(const Matrix *A , const double *V, double *W)
-{
-	int i, j, col;
-
-	for(i=0; i < A->m; i++)
-		W[i] = 0;
-
-	for(i=mpi_zonestart[mpi_rank]; i<mpi_zonestart[mpi_rank]+mpi_zonesize[mpi_rank]; i++)
-	{
-		for(j=A->r[i]; j < A->r[i+1]; j++)
-		{
-			col = A->c[j];
-
-			W[col] += A->v[j] * V[ col ];
-		}
-	}
-}
-
 void print_matrix(FILE* f, const Matrix *A)
 {
 	int i, j;
-//	for(i=mpi_zonestart[mpi_rank]; i<mpi_zonestart[mpi_rank]+mpi_zonesize[mpi_rank]; i++)
+//	for(i=0; i<mpi_zonesize[mpi_rank]; i++)
 //	{
-//		printf("%4d   |  ", i);
+//		printf("%4d   |  ", i+mpi_zonestart[mpi_rank]);
 //
 //		for( j= A->r[i]; j < A->r[i+1]; j++)
 //			fprintf(f, " [%4d ] % 1.2e ", A->c[j], A->v[j]);
@@ -58,12 +39,12 @@ void print_matrix(FILE* f, const Matrix *A)
 //	int c[100], n=0, k;
 //	double v[100];
 //
-//	for(i=mpi_zonestart[mpi_rank]; i < mpi_zonestart[mpi_rank] + mpi_zonesize[mpi_rank]; i++)
+//	for(i=0; i < mpi_zonesize[mpi_rank]; i++)
 //	{
 //		int same = n == A->r[i+1] - A->r[i];
 //
 //		for( j = A->r[i], k=0; same && j < A->r[i+1] && k < 100; j++, k++)
-//			same &= (A->c[j]-i == c[k] && A->v[j] == v[k]);
+//			same &= (A->c[j]-i-mpi_zonestart[mpi_rank] == c[k] && A->v[j] == v[k]);
 //
 //		if( ! same )
 //		{
@@ -72,7 +53,7 @@ void print_matrix(FILE* f, const Matrix *A)
 //			n = A->r[i+1] - A->r[i];
 //			for( j = A->r[i], k=0; j < A->r[i+1] && k < 100; j++, k++)
 //			{
-//				fprintf(f, " [%5d] % 1.2e ", A->c[j]-i, A->v[j]);
+//				fprintf(f, " [%5d] % 1.2e ", A->c[j]-i-mpi_zonestart[mpi_rank], A->v[j]);
 //				c[k] = A->c[j]-i;
 //				v[k] = A->v[j];
 //			}
@@ -82,45 +63,17 @@ void print_matrix(FILE* f, const Matrix *A)
 //	}
 //	fprintf(f, "%5d -- end\n", i);
 	
-	for(i=mpi_zonestart[mpi_rank]; i < mpi_zonestart[mpi_rank] + mpi_zonesize[mpi_rank]; i++)
+	for(i=0; i < mpi_zonesize[mpi_rank]; i++)
 		for(j=A->r[i]; j<A->r[i+1]; j++)
 		{
-			//if(A->c[j] < i)
-			//	continue;
+			if(A->c[j] < i+mpi_zonestart[mpi_rank])
+				continue;
 
-			fprintf(f, "%d %d %.1f\n", A->c[j]+1, i+1, A->v[j]);
+			fprintf(f, "%d %d %.1f\n", A->c[j]+1, i+mpi_zonestart[mpi_rank]+1, A->v[j]);
 		}
 }
 
-// return pos in matrix ( so then you only have to take A->v[pos] ), -1 if does not exist
-int find_in_matrix( const int row, const int col, const Matrix *A )
-{
-	if( row > A->n || col > A->m )
-		return -1;
-	
-	int low = A->r[row], upp = A->r[row+1]-1, mid;
-
-	if(A->c[low] == col)
-		return low;
-	if(A->c[upp] == col)
-		return upp;
-
-	while( low+1 < upp )
-	{
-		mid = (low + upp) / 2;
-
-		if( A->c[mid] > col )
-			upp = mid;
-		else if( A->c[mid] < col )
-			low = mid;
-		else
-			return mid;
-	}
-
-	return -1;
-}
-
-
+//WARNING NOT UPDATED FOR SHIFTING LOCAL COORDINATES BY mpi_zonesize[mpi_rank] (NOT KNOWN AT THIS TIME)
 void read_matrix(const int n, const int m, const int nnz, const int symmetric, Matrix *A, FILE* input_file)
 {
 	int Y, prevY = -1, X, i, j, k, pos = 0, *nb_subdiagonals = NULL;
@@ -259,9 +212,9 @@ void generate_Poisson3D(Matrix *A, const int p, const int stencil_points, const 
 	// let's only do the part here.
 	for(j=start_row; j<end_row; j++)
 	{
-		A->r[j] = pos;
+		A->r[j-start_row] = pos;
 		for(i=0; i<stencil_points; i++)
-			if( j + stenc_c[i] > 0 && j + stenc_c[i] < A->n )
+			if( j + stenc_c[i] >= 0 && j + stenc_c[i] < A->n )
 			{
 				A->c[pos] = j + stenc_c[i];
 				A->v[pos] = stenc_v[i];
@@ -270,7 +223,7 @@ void generate_Poisson3D(Matrix *A, const int p, const int stencil_points, const 
 	}
 
 	// point to just beyond last element
-	A->r[j] = pos;
+	A->r[j-start_row] = pos;
 }
 
 void allocate_matrix(const int n, const int m, const long nnz, Matrix *A, int align_bytes)
@@ -301,6 +254,7 @@ void deallocate_matrix(Matrix *A)
 		free(A->v);
 }
 
+// 'rows' is defined as the local representation of the rows of A
 void get_submatrix(const Matrix *A , const int *rows, const int nr, const int *cols, const int nc, const int bs, Matrix *B)
 {
 	// nb = Number of Blocks, bs = Block Size
@@ -308,7 +262,7 @@ void get_submatrix(const Matrix *A , const int *rows, const int nr, const int *c
 
 	// i iterates each block of rows, ii each row in A that needs to be copied. Parallelly, k iterates each row in B corresponding to ii.
 	for(i=0, k=0; i<nr; i++)
-		for(ii=rows[i]; ii < rows[i] + bs && ii < mpi_zonestart[mpi_rank]+mpi_zonesize[mpi_rank] && k < B->n ; ii++, k++)
+		for(ii=rows[i]; ii < rows[i] + bs && ii < mpi_zonesize[mpi_rank] && k < B->n ; ii++, k++)
 		{
 			B->r[k] = p;
 			

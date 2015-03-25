@@ -7,7 +7,6 @@
 #include <float.h>
 #include <signal.h>
 #include <assert.h>
-
 #include "mpi.h"
 
 #include "global.h"
@@ -32,7 +31,7 @@
 // globals
 int nb_blocks;
 int *block_bounds;
-int mpi_rank = 0, *mpi_zonestart, *mpi_zonesize;
+int mpi_size = 1, mpi_rank = 0, *mpi_zonestart, *mpi_zonesize;
 
 void set_blocks_sparse(Matrix *A, int nb_blocks, const int fail_size, const int mpi_rank, const int mpi_size)
 {
@@ -57,7 +56,7 @@ void set_blocks_sparse(Matrix *A, int nb_blocks, const int fail_size, const int 
 		// however locally just block_bounds[i]
 
 		if( r == mpi_rank )
-			block_bounds[0] = pos;
+			block_bounds[0] = 0;
 
 		for(b=0; b<nb_blocks; b++, i++)
 		{
@@ -83,16 +82,16 @@ void set_blocks_sparse(Matrix *A, int nb_blocks, const int fail_size, const int 
 			}
 
 			if( r == mpi_rank )
-				block_bounds[b+1] = pos;
+				block_bounds[b+1] = pos - mpi_zonestart[r];
 		}
 
 		mpi_zonesize[r] = pos - mpi_zonestart[r];
 	}
 
 	if( mpi_rank == mpi_size-1 )
-		block_bounds[ nb_blocks ] = A->n;
+		block_bounds[ nb_blocks ] = A->n - mpi_zonestart[r];
 }
- 
+
 int MAXIT = 0;
 
 void usage(const char *arg0, const char *arg_err)
@@ -445,7 +444,7 @@ int main(int argc, char* argv[])
 	//MPI_Init_thread(&mpi_args, NULL, mpi_thread_level, &mpi_thread_level);
 	//assert( mpi_thread_level == MPI_THREAD_SERIALIZED );
 	//printf("Asked for mpi thread level %d, got mpi_thread_level:%d\n", MPI_THREAD_FUNNELED, mpi_thread_level);
-	int mpi_args = 0, mpi_size = 1;
+	int mpi_args = 0;
 	MPI_Init(&mpi_args, NULL);
 
 	MPI_Comm_rank(MPI_COMM_WORLD, &mpi_rank);
@@ -476,9 +475,6 @@ int main(int argc, char* argv[])
 
 				if( input_file == NULL )
 					usage(argv[0], NULL);
-
-				// DEBUG TO MODIFY PROBLEM
-				// n = m = 128;
 
 				allocate_matrix(n, m, lines_in_file * (1 + symmetric), &matrix, fail_size);
 				read_matrix(n, m, lines_in_file, symmetric, &matrix, input_file);
@@ -519,40 +515,30 @@ int main(int argc, char* argv[])
 				}
 				mpi_zonesize[i-1] = rows_per_rank;
 
-				block_bounds[0] = mpi_zonestart[mpi_rank];
+				block_bounds[0] = 0;
 				for(i=1; i<nb_blocks+1; i++)
 					block_bounds[i] = block_bounds[i-1] + rows_per_block;
 				
 				allocate_matrix(n, n, nnz_here, &matrix, fail_size);
 				generate_Poisson3D(&matrix, size_param, stencil_points, mpi_zonestart[mpi_rank], mpi_zonestart[mpi_rank] + rows_per_rank);
 
-				int max_here = mpi_zonestart[mpi_rank] + mpi_zonesize[mpi_rank],
-					min_here = mpi_zonestart[mpi_rank],
-					max_dist = size_param * size_param;
-
-				for(i=0; i<mpi_size; i++)
-					if(i!=mpi_rank)
-					{
-						// if the zone i is too far from our own to communicate, consider its size to be 0
-						int max_there = mpi_zonestart[i] + mpi_zonesize[i],
-							min_there = mpi_zonestart[i];
-
-						if( max_there + max_dist < min_here || max_here + max_dist < min_there )
-						{
-							mpi_zonesize[i] = 0;
-							printf("From mpi rank %d we consider no interaction with rank %d\n", mpi_rank, i);
-						}
-					}
-
 				sprintf(mat_name, "Poisson3D-%d-%d", stencil_points, size_param);
 			}
 
-			#if VERBOSE >= SHOW_TOOMUCH
-			fprintf(stderr, "On mpi rank %d block bounds are: %d", mpi_rank, block_bounds[0]);
-			for(i=1; i<nb_blocks+1; i++)
-				fprintf(stderr, ", %d", block_bounds[i]);
-			fprintf(stderr, "\n");
+			#if VERBOSE >= SHOW_DBGINFO
+			{
+				char foo[500];
+				sprintf(foo, "On rank %d MPI repartition is as follows : %d [%d..%d]", mpi_rank, 0, mpi_zonestart[0], mpi_zonestart[0]+mpi_zonesize[0]);
+				for(i=1; i<mpi_size; i++)
+					sprintf(foo+strlen(foo), ", %d [%d..%d]", i, mpi_zonestart[i], mpi_zonestart[i]+mpi_zonesize[i]);
+				sprintf(foo+strlen(foo), " -- n=%d ; block bounds are: %d", n, block_bounds[0]);
+				for(i=1; i<nb_blocks+1; i++)
+					sprintf(foo+strlen(foo), ", %d", block_bounds[i]);
+				log_err(SHOW_DBGINFO, "%s\n", foo);
+			}
+			#endif
 
+			#if VERBOSE >= SHOW_TOOMUCH
 			char log_mat[20];
 			sprintf(log_mat, "%s.%d", mat_name, mpi_rank);
 			FILE *lm_handle = fopen(log_mat, "w");
@@ -604,9 +590,9 @@ int main(int argc, char* argv[])
 		
 			// a few vectors for rhs of equation, solution and verification
 			double *b, *x, *s;
-			b = (double*)aligned_calloc( fail_size, n * sizeof(double));
+			b = (double*)aligned_calloc( fail_size, mpi_zonesize[mpi_rank] * sizeof(double));
+			s = (double*)aligned_calloc( fail_size, mpi_zonesize[mpi_rank] * sizeof(double));
 			x = (double*)aligned_calloc( fail_size, n * sizeof(double));
-			s = (double*)aligned_calloc( fail_size, n * sizeof(double));
 
 			// interesting stuff is here
 			for(j=0;j<runs;j++)
@@ -614,7 +600,7 @@ int main(int argc, char* argv[])
 				// seed = 0 -> random : time for randomness, +j to get different seeds even if solving < 1s
 				unsigned int real_seed = seed == 0 ? time(NULL) + j : seed;
 				if( runs > 1 )
-					printf("run:%d seed:%u ", j, real_seed);
+					printf("run:%d seed:%u\n", j, real_seed);
 
 				srand(real_seed);
 
@@ -624,31 +610,30 @@ int main(int argc, char* argv[])
 				//for(i=mpi_zonestart[mpi_rank]; i<mpi_zonestart[mpi_rank]+mpi_zonesize[mpi_rank]; i++)
 				// to keep the determinism of seed() and not have the same b on every mpi rank
 				for(i=0; i<n; i++)
-					if(i>=mpi_zonestart[mpi_rank] && i<mpi_zonestart[mpi_rank]+mpi_zonesize[mpi_rank])
-					{
-						b[i] = ((double)rand() / (double)RAND_MAX ) * range - range/2;
-						x[i] = 0.0;
-					}
-					else
-						rand();
+				{
+					int k = i - mpi_zonestart[mpi_rank];
+					if(k >= 0 && k < mpi_zonesize[mpi_rank])
+						b[k] = ((double)rand() / (double)RAND_MAX ) * range - range/2;
+					else if( k < 0 )
+						b[0] = rand();
+					x[i] = 0.0;
+				}
 
 				solve_cg(&matrix, b, x, cv_thres, err_thres);
-
-				// get all x, for final computation of error
-				MPI_Allgatherv(MPI_IN_PLACE, 0/*ignored*/, MPI_DOUBLE, x, mpi_zonesize, mpi_zonestart, MPI_DOUBLE, MPI_COMM_WORLD);
 
 				// compute verification
 				mult(&matrix, x, s);
 
 				// do displays (verification, error)
-				double t, err = 0, norm_b = norm(mpi_zonesize[mpi_rank], b + mpi_zonestart[mpi_rank]);
-				for(i=mpi_zonestart[mpi_rank]; i<mpi_zonestart[mpi_rank]+mpi_zonesize[mpi_rank]; i++)
+				double err_t, err = 0, norm_b, norm_b_t = norm(mpi_zonesize[mpi_rank], b);
+				for(i=0; i<mpi_zonesize[mpi_rank]; i++)
 				{
 					double e_i = b[i] - s[i];
-					err += e_i * e_i;
+					err_t += e_i * e_i;
 				}
-				t = err;
-				MPI_Allreduce(&t, &err, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+
+				MPI_Allreduce(&err_t, &err, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+				MPI_Allreduce(&norm_b_t, &norm_b, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
 
 				printf("Verification : euclidian distance to solution ||Ax-b||^2 = %e , ||Ax-b||/||b|| = %e\n", err, sqrt(err/norm_b));
 			}

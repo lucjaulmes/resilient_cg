@@ -145,12 +145,12 @@ void compute_Ap(const Matrix *A, double *p, char *wait_for_p UNUSED, char *wait_
 					Ap[l] += A->v[k] * p[ A->c[k] ];
 			}
 
-			log_err(SHOW_TASKINFO, "A * p[%d] part %d finished = %e\n", get_data_vectptr(p), world_block(i), norm(e-s, &(Ap[s])));
+			log_err(SHOW_TASKINFO, "A * p[%d] part %d finished = %e\n", get_data_vectptr(p+mpi_zonestart[mpi_rank]), world_block(i), norm(e-s, &(Ap[s])));
 		}
 	}
 }
 
-void update_iterate(double *iterate, char *wait_for_iterate UNUSED, double *wait_for_beta, double *p, double *alpha)
+void update_iterate(double *iterate, char *wait_for_iterate UNUSED, double *wait_for_beta UNUSED, double *p, double *alpha)
 {
 	int i;
 	for(i=0; i < nb_blocks; i ++ )
@@ -158,7 +158,7 @@ void update_iterate(double *iterate, char *wait_for_iterate UNUSED, double *wait
 		int s = get_block_start(i), e = get_block_end(i);
 
 		// iterate <- iterate - alpha * p
-		#pragma omp task in(*alpha, p[s:e-1], *wait_for_beta) inout(iterate[s:e-1]) concurrent(*wait_for_iterate) firstprivate(s, e) label(update_iterate) priority(5) no_copy_deps
+		#pragma omp task in(*alpha, p[s:e-1]) inout(iterate[s:e-1]) concurrent(*wait_for_iterate) firstprivate(s, e) label(update_iterate) priority(5) no_copy_deps
 		{
 			int k;
 			for(k=s; k<e; k++)

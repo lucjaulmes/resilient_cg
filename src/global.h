@@ -84,7 +84,7 @@
 extern int nb_blocks;
 extern int MAXIT;
 extern int *block_bounds;
-extern int mpi_rank, *mpi_zonestart, *mpi_zonesize;
+extern int mpi_rank, mpi_size, *mpi_zonestart, *mpi_zonesize;
 
 static inline int get_block_start(const int b)
 {

@@ -51,7 +51,17 @@ void crit_err_hdlr(int sig_num, siginfo_t * info, void * ucontext)
 
 	free(messages);
 
-	raise(SIGUSR1); // to catch this with gdb when debugging and not stopping on SIGSEGV's
+	//raise(SIGUSR1); // to catch this with gdb when debugging and not stopping on SIGSEGV's
+	// alternatively, wait for a debugger to attach
+	{
+		int i = 0;
+		char hostname[256];
+		gethostname(hostname, sizeof(hostname));
+		printf("PID %d on %s ready for attach\n", getpid(), hostname);
+		fflush(stdout);
+		while (0 == i)
+			sleep(5);
+	}
 	_exit(EXIT_FAILURE);
 }
 
