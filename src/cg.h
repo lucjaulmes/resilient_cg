@@ -56,6 +56,8 @@ typedef struct magic_pointers
 #define NORM_GRADIENT  17
 #define NORM_A_P       18
 #define RECOVERY       19
+#define MPI_X_EXCHANGE 20
+#define MPI_P_EXCHANGE 21
 
 void solve_cg(const Matrix *A, const double *b, double *iterate, double convergence_thres, double error_thres);
 
@@ -67,7 +69,7 @@ void update_gradient(double *gradient, double *Ap, double *alpha, char *wait_for
 void recompute_gradient_mvm(const Matrix *A, double *iterate, char *wait_for_iterate, char *wait_for_mvm, double *Aiterate);
 void recompute_gradient_update(double *gradient, char *wait_for_mvm, double *Aiterate, const double *b);
 void update_p(double *p, double *old_p, char *wait_for_p, char *wait_for_p2, double *gradient, double *beta);
-void update_iterate(double *iterate, char *wait_for_iterate, double *wait_for_beta, double *p, double *alpha);
+void update_iterate(double *iterate, char *wait_for_iterate, char *wait_for_next_p, double *p, double *alpha);
 void compute_Ap(const Matrix *A, double *p, char *wait_for_p, char *wait_for_mvm, double *Ap);
 
 void scalar_product_task(const double *p, const double *Ap, double* r);
@@ -92,5 +94,6 @@ void recover_rectify_xk(const int n, magic_pointers *mp, double *x, char *wait_f
 void recover_rectify_g(const int n, magic_pointers *mp, const double *p, double *Ap, double *gradient, double *err_sq, char *wait_for_iterate);
 void recover_rectify_x_g(const int n, magic_pointers *mp, double *x, double *gradient, double *err_sq, char *wait_for_mvm);
 void recover_rectify_p_Ap(const int n, magic_pointers *mp, double *p, double *old_p, double *Ap, double *normA_p_sq, char *wait_for_mvm, char *wait_for_iterate);
+void recover_rectify_p_early(const int n, magic_pointers *mp, double *p, double *old_p, char *wait_for_p UNUSED, char *wait_for_p2 UNUSED);
 
 #endif // CG_H_INCLUDED

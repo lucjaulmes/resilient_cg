@@ -201,7 +201,7 @@ int read_param(int argsleft, char* argv[], double *lambda, int *runs, int *threa
 
 		#ifdef _OMPSS
 		nanos_omp_set_num_threads(th);
-		*threads = 1;
+		*threads = th;
 		#else
 		if( th != 1 )
 			fprintf(stderr, "DO NOT DEFINE THREADS FOR THE SEQUENTIAL VERSION !\n");
@@ -402,8 +402,6 @@ FILE* get_infos_matrix(char *filename, int *n, int *m, int *nnz, int *symmetric)
 		if( *nnz == 0 )
 			*nnz = (*m) * (*n);
 		*symmetric = mm_is_symmetric(matcode);
-		if( MAXIT == 0 )
-			MAXIT = 10 * (*n);
 		return input_file;
 	}
 
@@ -524,6 +522,9 @@ int main(int argc, char* argv[])
 
 				sprintf(mat_name, "Poisson3D-%d-%d", stencil_points, size_param);
 			}
+
+			if( MAXIT == 0 )
+				MAXIT = 10 * n;
 
 			#if VERBOSE >= SHOW_DBGINFO
 			{

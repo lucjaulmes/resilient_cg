@@ -222,8 +222,6 @@ void solve_cg(const Matrix *A, const double *b, double *it_glob, double converge
 	{
 		if( --do_update_gradient > 0 )
 		{
-			update_iterate(iterate, wait_for_iterate, (double*)NULL, old_p, &alpha);
-
 			// wait_for_iterate postpones recovery tasks until all update_x,g are done
 			update_gradient(gradient, Ap, &alpha, wait_for_iterate);
 
@@ -235,7 +233,6 @@ void solve_cg(const Matrix *A, const double *b, double *it_glob, double converge
 			#endif
 
 			compute_beta(&err_sq, &old_err_sq, &beta);
-
 
 			#if DUE == DUE_ASYNC
 			recover_rectify_xk(n, &mp, iterate, wait_for_iterate);
@@ -249,15 +246,18 @@ void solve_cg(const Matrix *A, const double *b, double *it_glob, double converge
 			// our initial guess is always 0, don't bother updating and exchanging it
 			if( r > 0 )
 			{
-				update_iterate(iterate, wait_for_iterate, &beta, old_p, &alpha);
-			}
+				update_iterate(iterate, wait_for_iterate, (char*)&alpha/* anything that's in(), won't be accessed*/, old_p, &alpha);
 
-			#pragma omp task inout(it_glob[0:n-1]) in(*wait_for_iterate) out(*wait_for_mvm) firstprivate(x_req, count_mpix) label(exchange_x) priority(100) no_copy_deps
-			{
-				//MPI_Allgatherv(MPI_IN_PLACE, 0/*ignored*/, MPI_DOUBLE, it_glob, mpi_zonesize, mpi_zonestart, MPI_DOUBLE, MPI_COMM_WORLD);
+				#pragma omp task inout(it_glob[0:n-1]) in(*wait_for_iterate) out(*wait_for_mvm) firstprivate(x_req, count_mpix) label(exchange_x) priority(100) no_copy_deps
+				{
+					enter_task(MPI_X_EXCHANGE);
+					//MPI_Allgatherv(MPI_IN_PLACE, 0/*ignored*/, MPI_DOUBLE, it_glob, mpi_zonesize, mpi_zonestart, MPI_DOUBLE, MPI_COMM_WORLD);
 
-				MPI_Startall(2*count_mpix, x_req);
-				MPI_Waitall(2*count_mpix, x_req, MPI_STATUSES_IGNORE);
+					MPI_Startall(2*count_mpix, x_req);
+					MPI_Waitall(2*count_mpix, x_req, MPI_STATUSES_IGNORE);
+
+					exit_task();
+				}
 			}
 
 			// first part of recompute g : A*x
@@ -311,12 +311,23 @@ void solve_cg(const Matrix *A, const double *b, double *it_glob, double converge
 		// wait_for_p postpones communications 
 		update_p(p, old_p, wait_for_p, start_rt_work, gradient, &beta);
 
+		#if DUE == DUE_ASYNC || DUE == DUE_IN_PATH
+		recover_rectify_p_early(n, &mp, p, old_p, wait_for_p, wait_for_iterate);
+		#endif
+
+		// if possible, execute the update iterate really late
+		if( do_update_gradient > 0 )
+			update_iterate(iterate, wait_for_iterate, wait_for_p, old_p, &alpha);
+
 		#pragma omp task inout(p_glob[0:n-1]) in(*wait_for_p) out(*wait_for_mvm) firstprivate(p_req, count_mpix) label(exchange_p) priority(100) no_copy_deps
 		{
+			enter_task(MPI_P_EXCHANGE);
 			//MPI_Allgatherv(MPI_IN_PLACE, 0/*ignored*/, MPI_DOUBLE, p_glob, mpi_zonesize, mpi_zonestart, MPI_DOUBLE, MPI_COMM_WORLD);
 
 			MPI_Startall(2*count_mpix, p_req);
 			MPI_Waitall(2*count_mpix, p_req, MPI_STATUSES_IGNORE);
+
+			exit_task();
 		}
 
 		// In the hybrid version, there is an overlapping opportunity for the runtime work

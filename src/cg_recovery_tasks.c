@@ -281,3 +281,52 @@ void recover_rectify_p_Ap(const int n, magic_pointers *mp, double *p, double *ol
 
 	exit_task();
 }
+
+#if DUE == DUE_IN_PATH
+#pragma omp task inout(*wait_for_p, *wait_for_p2) concurrent([n]p) label(recover_p_early) priority(0) no_copy_deps
+#else
+#pragma omp task concurrent(*wait_for_p, *wait_for_p2, [n]p) label(recover_p_early) priority(5) no_copy_deps
+#endif
+void recover_rectify_p_early(const int n, magic_pointers *mp, double *p, double *old_p, char *wait_for_p UNUSED, char *wait_for_p2 UNUSED)
+{
+	if( !get_nb_failed_blocks() )
+	{
+		log_err(SHOW_FAILINFO, "Skipping p_early recovery task cause nothing failed\n");
+		return;
+	}
+
+	// this should happen concurrently to norm_task's, and split work onto more tasks if there is too much work
+	const int log2fbs = get_log2_failblock_size(), mask_p = 1 << get_data_vectptr(p), mask_old_p = 1 << get_data_vectptr(old_p);
+	int failed_recovery = 0, error_types;
+	// are we sure g is already recomputed ?
+
+	enter_task(RECOVERY);
+
+	error_types = aggregate_skips();
+
+	log_err(SHOW_FAILINFO, "Recovery task for p (faults:%d) before exchange, depending on g (faults:%d) and old_p (faults:%d) started\n", (error_types & mask_p) > 0, (error_types & MASK_GRADIENT) > 0, (error_types & mask_old_p) > 0);
+
+	// PROBLEM : TASK TO BE EXECUTED IN PARALLEL IS UPDATE_ITERATE : HOW DO YOU RECOVER g ?
+	// answer : force to be before update_it
+	if( error_types & MASK_GRADIENT )
+	{
+		failed_recovery += abs(recover_full_g_recompute(mp, mp->g, KEEP_FAULTS));
+		failed_recovery += abs(recover_full_g_update(mp, mp->g, REMOVE_FAULTS));
+	}
+
+	if( error_types & mask_old_p )
+		failed_recovery += abs(recover_full_old_p_invert(mp, old_p, REMOVE_FAULTS));
+
+	if( error_types & mask_p )
+		failed_recovery += abs(recover_full_p_repeat(mp, p, old_p, REMOVE_FAULTS));
+
+	if( failed_recovery )
+	{
+		// ouch.
+		fprintf(stderr, "Impossible p & Ap recovery, forced restart !\n");
+		exit_task();
+		return;
+	}
+
+	exit_task();
+}
