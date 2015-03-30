@@ -61,7 +61,7 @@ LNK_PAPI = -L$(PAPI_HOME)/lib -lpapi
 #	libnanostrace	to use with nanos, thus ompss 
 #	libseqtrace		sequential app
 USE_EXTRAE = -I$(EXTRAE_HOME)/include -I$(NANOS_HOME)/include/nanox -DEXTRAE_EVENTS 
-LNK_EXTRAE = -L$(EXTRAE_HOME)/lib64 -L$(EXTRAE_HOME)/lib
+LNK_EXTRAE = -L$(EXTRAE_HOME)/lib64 -L$(EXTRAE_HOME)/lib -Wl,-rpath,$(EXTRAE_HOME)/lib
 plain% : LNK_EXTRAE += -lmpitrace -lextrae-core
 ompss% : LNK_EXTRAE += -lnanosmpitrace -lextrae-core
 
@@ -81,26 +81,26 @@ ompss% : LDFLAGS += --ompss
 
 # mercurium specifics
 # versions of libraries, instrumentation flags
-ompssdebug : LDFLAGS += -L$(NANOS_HOME)/lib64/instrumentation --instrumentation
-ompssconv : LDFLAGS += -L$(NANOS_HOME)/lib64/performance
+ompssdebug :   LDFLAGS += -L$(NANOS_HOME)/lib64/instrumentation --instrumentation
+ompssconv :    LDFLAGS += -L$(NANOS_HOME)/lib64/instrumentation --instrumentation
 ompssspeedup : LDFLAGS += -L$(NANOS_HOME)/lib64/performance
 # output dirs, instrumentation flags
+ompssdebug :   M_CFLAGS += --output-dir=.objs/ompssdebug --instrumentation
+ompssconv :    M_CFLAGS += --output-dir=.objs/ompssconv  --instrumentation
 ompssspeedup : M_CFLAGS += --output-dir=.objs/ompssspeedup
-ompssconv : M_CFLAGS += --output-dir=.objs/ompssconv
-ompssdebug : M_CFLAGS += --output-dir=.objs/ompssdebug --instrumentation
 
 # adding options defined above, and setting verbosity :  
 # -DPERFORMANCE is going to make the program shut up, 
 # -DVERBOSE=x make it talk, x a bitmask (see debug.h for values)
 
 #both debug builds
-%debug : CFLAGS += -rdynamic -O2 -DPERFORMANCE $(USE_TIMEOFDAY)
+%debug : CFLAGS += -rdynamic -O2 -DVERBOSE=3 $(USE_TIMEOFDAY)
 %debug : LDFLAGS +=
 #both conv builds
 %conv : CFLAGS += -O2 -DPERFORMANCE $(USE_EXTRAE)
 %conv : LDFLAGS += $(LNK_EXTRAE)
 #both speedup builds
-%speedup : CFLAGS += -O2 -DPERFORMANCE $(USE_TIMEOFDAY)
+%speedup : CFLAGS += -g -O2 -DPERFORMANCE $(USE_TIMEOFDAY)
 %speedup : LDFLAGS +=
 
 #####################################################################################################

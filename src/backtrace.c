@@ -34,8 +34,8 @@ void crit_err_hdlr(int sig_num, siginfo_t * info, void * ucontext)
 	#error Unsupported architecture.
 	#endif
 
-	fprintf(stderr, "signal %d (%s), code is %d [SEGV_ACCERR=%d] and address is %p from %p\n", 
-			sig_num, strsignal(sig_num), info->si_code, SEGV_ACCERR, info->si_addr, 
+	fprintf(stderr, "signal %d (%s), code is %d [SEGV_MAPERR=%d, SEGV_ACCERR=%d] and address is %p from %p\n", 
+			sig_num, strsignal(sig_num), info->si_code, SEGV_MAPERR, SEGV_ACCERR, info->si_addr, 
 			(void *)caller_address);
 
 	size = backtrace(array, 50);
@@ -51,17 +51,17 @@ void crit_err_hdlr(int sig_num, siginfo_t * info, void * ucontext)
 
 	free(messages);
 
-	//raise(SIGUSR1); // to catch this with gdb when debugging and not stopping on SIGSEGV's
+	raise(SIGUSR1); // to catch this with gdb when debugging and not stopping on SIGSEGV's
 	// alternatively, wait for a debugger to attach
-	{
-		int i = 0;
-		char hostname[256];
-		gethostname(hostname, sizeof(hostname));
-		printf("PID %d on %s ready for attach\n", getpid(), hostname);
-		fflush(stdout);
-		while (0 == i)
-			sleep(5);
-	}
+	//{
+	//	int i = 0;
+	//	char hostname[256];
+	//	gethostname(hostname, sizeof(hostname));
+	//	printf("PID %d on %s ready for attach\n", getpid(), hostname);
+	//	fflush(stdout);
+	//	while (0 == i)
+	//		sleep(5);
+	//}
 	_exit(EXIT_FAILURE);
 }
 

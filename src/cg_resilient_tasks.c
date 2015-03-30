@@ -260,7 +260,7 @@ void compute_Ap(const Matrix *A, double *p, char *wait_for_p UNUSED, char *wait_
 					mark_to_skip( page, FAIL_A_P );
 			}
 
-			log_err(SHOW_TASKINFO, "A * p[%d] part %d finished = %e\n", get_data_vectptr(p), world_block(i), norm(e-s, &(Ap[s])));
+			log_err(SHOW_TASKINFO, "A * p[%d] part %d finished = %e\n", get_data_vectptr(p+mpi_zonestart[mpi_rank]), world_block(i), norm(e-s, &(Ap[s])));
 			exit_task();
 		}
 	}

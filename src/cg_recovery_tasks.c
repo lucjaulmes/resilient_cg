@@ -35,7 +35,7 @@ void recover_rectify_xk(const int n UNUSED, magic_pointers *mp, double *x, char 
 
 	enter_task(RECOVERY);
 
-	log_err(SHOW_FAILINFO, "Recovery task for x (faults:%d) started\n", has_skipped_blocks(MASK_ITERATE));
+	log_err(SHOW_FAILINFO, "Recovery task x for x (faults:%d) started\n", has_skipped_blocks(MASK_ITERATE));
 	
 	if( has_skipped_blocks(MASK_ITERATE) )
 		failed_recovery += abs(recover_full_xk(mp, x, REMOVE_FAULTS));
@@ -70,7 +70,7 @@ void recover_rectify_g(const int n UNUSED, magic_pointers *mp, const double *p, 
 
 	error_types = aggregate_skips();
 
-	log_err(SHOW_FAILINFO, "Recovery task for g (faults:%d), ||g|| (faults:%d) depends on Ap (faults:%d) started\n",
+	log_err(SHOW_FAILINFO, "Recovery task g for g (faults:%d), ||g|| (faults:%d) depends on Ap (faults:%d) started\n",
 			(error_types & MASK_GRADIENT) > 0, (error_types & NORM_GRADIENT) > 0, (error_types & MASK_A_P) > 0);
 	
 	if( error_types & MASK_A_P )
@@ -94,7 +94,9 @@ void recover_rectify_g(const int n UNUSED, magic_pointers *mp, const double *p, 
 	int i, j;
 	double local_r = 0.0, page_r;
 
-	log_err(SHOW_FAILINFO, "\tAdding   blocks that were skipped in reduction :\n");
+	#if VERBOSE >= SHOW_FAILINFO
+	char str[500] = "\tAdding blocks that were skipped in reduction:";
+	#endif
 
 	for(i=0; i<get_nb_failblocks(); i++)
 	{
@@ -107,13 +109,15 @@ void recover_rectify_g(const int n UNUSED, magic_pointers *mp, const double *p, 
 		for(j=i<<log2fbs; j<(i+1)<<log2fbs && j<n; j++)
 			page_r += gradient[j] * gradient[j];
 
-		log_err(SHOW_FAILINFO, "%d : [%d,%d] -> %e ", i, i<<log2fbs, (i+1)<<log2fbs, page_r);
+		#if VERBOSE >= SHOW_FAILINFO
+		sprintf(str+strlen(str), " %d ; %e", i, page_r);
+		#endif
 
 		mark_corrected(i, MASK_NORM_G);
 		local_r += page_r;
 	}
 
-	log_err(SHOW_FAILINFO, "; contribution is %e\n", local_r);
+	log_err(SHOW_FAILINFO, "%s; total recovery contribution is %e\n", str, local_r);
 
 	#pragma omp atomic
 		*err_sq += local_r;
@@ -144,7 +148,7 @@ void recover_rectify_x_g(const int n, magic_pointers *mp, double *x, double *gra
 	enter_task(RECOVERY);
 
 	error_types = aggregate_skips();
-	log_err(SHOW_FAILINFO, "Recovery task for x (faults:%d), g (faults:%d), Ax (faults:%d) and ||g|| (faults:%d) started\n", (error_types & MASK_ITERATE) > 0, (error_types & MASK_GRADIENT) > 0, (error_types & MASK_A_ITERATE) > 0, (error_types & NORM_GRADIENT) > 0);
+	log_err(SHOW_FAILINFO, "Recovery task x_g for x (faults:%d), g (faults:%d), Ax (faults:%d) and ||g|| (faults:%d) started\n", (error_types & MASK_ITERATE) > 0, (error_types & MASK_GRADIENT) > 0, (error_types & MASK_A_ITERATE) > 0, (error_types & NORM_GRADIENT) > 0);
 
 	// gradient skipped everything that was contaminated.
 	// however if the g marked as 'skipped' are actually failed, a recover_update does not make sense
@@ -175,7 +179,9 @@ void recover_rectify_x_g(const int n, magic_pointers *mp, double *x, double *gra
 	int i, j;
 	double local_r = 0.0, page_r;
 
-	log_err(SHOW_FAILINFO, "\tAdding   blocks that were skipped in reduction :\n");
+	#if VERBOSE >= SHOW_FAILINFO
+	char str[500] = "\tAdding blocks that were skipped in reduction:";
+	#endif
 
 	for(i=0; i<get_nb_failblocks(); i++)
 	{
@@ -187,13 +193,15 @@ void recover_rectify_x_g(const int n, magic_pointers *mp, double *x, double *gra
 		for(j=i<<log2fbs; j<(i+1)<<log2fbs && j<n; j++)
 			page_r += gradient[j] * gradient[j];
 
-		log_err(SHOW_FAILINFO, "%d : [%d,%d] -> %e ", i, i<<log2fbs, (i+1)<<log2fbs, page_r);
+		#if VERBOSE >= SHOW_FAILINFO
+		sprintf(str+strlen(str), ", %d: %e", i, page_r);
+		#endif
 
 		mark_corrected(i, MASK_NORM_G);
 		local_r += page_r;
 	}
 
-	log_err(SHOW_FAILINFO, "; contribution is %e\n", local_r);
+	log_err(SHOW_FAILINFO, "%s; total recovery contribution is %e\n", str, local_r);
 
 	#pragma omp atomic
 		*err_sq += local_r;
@@ -223,7 +231,7 @@ void recover_rectify_p_Ap(const int n, magic_pointers *mp, double *p, double *ol
 
 	error_types = aggregate_skips();
 
-	log_err(SHOW_FAILINFO, "Recovery task for p (faults:%d), Ap (faults:%d) and <p,Ap> (faults:%d) depending on g (faults:%d) and old_p (faults:%d) started\n", (error_types & mask_p) > 0, (error_types & MASK_A_P) > 0, (error_types & NORM_A_P) > 0, (error_types & MASK_GRADIENT) > 0, (error_types & mask_old_p) > 0);
+	log_err(SHOW_FAILINFO, "Recovery task p_Ap for p (faults:%d), Ap (faults:%d) and <p,Ap> (faults:%d) depending on g (faults:%d) and old_p (faults:%d) started\n", (error_types & mask_p) > 0, (error_types & MASK_A_P) > 0, (error_types & MASK_NORM_A_P) > 0, (error_types & MASK_GRADIENT) > 0, (error_types & mask_old_p) > 0);
 
 	if( error_types & MASK_GRADIENT )
 		failed_recovery += abs(recover_full_g_recompute(mp, mp->g, REMOVE_FAULTS));
@@ -249,7 +257,9 @@ void recover_rectify_p_Ap(const int n, magic_pointers *mp, double *p, double *ol
 	int i, j;
 	double local_r = 0.0, page_r;
 
-	log_err(SHOW_FAILINFO, "\tAdding   blocks that were skipped in reduction :\n");
+	#if VERBOSE >= SHOW_FAILINFO
+	char str[500] = "\tAdding blocks that were skipped in reduction:";
+	#endif
 
 	for(i=0; i<get_nb_failblocks(); i++)
 	{
@@ -269,12 +279,14 @@ void recover_rectify_p_Ap(const int n, magic_pointers *mp, double *p, double *ol
 
 		local_r += page_r;
 
-		log_err(SHOW_FAILINFO, "%d : [%d,%d] -> %e ", i, i<<log2fbs, (i+1)<<log2fbs, page_r);
+		#if VERBOSE >= SHOW_FAILINFO
+		sprintf(str+strlen(str), " %d ; %e", i, page_r);
+		#endif
 
 		mark_corrected(i, MASK_NORM_A_P);
 	}
 
-	log_err(SHOW_FAILINFO, "; contribution is %e\n", local_r);
+	log_err(SHOW_FAILINFO, "%s; total recovery contribution is %e\n", str, local_r);
 
 	#pragma omp atomic
 		*normA_p_sq += local_r;
@@ -304,7 +316,7 @@ void recover_rectify_p_early(const int n, magic_pointers *mp, double *p, double 
 
 	error_types = aggregate_skips();
 
-	log_err(SHOW_FAILINFO, "Recovery task for p (faults:%d) before exchange, depending on g (faults:%d) and old_p (faults:%d) started\n", (error_types & mask_p) > 0, (error_types & MASK_GRADIENT) > 0, (error_types & mask_old_p) > 0);
+	log_err(SHOW_FAILINFO, "Recovery task p_early for p (faults:%d) before exchange, depending on g (faults:%d) and old_p (faults:%d) started\n", (error_types & mask_p) > 0, (error_types & MASK_GRADIENT) > 0, (error_types & mask_old_p) > 0);
 
 	// PROBLEM : TASK TO BE EXECUTED IN PARALLEL IS UPDATE_ITERATE : HOW DO YOU RECOVER g ?
 	// answer : force to be before update_it

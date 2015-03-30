@@ -9,11 +9,14 @@
 #include "matrix.h"
 
 // matrix-vector multiplication, row major ( W = A x V )
-void mult(const Matrix *A,  const double *V, double *W)
+void mult(const Matrix *A, const double *V, double *W)
 {
-	int i, j;
+	int i, j, n = A->n;
+	
+	if(n > mpi_zonesize[mpi_rank])
+		n = mpi_zonesize[mpi_rank];
 
-	for(i=0; i<mpi_zonesize[mpi_rank]; i++)
+	for(i=0; i<n; i++)
 	{
 		W[i] = 0;
 
@@ -24,24 +27,27 @@ void mult(const Matrix *A,  const double *V, double *W)
 
 void print_matrix(FILE* f, const Matrix *A)
 {
-	int i, j;
-//	for(i=0; i<mpi_zonesize[mpi_rank]; i++)
-//	{
-//		printf("%4d   |  ", i+mpi_zonestart[mpi_rank]);
-//
-//		for( j= A->r[i]; j < A->r[i+1]; j++)
-//			fprintf(f, " [%4d ] % 1.2e ", A->c[j], A->v[j]);
-//
-//		printf("\n");
-//	}
+	int i, j, n=A->n;
+	if(n>mpi_zonesize[mpi_rank])
+		n=mpi_zonesize[mpi_rank];
+
+	for(i=0; i<n; i++)
+	{
+		fprintf(f, "%4d   |  ", i+mpi_zonestart[mpi_rank]);
+
+		for( j= A->r[i]; j < A->r[i+1]; j++)
+			fprintf(f, " [%4d ] % 1.2e ", A->c[j], A->v[j]);
+
+		fprintf(f, "\n");
+	}
 
 	// hoping less than 100 items / line
-//	int c[100], n=0, k;
+//	int c[100], m=0, k;
 //	double v[100];
 //
-//	for(i=0; i < mpi_zonesize[mpi_rank]; i++)
+//	for(i=0; i<n; i++)
 //	{
-//		int same = n == A->r[i+1] - A->r[i];
+//		int same = m == A->r[i+1] - A->r[i];
 //
 //		for( j = A->r[i], k=0; same && j < A->r[i+1] && k < 100; j++, k++)
 //			same &= (A->c[j]-i-mpi_zonestart[mpi_rank] == c[k] && A->v[j] == v[k]);
@@ -50,7 +56,7 @@ void print_matrix(FILE* f, const Matrix *A)
 //		{
 //			fprintf(f, "%5d -- ", i);
 //
-//			n = A->r[i+1] - A->r[i];
+//			m = A->r[i+1] - A->r[i];
 //			for( j = A->r[i], k=0; j < A->r[i+1] && k < 100; j++, k++)
 //			{
 //				fprintf(f, " [%5d] % 1.2e ", A->c[j]-i-mpi_zonestart[mpi_rank], A->v[j]);
@@ -62,14 +68,21 @@ void print_matrix(FILE* f, const Matrix *A)
 //		}
 //	}
 //	fprintf(f, "%5d -- end\n", i);
-	
-	for(i=0; i < mpi_zonesize[mpi_rank]; i++)
+}
+
+void print_matrix_market(FILE *f, Matrix *A, const int full)
+{
+	int i, j, n=A->n;
+	if(n>mpi_zonesize[mpi_rank])
+		n=mpi_zonesize[mpi_rank];
+
+	for(i=0; i<n; i++)
 		for(j=A->r[i]; j<A->r[i+1]; j++)
 		{
-			if(A->c[j] < i+mpi_zonestart[mpi_rank])
+			if(!full && A->c[j] < i+mpi_zonestart[mpi_rank])
 				continue;
 
-			fprintf(f, "%d %d %.1f\n", A->c[j]+1, i+mpi_zonestart[mpi_rank]+1, A->v[j]);
+			fprintf(f, "%d %d %.1f\n", A->c[j]+1, i+1, A->v[j]);
 		}
 }
 
@@ -272,24 +285,24 @@ void get_submatrix(const Matrix *A , const int *rows, const int nr, const int *c
 			{
 				/*
 				// remove above-diagonals, if we need just half the matrix
-				if( ii > A->c[j] )
+				if(ii > A->c[j])
 					continue;
 				*/
 			
-				while( jj < nc && A->c[j] >= cols[jj] + bs )
+				while(jj < nc && A->c[j] >= cols[jj] + bs)
 					jj++;
 
 				// from here on, we are sure that A->c[j] < cols[jj] + bs
 
 				// if we did all the blocks for row ii, go to next row
-				if( jj >= nc )
+				if(jj >= nc)
 					break;
 
-				if( A->c[j] >= cols[jj] )
+				if(A->c[j] >= cols[jj])
 				{
 					int col_in_B = jj * bs + (A->c[j] - cols[jj]);
 
-					if( col_in_B > B->m )
+					if(col_in_B > B->m)
 						break;
 
 					B->v[p] = A->v[j];

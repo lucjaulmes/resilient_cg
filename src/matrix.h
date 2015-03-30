@@ -31,6 +31,7 @@ int find_in_matrix(const int row, const int col, const Matrix *A);
 void read_matrix(const int n, const int m, const int nnz, const int symmetric, Matrix *A, FILE* input_file);
 // visual representation of matrix
 void print_matrix(FILE* f, const Matrix *A);
+void print_matrix_market(FILE *f, Matrix *A, const int full);
 
 void generate_Poisson3D(Matrix *A, const int p, const int stencil_points, const int mpi_rank, const int mpi_size);
 

@@ -584,7 +584,7 @@ int main(int argc, char* argv[])
 
 			printf(header);
 
-			populate_global(matrix.n, fail_size, fault_strat, nerr, lambda, ckpt);
+			populate_global(mpi_zonesize[mpi_rank], fail_size, fault_strat, nerr, lambda, ckpt);
 
 			// if using fancy ways of measuring (e.g. extrae events)
 			setup_measure();
@@ -626,7 +626,7 @@ int main(int argc, char* argv[])
 				mult(&matrix, x, s);
 
 				// do displays (verification, error)
-				double err_t, err = 0, norm_b, norm_b_t = norm(mpi_zonesize[mpi_rank], b);
+				double err_t = 0, err = 0, norm_b = 0, norm_b_t = norm(mpi_zonesize[mpi_rank], b);
 				for(i=0; i<mpi_zonesize[mpi_rank]; i++)
 				{
 					double e_i = b[i] - s[i];
@@ -636,7 +636,7 @@ int main(int argc, char* argv[])
 				MPI_Allreduce(&err_t, &err, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
 				MPI_Allreduce(&norm_b_t, &norm_b, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
 
-				printf("Verification : euclidian distance to solution ||Ax-b||^2 = %e , ||Ax-b||/||b|| = %e\n", err, sqrt(err/norm_b));
+				printf("Verification : euclidian distance to solution ||Ax-b||^2 = %e, ||Ax-b||/||b|| = %e\n", err, sqrt(err/norm_b));
 			}
 
 			// deallocate everything we have allocated for several solvings

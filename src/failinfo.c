@@ -70,18 +70,18 @@ void setup_resilience(const Matrix *A UNUSED, const int nb, magic_pointers *mp)
 
 	#if DUE
 	// neighbourhood stuff in errinfo
-	errinfo.neighbours = (Matrix*)calloc( 1, sizeof(Matrix) );
+	errinfo.neighbours = (Matrix*)calloc(1, sizeof(Matrix));
 	// don't want A->v so we allocate manually
 	errinfo.neighbours->nnz = errinfo.nb_failblocks * errinfo.nb_failblocks;
 	errinfo.neighbours->n = errinfo.neighbours->m = errinfo.nb_failblocks;
-	errinfo.neighbours->r = (int*)calloc( (errinfo.nb_failblocks+1), sizeof(int) );
-	errinfo.neighbours->c = (int*)calloc( errinfo.nb_failblocks * errinfo.nb_failblocks, sizeof(int) );
+	errinfo.neighbours->r = (int*)calloc((errinfo.nb_failblocks+1), sizeof(int));
+	errinfo.neighbours->c = (int*)calloc(errinfo.nb_failblocks * errinfo.nb_failblocks, sizeof(int));
 	errinfo.neighbours->v = NULL;
 
 	compute_neighbourhoods(A, errinfo.failblock_size, errinfo.neighbours);
 	
 	// now for storing infos about errors
-	errinfo.skipped_blocks = (int*)calloc( errinfo.nb_failblocks, sizeof(int) );
+	errinfo.skipped_blocks = (int*)calloc(errinfo.nb_failblocks, sizeof(int));
 	#endif
 
 	#if CKPT == CKPT_TO_DISK
@@ -176,20 +176,20 @@ void resilience_sighandler(int signum, siginfo_t *info, void *context UNUSED)
 			return;
 		}
 
-	#if DUE
+		#if DUE
 		// mark vector of error and (pseudo-?)vector of output with error
 		mark_to_skip( block, (1 << out_vect) | (1 << vect) );
-	#endif
+		#endif
 
 		// notify globally
 		__sync_fetch_and_add(&errinfo.errors, 1);
 
-	#if DUE
+		#if DUE
 		// notify this thread
 		exception_happened++;
-		if( out_vect == RECOVERY )
+		if( out_vect == RECOVERY || out_vect == MPI_X_EXCHANGE || out_vect == MPI_P_EXCHANGE )
 			errinfo.in_recovery_errors++;
-	#endif
+		#endif
 
 
 		// old : unprotect, mess with data in the page
@@ -239,7 +239,7 @@ void* simulate_failures(void* ptr)
 	//pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);
 
 	int i, nerr = sim_err->nerr;
-	long long faults_nsec[nerr+1];
+	long long faults_nsec[nerr];
 
 	if( nerr )
 	{
@@ -283,7 +283,7 @@ void* simulate_failures(void* ptr)
 		long long next_fault_nsec;
 		if( nerr )
 		{
-			if( i > nerr )
+			if( i >= nerr )
 				break;
 			else
 				next_fault_nsec = faults_nsec[i++];
@@ -384,7 +384,8 @@ int check_recovery_errors()
 {
 	int r = (int)errinfo.in_recovery_errors;
 	errinfo.in_recovery_errors = 0;
-	if( r ) fprintf(stderr, "ERROR DURING RECOVERY restart needed\n"); // this sufficiently bad to always show ?
+	if(r)
+		fprintf(stderr, "ERROR DURING RECOVERY restart needed\n"); // this sufficiently bad to always show ?
 	return r;
 }
 
@@ -399,7 +400,7 @@ int check_block(const int block, const int input_mask)
 
 	// this is called a posteriori, be sure to not mark just 'skipped'
 	const int out_mask = COMPLETE_WITH_FAIL(1 << out_vect);
-	int b;
+	int b = 0;
 
 	do
 	{
@@ -421,7 +422,7 @@ int check_block(const int block, const int input_mask)
 int should_skip_block(const int block, const int mask)
 {
 	const int out_mask = (1 << out_vect);
-	int b;
+	int b = 0;
 
 	do
 	{
@@ -480,7 +481,7 @@ void mark_corrected(const int block, const int mask)
 
 	#if VERBOSE >= SHOW_FAILINFO
 	char mask_str[ 30 ];
-	log_err(SHOW_FAILINFO, "Before correction marked (with mask %s : %x), skipped block %2d is %s : %x\n", single_mask(mask), mask, block, str_mask(mask_str, before), before);
+	log_err(SHOW_FAILINFO, "Before correction marked (with mask %s : %x), skipped block %2d was %s : %x\n", single_mask(mask), mask, block, str_mask(mask_str, before), before);
 	#endif
 }
 
@@ -658,21 +659,23 @@ void compute_neighbourhoods(const Matrix *mat, const int bs, Matrix *neighbours)
 {
 	int i, ii, bi, k, bj, pos = 0, set_in_block[errinfo.nb_failblocks];
 
+	// NB : only taking care of in-node relations, so neighbours is a square nb_failblocks² sized matrix
+
 	// iterate all lines, i points to the start of the block, ii to the line and bi to the number of the block
-	for(i=0, bi=0; i < mat->n; i += bs, bi++ )
+	for(i=0, bi=0; i < mpi_zonesize[mpi_rank]; i += bs, bi++ )
 	{
 		neighbours->r[bi] = pos;
 
 		for(bj=0; bj<errinfo.nb_failblocks; bj++)
 			set_in_block[bj] = 0;
 
-		for( ii = i; ii < i+bs && ii < mat->n ; ii ++ )
+		for(ii=i; ii < i+bs && ii < mpi_zonesize[mpi_rank]; ii++)
 
 			// iterate all columns, k points to the position in mat, and bj to the number of the block
-			for(k = mat->r[ii] ; k < mat->r[ii+1] ; k++ )
+			for(k = mat->r[ii]; k < mat->r[ii+1]; k++ )
 			{
-				bj = mat->c[k] / bs;
-				if( mat->v[k] != 0.0 && !set_in_block[bj])
+				bj = (mat->c[k] - mpi_zonestart[mpi_rank]) / bs;
+				if( bj >= 0 && bj < errinfo.nb_failblocks && mat->v[k] != 0.0 )
 					set_in_block[bj] = 1;
 			}
 

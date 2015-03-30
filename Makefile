@@ -63,7 +63,7 @@ space=$(empty) $(empty)
 DESTDIR:=$(subst $(space),_,$(DIR))
 
 .PHONY : default clean all ompssall plainall debug ompssdebug plaindebug conv ompssconv plainconv speedup ompssspeedup plainspeedup
-default:ompssdebug
+default:ompssall
 
 all ompssall plainall debug ompssdebug plaindebug conv ompssconv plainconv speedup ompssspeedup plainspeedup: $(DESTDIR)
 	cd $(DESTDIR) && make -f ../Makefile.sub "FLAVOUR=$(FLAVOUR)" VPATH=.:..:../src $(@)

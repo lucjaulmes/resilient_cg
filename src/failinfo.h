@@ -27,8 +27,8 @@
 #define MASK_NORM_A_P   (1 << NORM_A_P)
 
 #define MASK_RECOVERY   (1 << RECOVERY)
-#define MASK_X_EXCHANGE (1 << MPI_X_EXCHANGE) 20
-#define MASK_P_EXCHANGE (1 << MPI_P_EXCHANGE) 21
+#define MASK_X_EXCHANGE (1 << MPI_X_EXCHANGE)
+#define MASK_P_EXCHANGE (1 << MPI_P_EXCHANGE)
 
 // the two next ones mean (in conjugation with the previous corresponding item) that 
 // if g (resp. Ap) is marked failed with this extra bit, it has been skipped, but is not
