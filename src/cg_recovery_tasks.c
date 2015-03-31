@@ -223,7 +223,7 @@ void recover_rectify_p_Ap(const int n UNUSED, magic_pointers *mp, double *p, dou
 
 	error_types = aggregate_skips();
 
-	log_err(SHOW_FAILINFO, "Recovery task for p (faults:%d), Ap (faults:%d) and <p,Ap> (faults:%d) depending on g (faults:%d) and old_p (faults:%d) started\n", (error_types & mask_p) > 0, (error_types & MASK_A_P) > 0, (error_types & NORM_A_P) > 0, (error_types & MASK_GRADIENT) > 0, (error_types & mask_old_p) > 0);
+	log_err(SHOW_FAILINFO, "Recovery task for p (faults:%d), Ap (faults:%d) and <p,Ap> (faults:%d) depending on g (faults:%d) and old_p (faults:%d) started\n", (error_types & mask_p) > 0, (error_types & MASK_A_P) > 0, (error_types & MASK_NORM_A_P) > 0, (error_types & MASK_GRADIENT) > 0, (error_types & mask_old_p) > 0);
 
 	if( error_types & MASK_GRADIENT )
 		failed_recovery += abs(recover_full_g_recompute(mp, mp->g, REMOVE_FAULTS));
