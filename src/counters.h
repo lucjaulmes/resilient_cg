@@ -13,7 +13,7 @@ void stop_measure();
 #if !defined PERFORMANCE || defined EXTRAE_EVENTS
 void log_convergence(const int r, const double e, const int f);
 #else
-#define log_convergence(r, e, f) ;
+#define log_convergence(r, e, f) {}
 #endif
 
 #endif // COUNTERS_H

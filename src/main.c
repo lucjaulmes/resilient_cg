@@ -3,6 +3,7 @@
 #include <math.h>
 #include <string.h>
 #include <time.h>
+#include <unistd.h>
 
 #include "global.h"
 #include "matrix.h"
@@ -23,60 +24,90 @@
 	#include <nanos_omp.h>
 #endif
 
-int nb_blocks ; // educated guess ?
+// globals
+int nb_blocks;
 int *block_ends;
 
-int MAXIT = 1000;
+void set_blocks_sparse(Matrix *A, int *nb_blocks, const int fail_size)
+{
+	block_ends = (int*)malloc(*nb_blocks * sizeof(int));
 
-// some self-explanatory text functions
+	// compute block repartition now we have the matrix, arrange for block limits to be on fail block limits
+	int i, pos = 0, next_stop = 0, ideal_bs = (A->nnz + *nb_blocks / 2) / *nb_blocks, inc_pos = fail_size / sizeof(double);
+	for(i=0; i<*nb_blocks-1; i++)
+	{
+		next_stop += ideal_bs;
+
+		while( pos + inc_pos <= A->n && A->r[pos + inc_pos] < next_stop )
+			pos += inc_pos;
+
+		if( pos + inc_pos <= A->n && A->r[pos + inc_pos] - next_stop < next_stop - A->r[pos] )
+			pos += inc_pos;
+
+		if(pos >= A->n)
+		{
+			fprintf(stderr, "Error while making blocks : end of block %d/%d is %d, beyond size of matrix %d ;"
+							" nb_blocks reduced to %d. You could try reducing -ps\n", i+1, *nb_blocks, pos, A->n, i+1);
+			*nb_blocks=i+1;
+			break;
+		}
+
+		set_block_end(i, pos);
+
+		// force to increment by at least 1
+		pos += inc_pos;
+	}
+
+	set_block_end( *nb_blocks -1, A->n );
+}
+
+int MAXIT = 0;
+
 void usage(char* arg0)
 {
 	printf("Usage: %s [options] <matrix-market-filename> [, ...] \n"
 			"Possible options are : \n"
-			"  -l   lambda       Number (double), meaning 1/mtbf in usec.\n"
+			" ===  fault injection  === \n"
 			"  -nf               Disabling faults simulation (default).\n"
-			"  -sf               Forcing faults to happen no more than one at a time.\n"
-			"  -mf  strategy     Enabling multiple faults to happen.\n "
+			"  -l     lambda     Inject errors with lambda meaning MTBE in usec.\n"
+			"  -nerr  N duration Inject N errors over a period of duration in usec.\n"
+			"                    Note : the options -nf, -l and -nerr are mutually exclusive.\n"
+			"  -mfs   strategy   Select an alternate (cf Agullo2013) strategy for multiple faults.\n "
 			"                   'strategy' must be one of global, uncorrelated, decorrelated.\n"
-			"                    Note : the options -nf, -sf and -mf are mutually exclusive.\n"
-			"  -th  threads      Manually define number of threads.\n"
-			"  -nb  blocks       Defines the number of blocks in which to divide operations ;\n"
-			"                    their size will depdend on the matrix' size.\n"
-			"  -ld  size         Defines size of lost data on failure (in bytes, defaults to block size * 8).\n"
-			"  -run runs         number of times to run a matrix solving.\n"
+			"                    Note : has no effect without errors. global is default.\n"
+			" === run configuration === \n"
+			"  -th    threads    Manually define number of threads.\n"
+			"  -nb    blocks     Defines the number of blocks in which to divide operations ;\n"
+			"                    their size will depend on the matrix' size.\n"
+			"  -r     runs       number of times to run a matrix solving.\n"
+			"  -cv    thres      Run until the error verifies ||b-Ax|| < thres * ||b|| (default 1e-10).\n"
+			"  -maxit N          Run no more than N iterations (default no limit).\n"
+			"  -seed  s          Initialize seed of each run with s. If 0 use different (random) seeds.\n"
+			" === resilience method === \n"
+			"  -ps    size       Defines page size (used on failure, in bytes, defaults to 4K).\n"
+			"                    Must be a multiple of the system page size (and a power of 2).\n"
+	#if CKPT == CKPT_TO_DISK
+			"  -disk  /path/dir  Path to a directory on local disk for checkpointing (default $TMPDIR).\n"
+			"  -ckpt             Prefix of the name of checkpoint files.\n"
+	#endif
 			"All options apply to every following input file. You may re-specify them for each file.\n\n", arg0);
 	exit(1);
 }
 
-void name_strategy(const char n, char* name)
+// we return how many parameters we consumed, -1 for error
+int read_param(int argsleft, char* argv[], double *lambda, int *runs, int *threads UNUSED, int *blocks, long *fail_size, int *fault_strat, 
+			int *nerr, unsigned int *seed, double *cv_thres, char **checkpoint_path UNUSED, char **checkpoint_prefix UNUSED)
 {
-	if( n == NOFAULT )
-		strcpy(name, "no_fault");	
-	else if( n == SINGLEFAULT )
-		strcpy(name, "single_fault");	
-	else if( n == MULTFAULTS_GLOBAL )
-		strcpy(name, "multiple_faults_global_recovery");	
-	else if( n == MULTFAULTS_UNCORRELATED )
-		strcpy(name, "multiple_faults_uncorrelated_recovery");	
-	else if( n == MULTFAULTS_DECORRELATED )
-		strcpy(name, "multiple_faults_decorrelated_recovery");	
-	else
-		strcpy(name, "unknown_fault_strategy_expect_crashes");	
-}
-
-// we return how many parameters we consumed
-int read_param(int argsleft, char* argv[], double *lambda, int *restart, int *runs, int *blocks, int *fail_size, char *fault_strat)
-{
-	if( strcmp(argv[0], "-l") == 0 )
+	if( strcmp(argv[0], "-r") == 0 )
 	{
-		// we want at least the double and a matrix market file after
+		// we want at least the integer and a matrix market file after
 		if( argsleft <= 2 )
-			usage(argv[0]);
+			return -1;
 
-		*lambda = strtod(argv[1], NULL);
+		*runs = (int) strtol(argv[1], NULL, 10);
 
-		if( *lambda <= 0 )
-			usage(argv[0]);
+		if( *runs < 0 )
+			return -1;
 
 		return 2;
 	}
@@ -84,12 +115,12 @@ int read_param(int argsleft, char* argv[], double *lambda, int *restart, int *ru
 	{
 		// we want at least the integer and a matrix market file after
 		if( argsleft <= 2 )
-			usage(argv[0]);
+			return -1;
 
 		MAXIT = (int) strtol(argv[1], NULL, 10);
 
 		if( MAXIT <= 0 )
-			usage(argv[0]);
+			return -1;
 
 		return 2;
 	}
@@ -97,25 +128,22 @@ int read_param(int argsleft, char* argv[], double *lambda, int *restart, int *ru
 	{
 		// we want at least the integer and a matrix market file after
 		if( argsleft <= 2 )
-			usage(argv[0]);
+			return -1;
 
-		unsigned int seed = (unsigned int) strtol(argv[1], NULL, 10);
-
-		srand(seed);
-		printf("initiating rand with seed:%u\n", seed);
+		*seed = (unsigned int) strtol(argv[1], NULL, 10);
 
 		return 2;
 	}
-	else if( strcmp(argv[0], "-ld") == 0 )
+	else if( strcmp(argv[0], "-cv") == 0 )
 	{
-		// we want at least the integer and a matrix market file after
+		// we want at least the double and a matrix market file after
 		if( argsleft <= 2 )
-			usage(argv[0]);
+			return -1;
 
-		*fail_size = (int) strtol(argv[1], NULL, 10);
+		*cv_thres = strtod(argv[1], NULL);
 
-		if( *fail_size <= 0 )
-			usage(argv[0]);
+		if( *cv_thres <= 1e-15 )
+			return -1;
 
 		return 2;
 	}
@@ -123,15 +151,16 @@ int read_param(int argsleft, char* argv[], double *lambda, int *restart, int *ru
 	{
 		// we want at least the integer and a matrix market file after
 		if( argsleft <= 2 )
-			usage(argv[0]);
+			return -1;
 
 		int th = (int) strtol(argv[1], NULL, 10);
 
 		if( th <= 0 )
-			usage(argv[0]);
+			return -1;
 
-		#ifdef  _OMPSS
+		#ifdef _OMPSS
 		nanos_omp_set_num_threads(th);
+		*threads = th;
 		#else
 		if( th != 1 )
 			fprintf(stderr, "DO NOT DEFINE THREADS FOR THE SEQUENTIAL VERSION !\n");
@@ -143,38 +172,40 @@ int read_param(int argsleft, char* argv[], double *lambda, int *restart, int *ru
 	{
 		// we want at least the integer and a matrix market file after
 		if( argsleft <= 2 )
-			usage(argv[0]);
+			return -1;
 
 		*blocks = (int) strtol(argv[1], NULL, 10);
 
 		if( *blocks <= 0 )
-			usage(argv[0]);
+			return -1;
 
 		return 2;
 	}
-	else if( strcmp(argv[0], "-runs") == 0 )
+	else if( strcmp(argv[0], "-ps") == 0 )
 	{
 		// we want at least the integer and a matrix market file after
 		if( argsleft <= 2 )
-			usage(argv[0]);
+			return -1;
 
-		*runs = (int) strtol(argv[1], NULL, 10);
+		*fail_size = strtol(argv[1], NULL, 10);
+		const long divisor = sysconf(_SC_PAGESIZE);
 
-		if( *runs < 0 )
-			usage(argv[0]);
+		if( *fail_size <= 0 || *fail_size % divisor || *fail_size ^ (1 << (ffs((int)*fail_size)-1)) )
+			return -1;
 
 		return 2;
 	}
-	else if( strcmp(argv[0], "-r") == 0 )
+	else if( strcmp(argv[0], "-l") == 0 )
 	{
-		// we want at least the integer and a matrix market file after
+		// we want at least the double and a matrix market file after
 		if( argsleft <= 2 )
-			usage(argv[0]);
+			return -1;
 
-		*restart = (int) strtol(argv[1], NULL, 10);
+		*nerr = 0;
+		*lambda = strtod(argv[1], NULL);
 
-		if( *restart < 0 )
-			usage(argv[0]);
+		if( *lambda <= 0 )
+			return -1;
 
 		return 2;
 	}
@@ -182,29 +213,19 @@ int read_param(int argsleft, char* argv[], double *lambda, int *restart, int *ru
 	{
 		// we want at least a matrix market file after the switch
 		if( argsleft <= 1 )
-			usage(argv[0]);
+			return -1;
 
-		*fault_strat = NOFAULT;
+		*lambda = 0;
+		*nerr   = 0;
 		// (all strategies equivalent for 1 fault)
 
 		return 1;
 	}
-	else if( strcmp(argv[0], "-sf") == 0 )
-	{
-		// we want at least a matrix market file after the switch
-		if( argsleft <= 1 )
-			usage(argv[0]);
-
-		*fault_strat = SINGLEFAULT;
-		// (all strategies equivalent for 1 fault)
-
-		return 1;
-	}
-	else if( strcmp(argv[0], "-mf") == 0 )
+	else if( strcmp(argv[0], "-mfs") == 0 )
 	{
 		// we want at least the strategy and a matrix market file after
 		if( argsleft <= 2 )
-			usage(argv[0]);
+			return -1;
 
 		if( strcmp(argv[1], "global") == 0 )
 			*fault_strat = MULTFAULTS_GLOBAL;
@@ -213,11 +234,55 @@ int read_param(int argsleft, char* argv[], double *lambda, int *restart, int *ru
 		else if( strcmp(argv[1], "decorrelated") == 0 )
 			*fault_strat = MULTFAULTS_DECORRELATED;
 		else
-			usage(argv[0]);
+			return -1;
 
 		return 2;
 	}
-	else
+	else if( strcmp(argv[0], "-nerr") == 0 )
+	{
+		// we want at least the integer, duration and a matrix market file after
+		if( argsleft <= 3 )
+			return -1;
+
+		*nerr = (int) strtol(argv[1], NULL, 10);
+		*lambda = (double) strtod(argv[2], NULL);
+
+		if( *nerr <= 0 || *lambda <= 0 )
+			return -1;
+
+		return 3;
+	}
+	#if CKPT == CKPT_TO_DISK
+	else if( strcmp(argv[0], "-disk") == 0 )
+	{
+		// we want at least the integer and a matrix market file after
+		if( argsleft <= 2 )
+			return -1;
+
+		struct stat file_infos;
+		stat(argv[1], &file_infos);
+	
+		mode_t required_flags = S_IFDIR | S_IROTH | S_IWOTH;
+		if( (file_infos.st_mode & required_flags) == required_flags )
+			return -1;
+
+		*checkpoint_path = strdup(argv[1]);
+
+		return 2;
+	}
+	else if( strcmp(argv[0], "-ckpt") == 0 )
+	{
+		// we want at least the integer and a matrix market file after
+		if( argsleft <= 2 )
+			return -1;
+
+
+		*checkpoint_prefix = strdup(argv[1]);
+
+		return 2;
+	}
+	#endif
+	else 
 		return 0; // no option regognized, consumed 0 parameters
 }
 
@@ -229,28 +294,33 @@ FILE* get_infos_matrix(char *filename, int *n, int *m, int *nnz, int *symmetric)
 
 	if(input_file == NULL)
 	{
-		printf("Error : file %s not valid (check path/read permissions)\n", filename);
+		printf("Error : file \"%s\" not valid (check path/read permissions)\n", filename);
 		return NULL;
 	}
 
 	else if (mm_read_banner(input_file, &matcode) != 0)
-		printf("Could not process Matrix Market banner of file %s.\n", filename);
+		printf("Could not process Matrix Market banner of file \"%s\".\n", filename);
 
 	else if (mm_is_complex(matcode))
-		printf("Sorry, this application does not support Matrix Market type of file %s : [%s]\n", 
+		printf("Sorry, this application does not support Matrix Market type of file \"%s\" : [%s]\n", 
 			filename, mm_typecode_to_str(matcode));
 
 	else if( !mm_is_array(matcode) && (mm_read_mtx_crd_size(input_file, m, n, nnz) != 0 || *m != *n) )
-		printf("Sorry, this application does not support the not-array matrix in file %s\n", filename);
+		printf("Sorry, this application does not support the not-array matrix in file \"%s\"\n", filename);
 
 	else if( mm_is_array(matcode) && (mm_read_mtx_array_size(input_file, m, n) != 0 || *m != *n) )
-		printf("Sorry, this application does not support the array matrix in file %s\n", filename);
+		printf("Sorry, this application does not support the array matrix in file \"%s\"\n", filename);
+
+	else if( !mm_is_symmetric(matcode) )
+		printf("Sorry, this application does not support the non-symmetric matrix in file \"%s\"\n", filename);
 
 	else // hurray, no reasons to fail
 	{
 		if( *nnz == 0 )
 			*nnz = (*m) * (*n);
 		*symmetric = mm_is_symmetric(matcode);
+		if( MAXIT == 0 )
+			MAXIT = 10 * (*n);
 		return input_file;
 	}
 
@@ -265,112 +335,117 @@ int main(int argc, char* argv[])
 	// no buffer on stdout so messages interleaved with stderr will be in right order
 	setbuf(stdout, NULL);
 
-	// if we want to autmatically print bactraces, regsiter handler 
-	register_sigsegv_handler();
-
 	if(argc < 2)
 		usage(argv[0]);
 
-	int i, j, f, nb_read;
+	int i, j, f, nb_read, runs = 1;
+
+	#ifdef _OMPSS
+	int nb_threads = nb_blocks = nanos_omp_get_num_threads();
+	#else
+	int nb_threads = nb_blocks = 1;
+	#endif
+
+	int fault_strat = MULTFAULTS_GLOBAL, nerr = 0;
+	long fail_size;
+	double lambda = 0, cv_thres = 1e-10;
+	#if CKPT == CKPT_TO_DISK
+	char *checkpoint_path = getenv("TMPDIR"), *checkpoint_prefix = "", ckpt[50];
+	#else
+	char *checkpoint_path = NULL, *checkpoint_prefix = NULL;
+	#endif
+
+
+	fail_size = sysconf(_SC_PAGESIZE); // default page size ?
+
 	unsigned int seed = 1591613054 ;// time(NULL);
 
-	int nb_threads = nb_blocks = 1;
-	double lambda = 100;
-	int restart = 0, runs = 1, fail_size = 4096; // default page size ?
-	char fault_strat = NOFAULT;
-
 	// Iterate over parameters (usually open files)
-	for(f=1; f<argc; f += nb_read )
-		
-		if( (nb_read = read_param(argc - f, &argv[f], &lambda, &restart, &runs, &nb_blocks, &fail_size, &fault_strat)) == 0 )
+	for(f=1; f<argc; f += nb_read)
+	{
+		nb_read = read_param(argc - f, &argv[f], &lambda, &runs, &nb_threads, &nb_blocks, &fail_size, &fault_strat, &nerr, &seed, &cv_thres, &checkpoint_path, &checkpoint_prefix);
+
+		// error happened
+		if( nb_read < 0 )
+			usage(argv[0]);
+
+		// no parameters read : next param must be a matrix file. Read it (and consume parameter)
+		else if( nb_read == 0 )
 		{
 			// if it's not an option, it's a file. Read it (and consume parameter)
 			int n, m, lines_in_file, symmetric;
-			nb_read = 1;
-			#ifdef _OMPSS
-			nb_threads = nanos_omp_get_num_threads();
-			#endif
 			FILE* input_file = get_infos_matrix(argv[f], &n, &m, &lines_in_file, &symmetric);
 
 			if( input_file == NULL )
-				continue;
-
-			// DEBUG TO MODIFY PROBLEM
-			// n = m = 256;
+				usage(argv[0]);
+			else
+				nb_read = 1;
 
 			Matrix matrix;
-			allocate_matrix(n, m, lines_in_file * (1 + symmetric), &matrix);
+			allocate_matrix(n, m, lines_in_file * (1 + symmetric), &matrix, fail_size);
 			read_matrix(n, m, lines_in_file, symmetric, &matrix, input_file);
 
-			printf("matrix_format:SPARSE ");
-
-			// compute block repartition now we have the matrix : processor-blocks are multiples of fail-blocks
-			int ideal_bs = (matrix.nnz + nb_blocks / 2) / nb_blocks, pos = 0, inc_pos = fail_size / sizeof(double), next_stop = 0;
-			block_ends = (int*)malloc(nb_blocks * sizeof(int));
-			for(i=0; i<nb_blocks-1; i++)
-			{
-				next_stop += ideal_bs;
-
-				while( pos + inc_pos <= matrix.n && matrix.r[pos + inc_pos] < next_stop )
-					pos += inc_pos;
-
-				if( pos + inc_pos <= matrix.n && matrix.r[pos + inc_pos] - next_stop < next_stop - matrix.r[pos] )
-					pos += inc_pos;
-				
-				if(pos >= matrix.n)
-				{
-					fprintf(stderr, "Error while making blocks : end of block %d/%d is %d, beyond size of matrix %d ; nb_blocks reduced to %d. You could try reducing -ld\n", i+1, nb_blocks, pos, matrix.n, i+1);
-					nb_blocks=i+1;
-					break;
-				}
-
-				set_block_end(i, pos);
-
-				// force to increment by at least 1
-				pos += inc_pos;
-			}
-
-			set_block_end( nb_blocks -1, matrix.n );
+			set_blocks_sparse(&matrix, &nb_blocks, fail_size);
 
 			fclose(input_file);
 
 			// now show infos
-			printf("executable:%s File:%s problem_size:%d ", argv[0], argv[f], n);
-
-			if(symmetric)
-				printf("matrix_symmetric:yes method:ConjugateGradient ");
-			else if( restart > 0 )
-				printf("matrix_symmetric:no method:restarted_GMRES(%d) ", restart);
-			else
-				printf("matrix_symmetric:no method:full_GMRES ");
-
-			char strat[40];
-			name_strategy(fault_strat, strat);
-
-			printf("lambda:%e nb_threads:%d nb_blocks:%d strategy:%s failure_size=%dB srand_seed:%u\n", lambda, nb_threads, nb_blocks, strat, fail_size, seed);
-
-			#if VERBOSE > FULL_VERBOSE
-			print(&matrix);
+			#ifndef DUE
+			#define DUE 0
 			#endif
 
+			char header[500];
+			const char * const due_names[] = {"none", "async", "in_path", "rollback", "lossy"};
+			const char * const fault_strat_names[] = {"global", "uncorrelated", "decorrelated"};
+
+			sprintf(header, "matrix_format:SPARSE executable:%s File:%s problem_size:%d nb_threads:%d nb_blocks:%d due:%s strategy:%s failure_size:%ld srand_seed:%u maxit:%d convergence_at:%e\n",
+					argv[0], argv[f], n, nb_threads, nb_blocks, due_names[DUE], fault_strat_names[fault_strat-1], fail_size, seed, MAXIT, cv_thres);
+
+			if( nerr )
+				sprintf(strchr(header, '\n'), " inject_errors:%d inject_duration:%e\n", nerr, lambda);
+			else
+				sprintf(strchr(header, '\n'), " lambda:%e\n", lambda);
+
+			#if CKPT
+			const char * const ckpt_names[] = {"none", "in_memory", "to_disk"};
+			sprintf(strchr(header, '\n'), " ckpt:%s ckpt_freq:%d\n", ckpt_names[CKPT], CHECKPOINT_FREQ);
+			#endif
+
+			// set some parameters that we don't want to pass through solve_cg
+			#if CKPT == CKPT_TO_DISK
+			sprintf(ckpt, "%s/%s", checkpoint_path, checkpoint_prefix);
+			sprintf(strchr(header, '\n'), " ckpt_path:%s\n", ckpt);
+			#else
+			const char *ckpt = NULL;
+			#endif
+
+			printf(header);
+			#if VERBOSE >= SHOW_TOOMUCH
+			print_matrix(stderr, &matrix);
+			#endif
+
+			populate_global(matrix.n, fail_size, fault_strat, nerr, lambda, ckpt);
+
+			// if using fancy ways of measuring (e.g. extrae events)
 			setup_measure();
 		
 			// a few vectors for rhs of equation, solution and verification
 			double *b, *x, *s;
-			b = (double*)malloc( n * sizeof(double) );
-			x = (double*)malloc( n * sizeof(double) );
-			s = (double*)malloc( n * sizeof(double) );
+			b = (double*)aligned_calloc(fail_size, n * sizeof(double));
+			x = (double*)aligned_calloc(fail_size, n * sizeof(double));
+			s = (double*)aligned_calloc(fail_size, n * sizeof(double));
 
 			// interesting stuff is here
 			for(j=0;j<runs;j++)
 			{
+				// seed = 0 -> random : time for randomness, +j to get different seeds even if solving < 1s
 				unsigned int real_seed = seed == 0 ? time(NULL) + j : seed;
 				if( runs > 1 )
 					printf("run:%d seed:%u ", j, real_seed);
 
 				srand(real_seed);
 
-				// generate random rhs to problem, and initialize first guess to 0
+				// generate random rhs to problem
 				double range = (double) 1;
 
 				for(i=0; i<n; i++)
@@ -379,22 +454,10 @@ int main(int argc, char* argv[])
 					x[i] = 0.0;
 				}
 
-				// do some setup for the resilience part
-				setup(&matrix, fail_size, fault_strat, lambda, 0.7);
-
-				// if symmetric, solve with conjugate gradient method
-				if(symmetric)
-					solve_pcg(n, &matrix, NULL, b, x, 1e-10 );
-				//otherwise, gmres
-				else
-					//solve_gmres(n, &matrix, b, x, 1e-10 , restart);
-					log_out("gmres unavailable for now\n");
+				solve_pcg(&matrix, b, x, cv_thres);
 
 				// compute verification
 				mult(&matrix, x, s);
-
-				// remove anything we've done to setup the resilience
-				unset();
 
 				// do displays (verification, error)
 				double err = 0, norm_b = scalar_product(n, b, b);
@@ -416,6 +479,7 @@ int main(int argc, char* argv[])
 			free(s);
 			free(block_ends);
 		}
+	}
 
 	return 0;
 }

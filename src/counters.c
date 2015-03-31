@@ -8,30 +8,28 @@
 #include "counters.h"
 
 // measures are chosen by defining EXTRAE_EVENTS or GETTIMEOFDAY (this latter one serving as fallback)
-#define FALLBACK_GETTIMEOFDAY
 
 #ifdef EXTRAE_EVENTS
-#undef FALLBACK_GETTIMEOFDAY
 #include <extrae_user_events.h>
-#include <nanos_omp.h>
 extrae_type_t extrae_measure_event = 9300000;
+
 extrae_type_t extrae_iteration_event = 9300001;
 extrae_type_t extrae_convergence_power_event = 9300002;
 extrae_type_t extrae_convergence_significand_event = 9300003;
 extrae_type_t extrae_failures_event = 9300004;
-extrae_value_t extrae_measure_start = 1, extrae_measure_stop = 0;
 
-extrae_type_t log_types [] = {9300001, 9300002, 9300003, 9300004};
+extrae_value_t extrae_measure_start = 1, extrae_measure_stop = -1, extrae_measure_none = 0;
 
-extrae_value_t log_vals [4] ;
-
-#endif
+extrae_type_t log_conv_types [] = {9300001, 9300002, 9300003, 9300004};
+extrae_value_t log_conv_vals [4] ;
 
 
-#ifdef FALLBACK_GETTIMEOFDAY
+#else
+
 #ifndef GETTIMEOFDAY
 #define GETTIMEOFDAY
 #endif
+
 #endif
 
 #ifdef GETTIMEOFDAY
@@ -39,7 +37,7 @@ extrae_value_t log_vals [4] ;
 struct timeval start_time, stop_time;
 #endif 
 
-#ifndef  _OMPSS
+#ifndef _OMPSS
 int nanos_omp_get_thread_num () { return 0; }
 int nanos_omp_get_num_threads() { return 1; }
 #endif
@@ -52,14 +50,13 @@ void log_convergence(const int r UNUSED, const double e UNUSED, const int f UNUS
 	int exp;
 	double significand = frexp(e, &exp);
 	significand = ldexp(significand, 63);
-	log_vals[0] = r;
-	log_vals[1] = (exp+960);
-	log_vals[2] = (long long)significand;
-	log_vals[3] = f;
-	Extrae_nevent(4, log_types, log_vals);
-	#else
-	log_out("%d, % e %d\n", r, e, f);
+	log_conv_vals[0] = r;
+	log_conv_vals[1] = (exp+960);
+	log_conv_vals[2] = (long long)significand;
+	log_conv_vals[3] = f;
+	Extrae_nevent(4, log_conv_types, log_conv_vals);
 	#endif
+	log_out("%d, % e %d\n", r, e, f);
 }
 #endif
 
@@ -99,7 +96,7 @@ void setup_measure()
 		Extrae_set_numthreads_function ((unsigned int (*)(void))&nanos_omp_get_num_threads);
 		Extrae_init();
 	}
-	#ifdef PERFORMRANCE
+	#ifdef PERFORMANCE
 	else
 	{
 		Extrae_shutdown();
@@ -110,9 +107,9 @@ void setup_measure()
 
 	register_sigusr2_handler();
 
-	unsigned int nvals = 2;
-	extrae_value_t vals[] = {extrae_measure_start, extrae_measure_stop};
-	char* explanations[] = {"solving", "other"};
+	unsigned int nvals = 3;
+	extrae_value_t vals[] = {extrae_measure_start, extrae_measure_none, extrae_measure_stop};
+	char* explanations[] = {"solving", "other", "end solving"};
 
 	Extrae_define_event_type( &extrae_measure_event, "measure (P)CG solving", &nvals, vals, explanations);
 
@@ -127,26 +124,43 @@ void setup_measure()
 
 void start_measure()
 {
+	#if VERBOSE >= SHOW_DBGINFO
 	log_out("Starting measures\n");
-	#ifdef EXTRAE_EVENTS
-	Extrae_event(extrae_measure_event, extrae_measure_start);
 	#endif
 
 	#ifdef GETTIMEOFDAY
 	gettimeofday( &start_time, NULL );
 	#endif 
+
+	#ifdef EXTRAE_EVENTS
+	Extrae_event(extrae_measure_event, extrae_measure_start);
+	#endif
 }
 
 void stop_measure()
 {
 	#ifdef EXTRAE_EVENTS
 	Extrae_event(extrae_measure_event, extrae_measure_stop);
-	log_out("Ended measures\n");
 	#endif
 
 	#ifdef GETTIMEOFDAY
 	gettimeofday( &stop_time, NULL );
 	printf("gettimeofday_Usecs:%e\n", (1e6 * (stop_time.tv_sec - start_time.tv_sec)) + stop_time.tv_usec - start_time.tv_usec);
 	#endif 
+
+	#if VERBOSE >= SHOW_DBGINFO
+	log_out("Ended measures\n");
+	#endif
+
+	#ifdef EXTRAE_EVENTS
+	#ifdef _OMPSS
+		int i;
+		#pragma omp for schedule(static,1)
+		for(i=0;i<nanos_omp_get_num_threads();i++)
+			Extrae_flush();
+	#else
+		Extrae_flush();
+	#endif
+	#endif
 }
 

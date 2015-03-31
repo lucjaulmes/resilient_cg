@@ -2,26 +2,19 @@
 #define DEBUG_H_INCLUDED
 
 #include <stdarg.h>
+#include "global.h"
+#include "csparse.h"
 
-// if we want to use several levels of verbosity
-#define FULL_VERBOSE 5
-#define LIGHT_VERBOSE 1
-#define SHOW_DBGINFO 2
-#define SHOW_FULLDBG 3
-#define SHOW_FAILINFO 4
-#define SHOW_TASKINFO 5
-
-// if we defined PERFORMANCE we are going to be very silent
-// if we defiend VERBOSE we are going to be very talkative
-
-#ifndef PERFORMANCE
 // if we want to use several levels of verbosity
 #define SHOW_DBGINFO  1
 #define SHOW_FAILINFO 2
 #define SHOW_TASKINFO 3
 #define SHOW_TOOMUCH  4
 
-#include "csparse.h"
+// if we defined PERFORMANCE we are going to be very silent
+// if we defined VERBOSE we are going to be selectively talkative
+
+#ifndef PERFORMANCE
 
 // this is all a bit manual, but necessary to remove side-effects of the VA_ARGS
 // if we don't #define the unused log_err to {} (e.g. declaring to a function that does nothing)
@@ -63,6 +56,9 @@
 
 #define log_out(...) printf(__VA_ARGS__)
 
+// and now refer to those nice log_err_X
+#define PASTE(a,b) a ## b
+#define log_err(level, ...) PASTE(log_err_, level)(__VA_ARGS__)
 
 static inline void print_csparse_mat(cs *M)
 {

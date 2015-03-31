@@ -1,3 +1,6 @@
+#ifndef BACKTRACE_H
+#define BACKTRACE_H
+
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
 #endif
@@ -5,13 +8,7 @@
 #define __USE_GNU
 #endif
 
-#include <execinfo.h>
 #include <signal.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <ucontext.h>
-#include <unistd.h>
 
 /* This structure mirrors the one found in /usr/include/asm/ucontext.h */
 typedef struct _sig_ucontext
@@ -23,52 +20,9 @@ typedef struct _sig_ucontext
 	sigset_t          uc_sigmask;
 } sig_ucontext_t;
 
-void crit_err_hdlr(int sig_num, siginfo_t * info, void * ucontext)
-{
-	void *             array[50];
-	void *             caller_address;
-	char **            messages;
-	int                size, i;
-	sig_ucontext_t *   uc;
+void crit_err_hdlr(int sig_num, siginfo_t * info, void * ucontext);
 
-	uc = (sig_ucontext_t *)ucontext;
+void register_sigsegv_handler();
 
-	/* Get the address at the time the signal was raised */
-	#if defined(__i386__) // gcc specific
-	caller_address = (void *) uc->uc_mcontext.eip; // EIP: x86 specific
-	#elif defined(__x86_64__) // gcc specific
-	caller_address = (void *) uc->uc_mcontext.rip; // RIP: x86_64 specific
-	#else
-	#error Unsupported architecture.
-	#endif
-
-	fprintf(stderr, "signal %d (%s), address is %p from %p\n", 
-			sig_num, strsignal(sig_num), info->si_addr, 
-			(void *)caller_address);
-
-	size = backtrace(array, 50);
-
-	/* overwrite sigaction with caller's address */
-	array[1] = caller_address;
-
-	messages = backtrace_symbols(array, size);
-
-	/* skip first stack frame (points here) */
-	for (i = 1; i < size && messages != NULL; ++i)
-		fprintf(stderr, "[bt]: (%d) %s\n", i, messages[i]);
-
-	free(messages);
-
-	_exit(EXIT_FAILURE);
-}
-
-void register_sigsegv_handler()
-{
-	struct sigaction sigact;
-	sigact.sa_sigaction = crit_err_hdlr;
-	sigact.sa_flags = SA_RESTART | SA_SIGINFO;
-
-	if( sigaction(SIGSEGV, &sigact, (struct sigaction*)NULL) !=  0)
-		fprintf(stderr, "error setting signal handler for %d (%s)\n", SIGSEGV, strsignal(SIGSEGV));
-}
+#endif // BACKTRACE_H
 

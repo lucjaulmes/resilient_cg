@@ -7,10 +7,24 @@
 #include "recover.h"
 #include "debug.h"
 #include "counters.h"
+#include "csparse.h"
 
 #include "pcg.h"
 
-void deallocate_preconditioner(Precond *M)
+magic_pointers mp;
+
+#if DUE && DUE != DUE_ROLLBACK
+#include "pcg_resilient_tasks.c"
+#include "pcg_recovery_tasks.c"
+#else
+#include "pcg_normal_tasks.c"
+#endif
+
+#if CKPT
+#include "pcg_checkpoint.c"
+#endif
+
+void deallocate_preconditioner(Precond *M, char **wait_for_precond)
 {
 	int i;
 	for(i=0; i<get_nb_failblocks(); i++)
@@ -21,28 +35,37 @@ void deallocate_preconditioner(Precond *M)
 	free(M->N);
 	free(M->S);
 	free(M);
+
+	for(i=0; i<nb_blocks; i++)
+		free(wait_for_precond[i]);
 }
 
-void allocate_preconditioner(Precond **M, const int maxblocks)
+void allocate_preconditioner(Precond **M, const int maxblocks, char **wait_for_precond)
 {
 	*M = (Precond*)malloc( sizeof(Precond) );
 	(*M)->N = (csn**)malloc(maxblocks * sizeof(csn*));
 	(*M)->S = (css**)malloc(maxblocks * sizeof(css*));
+
+	int i;
+	for(i=0; i<nb_blocks; i++)
+		wait_for_precond[i] = alloc_deptoken();
 }
 
-void factorize_jacobiblock( const int n, const int block, const Matrix *A, css **S, csn **N)
+void factorize_jacobiblock(const int block, const Matrix *A, css **S, csn **N)
 {
-	int fbs = get_failblock_size();
+	const int page_bytes = get_failblock_size() * sizeof(double);
 	Matrix sm;
 
-	int pos = block * fbs, max = pos + fbs;
-	if( max > n )
+	int fbs = get_failblock_size(), pos = block * fbs, max = pos + fbs;
+	if( max > A->n )
 	{
-		max = n;
-		fbs = n - pos;
+		max = A->n;
+		fbs = A->n - pos;
 	}
 
-	allocate_matrix( fbs, fbs, A->nnz, &sm );
+	int nnz = A->r[ max ] - A->r[ max-fbs ];
+
+	allocate_matrix( fbs, fbs, nnz, &sm, page_bytes);
 
 	// get the submatrix for those lines
 	get_submatrix(A, &pos, 1, &pos, 1, fbs, &sm);
@@ -65,11 +88,11 @@ void factorize_jacobiblock( const int n, const int block, const Matrix *A, css *
 	deallocate_matrix(&sm);
 }
 
-void make_blockedjacobi_preconditioner(Precond *M, const Matrix *A, char **wait_for_precond)
+void make_blockedjacobi_preconditioner(Precond *M, const Matrix *A, char **wait_for_precond UNUSED)
 {
-	int i, j, n = A->n, fbs = get_failblock_size();
+	int i, j, n = A->n, fbs = get_failblock_size(), log2fbs = get_log2_failblock_size();
 	
-	if( get_block_end(0) / fbs > nb_blocks ) 
+	if( get_block_end(0) >> log2fbs > nb_blocks ) 
 		// biggish blocks, need to make them smaller for more load balance - however needs to be a partition of the parallel blocks
 		for(i=0; i < nb_blocks; i ++ )
 		{
@@ -77,8 +100,8 @@ void make_blockedjacobi_preconditioner(Precond *M, const Matrix *A, char **wait_
 			if( e > n )
 				e = n;
 
-			bs = s / fbs;
-			be = ((e + fbs - 1) / fbs) - 1;
+			bs = s >> log2fbs;
+			be = ((e + fbs - 1) >> log2fbs) - 1;
 			sub_block = (be + 1 - bs + nb_blocks/2) / nb_blocks;
 
 			if(sub_block < 1)
@@ -92,7 +115,7 @@ void make_blockedjacobi_preconditioner(Precond *M, const Matrix *A, char **wait_
 
 				#pragma omp task out(M->S[j:l], M->N[j:l]) concurrent(*(wait_for_precond[i])) firstprivate(i, j, l) private(k) label(cholesky_diag_blocks) priority(10) no_copy_deps
 				for(k=j; k <= l; k++)
-					factorize_jacobiblock( A->n, k, A, M->S + k, M->N + k );
+					factorize_jacobiblock(k, A, M->S + k, M->N + k );
 			}
 		}
 	else
@@ -101,205 +124,13 @@ void make_blockedjacobi_preconditioner(Precond *M, const Matrix *A, char **wait_
 			int s = get_block_start(i), e = get_block_end(i), bs, be;
 			if( e > n )
 				e = n;
-			bs = s / fbs;
-			be = ((e + fbs - 1) / fbs) - 1;
+			bs = s >> log2fbs;
+			be = ((e + fbs - 1) >> log2fbs) - 1;
 
 			#pragma omp task out(M->S[bs:be], M->N[bs:be], *(wait_for_precond[i])) firstprivate(i, bs, be) private(j) label(cholesky_diag_blocks) priority(10) no_copy_deps
 			for(j=bs; j <= be; j++)
-				factorize_jacobiblock( A->n, j, A, M->S + j, M->N + j );
+				factorize_jacobiblock(j, A, M->S + j, M->N + j );
 		}
-}
-
-void apply_preconditioner(const int n, const double *g, double *z, Precond *M, char **wait_for_precond)
-{
-	int b, s, e, bs, be, fbs = get_failblock_size();
-
-	for(b=0; b < nb_blocks; b ++ )
-	{
-		s = get_block_start(b);
-		e = get_block_end(b);
-		bs = s / fbs;
-		be = (e + fbs - 1) / fbs;
-
-		#pragma omp task in(g[s:e], M->S[bs:be], M->N[bs:be], *(wait_for_precond[b])) out(z[s:e]) firstprivate(b, s, e, bs, be, n) label(precondition) priority(50) no_copy_deps
-		{
-			double *x = malloc( fbs * sizeof(double) );
-
-			for(; bs < be ; s += fbs, bs++)
-			{
-				if( s + fbs > n )
-					fbs = n - s;
-
-				cs_ipvec (fbs, M->S[bs]->Pinv, &g[s], x) ;	// x = P*g
-				cs_lsolve (M->N[bs]->L, x) ;		// x = L\x
-				cs_ltsolve (M->N[bs]->L, x) ;		// x = L'\x
-				cs_pvec (fbs, M->S[bs]->Pinv, x, &z[s]) ;	// z = P'*x
-			}
-			
-			free(x);
-
-			// remove preconditioning :
-			//for(i=s; i<e; i++) z[i] = g[i];
-		}
-	}	
-}
-
-void scalar_product_task(const int n, const double *v, const double *w, double* r)
-{
-	int i;
-	/*
-	// This is read by the main task, but r must not be set to 0 by it since some tasks consumer of r my not have been executed yet.
-	// Let us rely on the program to send only 0 values into here. Alternatively, use the task below to generate proper anti-dependencies.
-	#pragma omp task out(*r) label(prepare_dotp)
-	{
-		*r = 0;
-	}
-	*/
-
-	for(i=0; i < nb_blocks; i ++ )
-	{
-		int s = get_block_start(i), e = get_block_end(i);
-
-		// r <- <v, w>
-		#pragma omp task in(v[s:e-1], w[s:e-1]) concurrent(*r) firstprivate(s, e) label(dotp) priority(10) no_copy_deps
-		{
-			double local_r = scalar_product( e-s, &(v[s]), &(w[s]) );
-
-			#pragma omp atomic
-				*r += local_r;
-
-			log_err(SHOW_TASKINFO, "Blockrow scalar product <p, Ap> block %d finished = %e\n", i, local_r);
-		}
-	}
-}
-
-void norm_task( const int n, const double *v, double* r )
-{
-	int i;
-	/*
-	// This is read by the main task, but r must not be set to 0 by it since some tasks consumer of r my not have been executed yet.
-	// Let us rely on the program to send only 0 values into here. Alternatively, use the task below to generate proper anti-dependencies.
-	#pragma omp task out(*r) label(prepare_norm)
-	{
-		*r = 0;
-	}
-	*/
-
-	for(i=0; i < nb_blocks; i ++ )
-	{
-		int s = get_block_start(i), e = get_block_end(i);
-
-		// r <- || v ||
-		#pragma omp task in(v[s:e-1]) concurrent(*r) firstprivate(s, e) label(norm) priority(0) no_copy_deps
-		{
-			double local_r = norm( e-s, &(v[s]) );
-
-			#pragma omp atomic
-			*r += local_r;
-
-			log_err(SHOW_TASKINFO, "Blockrow square norm || g || part %d finished = %e\n", i, local_r);
-		}
-	}
-}
-
-void update_gradient(const int n, double *gradient, double *Ap, double *alpha)
-{
-	int i;
-	for(i=0; i < nb_blocks; i ++ )
-	{
-		int s = get_block_start(i), e = get_block_end(i);
-
-		#pragma omp task in(*alpha, Ap[s:e-1]) inout(gradient[s:e-1]) firstprivate(s, e) label(update_gradient) priority(100) no_copy_deps
-		{
-			daxpy(e-s, -(*alpha), &(Ap[s]), &(gradient[s]), &(gradient[s]));
-		}
-	}
-}
-
-void recompute_gradient(const int n, double *gradient, const Matrix *A, double *iterate, char *wait_for_iterate, double *Aiterate, const double *b)
-{
-	int i;
-	for(i=0; i < nb_blocks; i ++ )
-	{
-		int s = get_block_start(i), e = get_block_end(i);
-
-		// Aiterate <- A * iterate
-		#pragma omp task in(iterate[s:e-1], *wait_for_iterate) out(Aiterate[s:e-1]) firstprivate(s, e) label(AxIt) priority(10) no_copy_deps
-		{
-			Matrix local;
-			local.m = A->m;
-			local.n = e-s;
-
-			local.r = & ( A->r[s] );
-			local.v = A->v;
-			local.c = A->c;
-
-			mult(&local, iterate, &(Aiterate[s]) );
-		}
-
-		// gradient <- b - Aiterate
-		#pragma omp task in(Aiterate[s:e-1]) out(gradient[s:e-1]) firstprivate(s, e) label(b-AxIt) priority(100) no_copy_deps
-		{
-			// there is not really any multiplication here
-			//daxpy(e-s, -1, &(Aiterate[s]), &(b[s]), &(gradient[s]));
-			int j;
-			for (j=s; j<e; j++)
-				gradient[j] = b[j] - Aiterate[j] ;
-		}
-	}
-}
-
-void update_p(const int n, double *p, double *old_p, char *wait_for_p, double *gradient, double *beta)
-{
-	int i;
-	for(i=0; i < nb_blocks; i ++ )
-	{
-		int s = get_block_start(i), e = get_block_end(i);
-
-		// p <- beta * old_p + gradient
-		#pragma omp task in(*beta, gradient[s:e-1]) in(old_p[s:e-1]) out(p[s:e-1]) concurrent(*wait_for_p) firstprivate(s, e) label(update_p) priority(10) no_copy_deps
-		{
-			daxpy(e-s, *beta, &(old_p[s]), &(gradient[s]), &(p[s]));
-		}
-	}
-}
-
-void compute_Ap(const int n, const Matrix *A, double *p, char *wait_for_p, double *Ap)
-{
-	int i;
-	for(i=0; i < nb_blocks; i ++ )
-	{
-		int s = get_block_start(i), e = get_block_end(i);
-
-		// Ap <- A * p
-		#pragma omp task in(p[s:e-1], *wait_for_p) out(Ap[s:e-1]) firstprivate(s, e) label(Axp) priority(20) no_copy_deps
-		{
-			Matrix local;
-			local.m = A->m;
-			local.n = e-s;
-
-			local.r = & ( A->r[s] );
-			local.v = A->v;
-			local.c = A->c;
-
-			mult(&local, p, &(Ap[s]) );
-		}
-	}
-}
-
-void update_iterate(const int n, double *iterate, char *wait_for_iterate, double *p, double *alpha)
-{
-	int i;
-	for(i=0; i < nb_blocks; i ++ )
-	{
-		int s = get_block_start(i), e = get_block_end(i);
-
-		// iterate <- iterate - alpha * p
-		#pragma omp task in(*alpha, p[s:e-1]) inout(iterate[s:e-1]) concurrent(*wait_for_iterate) firstprivate(s, e) label(update_iterate) priority(0) no_copy_deps
-		{
-			daxpy(e-s, *alpha, &(p[s]), &(iterate[s]), &(iterate[s]));
-		}
-	}
 }
 
 #pragma omp task in(*rho, *old_rho) out(*beta) label(compute_beta) priority(100) no_copy_deps
@@ -308,202 +139,216 @@ void compute_beta(const double *rho, const double *old_rho, double *beta)
 	// on first iterations of a (re)start, old_rho should be INFINITY so that beta = 0
 	*beta = *rho / *old_rho;
 
-	log_err(SHOW_TASKINFO, "Computing beta finished : rho = %e ; old_rho = %e ; beta = %e \n", *rho, *old_rho, *beta);
+	#if DUE
+	int state = aggregate_skips();
+	if( state & (MASK_GRADIENT | MASK_NORM_G | MASK_RECOVERY) )
+		fprintf(stderr, "ERROR SUBSISTED PAST RECOVERY restart needed. At beta, g:%d, ||g||:%d\n", (state & MASK_GRADIENT) > 0, (state & MASK_NORM_G) > 0);
+	#endif
+
+	log_err(SHOW_TASKINFO, "Computing beta finished : rho = %e ; old_rho = %e ; beta = %e\n", *rho, *old_rho, *beta);
 }
 
-#pragma omp task inout(*normA_p_sq, *rho, *err_sq) out(*alpha, *old_rho, *old_err_sq) label(compute_alpha) priority(100) no_copy_deps
-void compute_alpha(double *rho, double *normA_p_sq, double *old_rho, double *err_sq, double *old_err_sq, double *alpha)
+#pragma omp task inout(*normA_p_sq, *rho) out(*alpha, *old_rho, *wait_for_alpha) label(compute_alpha) priority(100) no_copy_deps
+void compute_alpha(double *normA_p_sq, double *rho, double *old_rho, double *alpha, char *wait_for_alpha UNUSED)
 {
 	*alpha = *rho / *normA_p_sq ;
 	*old_rho = *rho;
-	*old_err_sq = *err_sq;
 
-	log_err(SHOW_TASKINFO, "Computing alpha finished : normA_p_sq = %+e ; rho = %e ; alpha = %e\n", *normA_p_sq, *old_rho, *alpha);
+	#if DUE
+	int state = aggregate_skips();
+	#if DUE == DUE_LOSSY
+	if( state )
+	{
+		log_err(SHOW_FAILINFO, "There was an error, restarting (eventual lossy x interpolation)");
+		hard_reset(&mp);
+	}
+	#else
+	if( state & (MASK_ITERATE | MASK_P | MASK_OLD_P | MASK_A_P | MASK_NORM_A_P | MASK_RECOVERY) )
+		fprintf(stderr, "ERROR SUBSISTED PAST RECOVERY restart needed. At alpha, x:%d, p:%d, p':%d, Ap:%d, <p,Ap>:%d\n", (state & MASK_ITERATE) > 0, (state & MASK_P) > 0, (state & MASK_OLD_P) > 0, (state & MASK_A_P) > 0, (state & MASK_NORM_A_P) > 0);
+	#endif
+	#endif
+
+	log_err(SHOW_TASKINFO, "Computing alpha finished : normA_p_sq = %+e ; rho = %e ; alpha = %e\n", *normA_p_sq, *rho, *alpha);
 
 	// last consumer of these values : let's 0 them so the scalar product doesn't need to
-	*err_sq = 0.0;
 	*rho = 0.0;
 	*normA_p_sq = 0.0;
 }
 
-#pragma omp task in([n]gradient) inout([n]iterate, *wait_for_iterate) out(*failures) label(recovery) priority(100) no_copy_deps
-void recover_task( const int r, const int n, const Matrix *A, const Precond *M, const double *b, const double *gradient, double *iterate, char *wait_for_iterate, int *failures )
+static inline void swap(double **v, double **w)
 {
-	// debug replacement to have deterministic errors
-	if((r % 50) == 25 && get_strategy() != NOFAULT )
-	{
-		int nb_errs = 0, start_errs, i;
-		if( get_strategy() == SINGLEFAULT )
-		{
-			if( r > 25 )
-			{
-				nb_errs = 1;
-				start_errs = (r - 25) / 50 - 1;
-			}
-		}
-		// 0 at 25, 1 err at 75, 2 at 125 etc.
-		else
-		{
-			nb_errs = (r - 25) / 50;
-			start_errs = ((nb_errs * (nb_errs - 1)) / 2) % get_nb_failblocks();
-		}
-
-		for(i=0; i<nb_errs; i++)
-			report_failure( (start_errs + i) % get_nb_failblocks() );
-
-		if( nb_errs > 0 )
-			printf("Iteration %d : Simulating %d errs starting at block %d\n", r, nb_errs, start_errs);
-
-		if( nb_errs > 0 && start_errs < get_nb_failblocks() && (start_errs + i) > get_nb_failblocks() )
-			fprintf(stderr, "iteration %d, had to wrap around to generate failures on %d consecutive blocks starting at %d (maxblocks is %d)\n",
-				r, nb_errs, start_errs, get_nb_failblocks());
-	}
-
-	// normal function from here on
-	//check_errors();
-
-	int flb = get_nb_failed_blocks();
-
-	if( flb > 0 )
-	{
-		*failures = flb;
-		
-		int id, lost[flb];
-		// do recovery
-		// recover by interpolation since our submatrix is always spd
-
-		// fill lost with all the failed blocks
-		for(id=0; id<flb; id++)
-			lost[id] = pull_failed_block();
-
-		//recover( A, b, iterate, M, get_strategy(), lost, flb );
-		recover_xk( A, b, gradient, iterate, M, get_strategy(), lost, flb );
-
-		log_err(SHOW_DBGINFO, "Recovered from fault.\n");
-	}
+	double *swap = *v;
+	*v = *w;
+	*w = swap;
 }
 
-void solve_pcg( const int n, const Matrix *A, Precond *M, const double *b, double *iterate, double thres )
+void solve_pcg(const Matrix *A, const double *b, double *iterate, double convergence_thres)
 {
 	// do some memory allocations
 	double norm_b, thres_sq;
-	int i, r = -1, do_update_gradient = 0;
-	double *p, *old_p, *z, *Ap, normA_p_sq, *gradient, *Aiterate, rho = 0.0, old_rho = INFINITY, err_sq = 0.0, old_err_sq = INFINITY, alpha, beta = 0.0;
-	char *wait_for_p = alloc_deptoken(), *wait_for_iterate = alloc_deptoken(), *wait_for_precond[nb_blocks], alloc_M = 0;
+	const int n = A->n;
+	int r = -1, total_failures = 0, failures = 0;
+	int do_update_gradient = 0;
+	double *p, *old_p, *Ap, normA_p_sq, *gradient, *z, *Aiterate, rho = 0.0, old_rho = INFINITY, err_sq = 0.0, old_err_sq = DBL_MAX, alpha, beta = 0.0;
+	char *wait_for_p = alloc_deptoken(), *wait_for_iterate = alloc_deptoken(), *wait_for_mvm = alloc_deptoken(), *wait_for_alpha = alloc_deptoken(), *wait_for_precond[nb_blocks];
+	
+	Precond *M;
+	allocate_preconditioner(&M, get_nb_failblocks(), wait_for_precond);
 
-	for(i=0; i<nb_blocks; i++)
-		wait_for_precond[i] = alloc_deptoken();
+	p        = (double*)aligned_calloc(sizeof(double) << get_log2_failblock_size(), n * sizeof(double));
+	old_p    = (double*)aligned_calloc(sizeof(double) << get_log2_failblock_size(), n * sizeof(double));
+	Ap       = (double*)aligned_calloc(sizeof(double) << get_log2_failblock_size(), n * sizeof(double));
+	gradient = (double*)aligned_calloc(sizeof(double) << get_log2_failblock_size(), n * sizeof(double));
+	z        = (double*)aligned_calloc(sizeof(double) << get_log2_failblock_size(), n * sizeof(double));
+	Aiterate = (double*)aligned_calloc(sizeof(double) << get_log2_failblock_size(), n * sizeof(double));
 
-	if( M == NULL )
-	{
-		allocate_preconditioner(&M, get_nb_failblocks());
-		alloc_M++;
-	}
-
-	p = (double*)calloc( n, sizeof(double) );
-	z = (double*)calloc( n, sizeof(double) );
-	old_p = (double*)calloc( n, sizeof(double) );
-	Ap = (double*)calloc( n, sizeof(double) );
-	gradient = (double*)calloc( n, sizeof(double) );
-	Aiterate = (double*)calloc( n, sizeof(double) );
+	#if CKPT == CKPT_IN_MEMORY
+	save_it  = (double*)aligned_calloc(sizeof(double) << get_log2_failblock_size(), n * sizeof(double));
+	save_g   = (double*)aligned_calloc(sizeof(double) << get_log2_failblock_size(), n * sizeof(double));
+	save_p   = (double*)aligned_calloc(sizeof(double) << get_log2_failblock_size(), n * sizeof(double));
+	#endif
 
 	// some parameters pre-computed, and show some informations
-	norm_b = scalar_product(n, b, b);
-	thres_sq = thres * thres * norm_b;
+	norm_b = norm(n, b);
+	thres_sq = convergence_thres * convergence_thres * norm_b;
 	log_out("Error shown is ||Ax-b||^2, you should plot ||Ax-b||/||b||. (||b||^2 = %e)\n", norm_b);
 
+	mp = (magic_pointers){.A = A, .M = M, .b = b, .x = iterate, .p = p, .old_p = old_p, .g = gradient, .z = z, .Ap = Ap, .Ax = Aiterate,
+							.alpha = &alpha, .beta = &beta, .err_sq = &err_sq, .rho = &rho, .old_rho = &old_rho, .normA_p_sq = &normA_p_sq};
+	#if CKPT
+	detect_error_data err_data = (detect_error_data) {
+		.save_rho = &save_rho, .save_alpha = &save_alpha,
+		#if CKPT == CKPT_IN_MEMORY
+		.save_x = save_it, .save_g = save_g, .save_p = save_p, .save_rho = &save_rho, .save_alpha = &save_alpha
+		#endif
+	};
+	mp.err_data = err_data;
+	#endif
+	
 
-	if( alloc_M )
-	{
-		// real work starts here
-		start_measure();
-		make_blockedjacobi_preconditioner(M, A, wait_for_precond);
-	}
+	setup_resilience(A, 7, &mp);
+	start_measure();
 
-	start_iterations();
+	// real work starts here
+
+	make_blockedjacobi_preconditioner(M, A, wait_for_precond);
 
 	for(r=0; r < MAXIT ; r++)
 	{
+		if( --do_update_gradient > 0 )
+		{
+			update_gradient(gradient, Ap, &alpha, wait_for_iterate);
 
-		if( do_update_gradient-- )
-			update_gradient(n, gradient, Ap, &alpha);
+			apply_preconditioner(gradient, z, M, wait_for_precond);
+
+			scalar_product_task(gradient, z, &rho, RHO);
+
+			#if DUE
+			recover_rectify_g_z(n, &mp, old_p, Ap, gradient, z, &err_sq, &rho, wait_for_iterate);
+			#endif
+
+			compute_beta(&rho, &old_rho, &beta);
+
+			update_iterate(iterate, wait_for_iterate, old_p, &alpha);
+			#if DUE
+			recover_rectify_xk(n, &mp, iterate, wait_for_iterate);
+			#endif
+		}
 		else
 		{
-			recompute_gradient(n, gradient, A, iterate, wait_for_iterate, Aiterate, b);
-			// do this direct computation, say, every 50 iterations
-			do_update_gradient = RECOMPUTE_GRADIENT_FREQ - 1;
+			if( r > 0 )
+				update_iterate(iterate, wait_for_iterate, old_p, &alpha);
+
+			recompute_gradient(gradient, A, iterate, wait_for_iterate, wait_for_mvm, Aiterate, b);
+
+			apply_preconditioner(gradient, z, M, wait_for_precond);
+
+			scalar_product_task(gradient, z, &rho, RHO);
+
+			#if DUE
+			recover_rectify_x_g_z(n, &mp, iterate, gradient, z, &err_sq, &rho, wait_for_mvm);
+			#endif
+
+			compute_beta(&rho, &old_rho, &beta);
 		}
 
-		norm_task(n, gradient, &err_sq);
+		update_p(p, old_p, wait_for_p, z, &beta);
 
-		apply_preconditioner(n, gradient, z, M, wait_for_precond);
+		compute_Ap(A, p, wait_for_p, wait_for_mvm, Ap);
 
-		scalar_product_task(n, gradient, z, &rho);
+		scalar_product_task(p, Ap, &normA_p_sq, NORM_A_P);
 
-		compute_beta(&rho, &old_rho, &beta);
-
-		update_p(n, p, old_p, wait_for_p, z, &beta);
-
-		compute_Ap(n, A, p, wait_for_p, Ap);
-
-		scalar_product_task(n, p, Ap, &normA_p_sq);
+		#if DUE == DUE_ASYNC || DUE == DUE_IN_PATH
+		recover_rectify_p_Ap(n, &mp, p, old_p, Ap, &normA_p_sq, wait_for_mvm);
+		#endif
 
 		// when reaching this point, all tasks of loop should be created.
 		// then waiting start : should be released halfway through the loop.
-		// We want this to be after alpha on normal iterations, after AxIt on recompute iterations
+		// We want this to be after alpha on normal iterations, after AxIt
 		// but it should not wait for recovery to finish on recovery iterations
-		if( do_update_gradient == RECOMPUTE_GRADIENT_FREQ - 1 )
+		if( !do_update_gradient )
 		{
-			#pragma omp taskwait on(old_err_sq, *wait_for_iterate)
+			#pragma omp taskwait on(*wait_for_alpha, *wait_for_iterate)
 		}
 		else
 		{
-			#pragma omp taskwait on(old_err_sq)
+			#pragma omp taskwait on(*wait_for_alpha)
 		}
 
-		// swapping p's so we reduce pressure on the execution of the update_iterate tasks
+		// swapping p's so we reduce pressure on the execution of the update iterate tasks
 		// now output-dependencies is not conflicting with the next iteration but the one after
 		{
-			double *swap_p = p;
-			p = old_p;
-			old_p = swap_p;
+			swap(&p, &old_p);
 			
+			failures = check_errors_signaled();
+
 			if( r > 0 )
-				log_convergence(r-1, old_err_sq, 0);
+				log_convergence(r-1, old_err_sq, failures);
+
+			log_err(SHOW_TASKINFO, "\n\n");
+
+			total_failures += failures;
 
 			if( old_err_sq <= thres_sq )
 				break;
+
+			if( do_update_gradient <= 0 )
+				do_update_gradient = RECOMPUTE_GRADIENT_FREQ;
 		}
 
-		compute_alpha(&rho, &normA_p_sq, &old_rho, &err_sq, &old_err_sq, &alpha);
-		
-		update_iterate(n, iterate, wait_for_iterate, old_p, &alpha);
+		norm_task(gradient, &err_sq);
+
+		#pragma omp task in(err_sq) out(old_err_sq) label(reset_err) priority(100) no_copy_deps
+		{
+			old_err_sq = err_sq;
+			err_sq = 0.0;
+		}
+
+		compute_alpha(&normA_p_sq, &rho, &old_rho, &alpha, wait_for_alpha);
 	}
 
 	#pragma omp taskwait 
 	// end of the math, showing infos
-	if( alloc_M )
-		stop_measure();
+	stop_measure();
 	
-	err_sq = norm(n, gradient);
-	log_convergence(r-1, err_sq, 0);
+	failures = check_errors_signaled();
+	log_convergence(r-1, old_err_sq, failures);
 
-	log_out("\n\n------\nConverged at rank %d\n------\n\n", r);
+	printf("CG method finished iterations:%d with error:%e (failures:%d)\n", r, sqrt((err_sq==0.0?old_err_sq:err_sq)/norm_b), total_failures);
 
-	printf("PCG method finished iterations:%d with error:%e (failures:%d)\n", r, sqrt((err_sq==0.0?old_err_sq:err_sq)/norm_b), 0);
-
+	// stop resilience stuff that's still going on
+	unset_resilience();
 
 	free(p);
-	free(z);
 	free(old_p);
+	free(z);
 	free(Ap);
 	free(gradient);
 	free(Aiterate);
 	free(wait_for_p);
+	free(wait_for_mvm);
+	free(wait_for_alpha);
 	free(wait_for_iterate);
-	if( alloc_M )
-		deallocate_preconditioner(M);
-	for(i=0;i<nb_blocks;i++)
-		free(wait_for_precond[i]);
+	deallocate_preconditioner(M, wait_for_precond);
 }
 

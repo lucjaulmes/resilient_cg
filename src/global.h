@@ -3,17 +3,46 @@
 
 // things that should be defined globally : constants, functions, etc.
 // these are the possible fault strategies
-#define NOFAULT 0
-#define SINGLEFAULT 1
-#define MULTFAULTS_GLOBAL 2
-#define MULTFAULTS_UNCORRELATED 3
-#define MULTFAULTS_DECORRELATED 4
 
-#define MAX_THREADS 64
+// some values we pass around
+#define MULTFAULTS_GLOBAL		1
+#define MULTFAULTS_UNCORRELATED	2
+#define MULTFAULTS_DECORRELATED	3
+
+#define DO_NOTHING         0
+#define SAVE_CHECKPOINT    1
+#define RELOAD_CHECKPOINT  2
+#define RESTART_CHECKPOINT 3
 
 #ifndef RECOMPUTE_GRADIENT_FREQ
 #define RECOMPUTE_GRADIENT_FREQ 50
 #endif
+
+#define CKPT_NONE		0
+#define CKPT_TO_DISK	1
+#define CKPT_IN_MEMORY	2
+
+#define DUE_NONE		0
+#define DUE_ASYNC		1
+#define DUE_IN_PATH		2
+#define DUE_ROLLBACK	3
+#define DUE_LOSSY		4
+
+#if DUE == DUE_ROLLBACK
+	#if CKPT == CKPT_NONE
+	#error you have to define a checkpoint strategy
+	#endif
+#endif
+
+#if CKPT
+	#if DUE != DUE_ROLLBACK
+	#error checkpointing strategy defined but not used
+	#endif
+
+	#if ! CHECKPOINT_FREQ
+	#error you have to define a checkpoint frequency
+	#endif
+#endif	
 
 #ifdef UNUSED
 #elif defined(__GNUC__)
@@ -23,6 +52,18 @@
 #elif defined(__cplusplus)
 	#define UNUSED
 #endif
+
+#define STRINGIFY(a) #a
+
+#if ! _ISOC11_SOURCE 
+//#warning ISOC11_SOURCE not defined ! Replacing aligned_alloc from glibc >= 2.12 with memalign
+#include <malloc.h>
+#define aligned_alloc memalign
+#endif
+
+#include <string.h>
+#include <stdlib.h>
+#include <errno.h>
 
 // a few global vars for parameters that everyone needs to know
 extern int nb_blocks;
@@ -47,35 +88,28 @@ static inline int get_block_end(const int b)
 	return block_ends[b];
 }
 
-
-// alignment functions, blocksize (and typesize) has to be a power of 2
-// suppose cache line size to be 64, we want to align to the smallest multiple
-static inline int get_alignment() { return 64 ; }
-static inline void align_ptr(void** ptr)
+static inline size_t round_up(size_t size, size_t alignment)
 {
-	const unsigned long align = get_alignment(), pcast = (const unsigned long)*ptr, mask = align-1;
-
-	if( (pcast & mask) == 0 )
-		return;
-
-	*ptr = (void*) (( pcast & ~mask ) + align );
+	// alignment has to be a power of 2. We round size to the closest multiple of alignment
+	return ((size-1) | (alignment - 1)) + 1; // 4 ops
+	//return (size + (alignment - 1)) & ~(alignment - 1); // 4 ops also ? a-1, s+a, ~a, &
 }
 
-static inline void align_index(int *pos, int typesize)
+static inline void* aligned_calloc(size_t alignment, size_t size)
 {
-	// here adding 1 to index increases by 'typesize' bytes
-	const int align = get_alignment(), mask = align/typesize -1 ;
-	
-	if( (*pos & mask) == 0 )
-		return;
-	
-	*pos = (*pos & ~mask) + align/typesize;
+	size_t aligned_size = round_up(size, alignment);
+	void *ptr = aligned_alloc(alignment, aligned_size);
+	if( ptr == NULL )
+	{
+		perror("aligned_alloc failed");
+		exit(errno);
+	}
+	return memset(ptr, 0, aligned_size);
 }
 
 static inline char* alloc_deptoken()
 {
-	char *deptoken = NULL;
-	posix_memalign( (void**)&deptoken, get_alignment(), 1);
+	char *deptoken = aligned_alloc(64, 64);
 
 	return deptoken;
 }
