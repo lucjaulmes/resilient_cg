@@ -11,10 +11,10 @@ void get_rhs(const int n, const int *rows, const int m, const int *except_cols, 
 
 // actual work for recover_inverse done here, separated for all sets of disjoint neighbouring errors
 void cluster_neighbour_failures(const Matrix *A, const double *b, double *x, int *lost_blocks, const int nb_lost, int *recovery_sizes);
-void do_interpolation( const Matrix *A, const double *b, const double *g, double *x, const int *lost_blocks, const int nb_lost );
+void do_interpolation(const Matrix *A, const double *b, const double *g, double *x, const int *lost_blocks, const int nb_lost);
 
 // recovering x using b - g = A * x (g may be NULL then b = A * x, e.g. use for Ap = A * p )
-void recover_inverse( const Matrix *A, const double *b, const double *g, double *x, int *lost_blocks, const int nb_lost );
+void recover_inverse(const Matrix *A, const double *b, const double *g, double *x, int *lost_blocks, const int nb_lost);
 
 // w = v + sgn * ( A u ) 
 void recover_direct( const Matrix *A, const int sgn, const double *u, const double *v, double *w, int lost_block );

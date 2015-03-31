@@ -163,7 +163,7 @@ int read_param(int argsleft, char* argv[], double *lambda, int *runs, int *threa
 
 		#ifdef _OMPSS
 		nanos_omp_set_num_threads(th);
-		*threads = 1;
+		*threads = th;
 		#else
 		if( th != 1 )
 			fprintf(stderr, "DO NOT DEFINE THREADS FOR THE SEQUENTIAL VERSION !\n");
@@ -399,9 +399,6 @@ int main(int argc, char* argv[])
 			if( input_file == NULL )
 				usage(argv[0]);
 
-			// DEBUG TO MODIFY PROBLEM
-			// n = m = 128;
-
 			Matrix matrix;
 			allocate_matrix(n, m, lines_in_file * (1 + symmetric), &matrix, fail_size);
 			read_matrix(n, m, lines_in_file, symmetric, &matrix, input_file);
@@ -457,9 +454,9 @@ int main(int argc, char* argv[])
 		
 			// a few vectors for rhs of equation, solution and verification
 			double *b, *x, *s;
-			b = (double*)aligned_calloc( fail_size, n * sizeof(double));
-			x = (double*)aligned_calloc( fail_size, n * sizeof(double));
-			s = (double*)aligned_calloc( fail_size, n * sizeof(double));
+			b = (double*)aligned_calloc(fail_size, n * sizeof(double));
+			x = (double*)aligned_calloc(fail_size, n * sizeof(double));
+			s = (double*)aligned_calloc(fail_size, n * sizeof(double));
 
 			// interesting stuff is here
 			for(j=0;j<runs;j++)

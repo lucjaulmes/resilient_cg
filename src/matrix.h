@@ -16,11 +16,11 @@ void mult(const Matrix *A, const double *V, double *W);
 // transposed versions W = t(A) * V
 void mult_transposed(const Matrix *A, const double *V, double *W);
 
-//
 int find_in_matrix(const int row, const int col, const Matrix *A);
 
 // read the matrix data from a Matrix Market file (header already parsed)
 void read_matrix(const int n, const int m, const int nnz, const int symmetric, Matrix *A, FILE* input_file);
+
 // visual representation of matrix
 void print_matrix(FILE* f, const Matrix *A);
 

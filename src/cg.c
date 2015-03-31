@@ -27,6 +27,20 @@ magic_pointers mp;
 #include "cg_checkpoint.c"
 #endif
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 #pragma omp task in(*err_sq, *old_err_sq) out(*beta) label(compute_beta) priority(100) no_copy_deps
 void compute_beta(const double *err_sq, const double *old_err_sq, double *beta)
 {
@@ -39,7 +53,7 @@ void compute_beta(const double *err_sq, const double *old_err_sq, double *beta)
 		fprintf(stderr, "ERROR SUBSISTED PAST RECOVERY restart needed. At beta, g:%d, ||g||:%d\n", (state & MASK_GRADIENT) > 0, (state & MASK_NORM_G) > 0);
 	#endif
 
-	log_err(SHOW_TASKINFO, "Computing beta finished : err_sq = %e ; old_err_sq = %e ; beta = %e \n", *err_sq, *old_err_sq, *beta);
+	log_err(SHOW_TASKINFO, "Computing beta finished : err_sq = %e ; old_err_sq = %e ; beta = %e\n", *err_sq, *old_err_sq, *beta);
 }
 
 #pragma omp task inout(*normA_p_sq, *err_sq) out(*alpha, *old_err_sq, *old_err_sq2) label(compute_alpha) priority(100) no_copy_deps
@@ -97,27 +111,27 @@ void solve_cg( const Matrix *A, const double *b, double *iterate, double converg
 	int do_check_sdc = CHECK_SDC_FREQ;
 	#endif
 
-	p        = (double*)aligned_calloc( sizeof(double) << get_log2_failblock_size(), n * sizeof(double));
-	old_p    = (double*)aligned_calloc( sizeof(double) << get_log2_failblock_size(), n * sizeof(double));
-	Ap       = (double*)aligned_calloc( sizeof(double) << get_log2_failblock_size(), n * sizeof(double));
-	gradient = (double*)aligned_calloc( sizeof(double) << get_log2_failblock_size(), n * sizeof(double));
-	Aiterate = (double*)aligned_calloc( sizeof(double) << get_log2_failblock_size(), n * sizeof(double));
+	p        = (double*)aligned_calloc(sizeof(double) << get_log2_failblock_size(), n * sizeof(double));
+	old_p    = (double*)aligned_calloc(sizeof(double) << get_log2_failblock_size(), n * sizeof(double));
+	Ap       = (double*)aligned_calloc(sizeof(double) << get_log2_failblock_size(), n * sizeof(double));
+	gradient = (double*)aligned_calloc(sizeof(double) << get_log2_failblock_size(), n * sizeof(double));
+	Aiterate = (double*)aligned_calloc(sizeof(double) << get_log2_failblock_size(), n * sizeof(double));
 
 	#if CKPT == CKPT_IN_MEMORY
-	save_it  = (double*)aligned_calloc( sizeof(double) << get_log2_failblock_size(), n * sizeof(double));
-	save_g   = (double*)aligned_calloc( sizeof(double) << get_log2_failblock_size(), n * sizeof(double));
-	save_p   = (double*)aligned_calloc( sizeof(double) << get_log2_failblock_size(), n * sizeof(double));
+	save_it  = (double*)aligned_calloc(sizeof(double) << get_log2_failblock_size(), n * sizeof(double));
+	save_g   = (double*)aligned_calloc(sizeof(double) << get_log2_failblock_size(), n * sizeof(double));
+	save_p   = (double*)aligned_calloc(sizeof(double) << get_log2_failblock_size(), n * sizeof(double));
 	#if SDC == SDC_ORTHO
 	save_Ap  = NULL;
 	#else
-	save_Ap  = (double*)aligned_calloc( sizeof(double) << get_log2_failblock_size(), n * sizeof(double));
+	save_Ap  = (double*)aligned_calloc(sizeof(double) << get_log2_failblock_size(), n * sizeof(double));
 	#endif
 	#endif
 
 	// some parameters pre-computed, and show some informations
 	norm_b = norm(n, b);
 	thres_sq = convergence_thres * convergence_thres * norm_b;
-	{}//log_out("Error shown is ||Ax-b||^2, you should plot ||Ax-b||/||b||. (||b||^2 = %e)\n", norm_b);
+	log_out("Error shown is ||Ax-b||^2, you should plot ||Ax-b||/||b||. (||b||^2 = %e)\n", norm_b);
 
 	detect_error_data err_data = (detect_error_data) {.error_detected = SAVE_CHECKPOINT, .prev_error = 0, .helper_1 = 0.0, .helper_2 = 0.0, .helper_3 = 0.0, .helper_4 = 0.0,
 	#if CKPT == CKPT_IN_MEMORY
@@ -246,7 +260,7 @@ void solve_cg( const Matrix *A, const double *b, double *iterate, double converg
 
 		// when reaching this point, all tasks of loop should be created.
 		// then waiting start : should be released halfway through the loop.
-		// We want this to be after alpha on normal iterations, after AxIt, and after checking sdc 
+		// We want this to be after alpha on normal iterations, after AxIt
 		// but it should not wait for recovery to finish on recovery iterations
 		if( !do_update_gradient )
 		{
@@ -333,8 +347,6 @@ void solve_cg( const Matrix *A, const double *b, double *iterate, double converg
 	
 	failures = check_errors_signaled();
 	log_convergence(r-1, old_err_sq2, failures);
-
-	{}//log_out("\n\n------\nConverged at rank %d\n------\n\n", r);
 
 	printf("CG method finished iterations:%d with error:%e (failures:%d)\n", r, sqrt((err_sq==0.0?old_err_sq:err_sq)/norm_b), total_failures);
 

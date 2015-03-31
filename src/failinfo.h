@@ -30,7 +30,7 @@
 
 // the two next ones mean (in conjugation with the previous corresponding item) that 
 // if g (resp. Ap) is marked failed with this extra bit, it has been skipped, but is not
-// contaminated with errors : last possible bits in mask
+// contaminated with errors
 #define FAIL_GRADIENT  ((1 << 30) | MASK_GRADIENT)
 #define FAIL_A_P       ((1 << 31) | MASK_A_P)
 

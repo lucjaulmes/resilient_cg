@@ -21,8 +21,8 @@ void mult(const Matrix *A,  const double *V, double *W)
 	}
 }
 
-// matrix-vector multiplication (W = t(V) x A = t(t(A) x V ))
-void mult_transposed (const Matrix *A , const double *V, double *W)
+// matrix-vector multiplication (W = t(V) x A = t(t(A) x V) )
+void mult_transposed(const Matrix *A , const double *V, double *W)
 {
 	int i, j, col;
 
@@ -45,16 +45,16 @@ void print_matrix(FILE* f, const Matrix *A)
 	int i, j;
 	for(i=0; i < A->n; i++)
 	{
-		printf("%4d   |  ", i);
+		fprintf(f, "%4d   |  ", i);
 
 		for(j= A->r[i]; j < A->r[i+1]; j++)
 			fprintf(f, " [%4d ] % 1.2e ", A->c[j], A->v[j]);
 
-		printf("\n");
+		fprintf(f, "\n");
 	}
 }
 
-// return pos in matrix (so then you only have to take A->v[pos] ), -1 if does not exist
+// return pos in matrix (so then you only have to take A->v[pos]), -1 if does not exist
 int find_in_matrix(const int row, const int col, const Matrix *A)
 {
 	if(row > A->n || col > A->m)
@@ -94,17 +94,8 @@ void read_matrix(const int n, const int m, const int nnz, const int symmetric, M
 	A->n = n;
 	A->m = m;
 
-	int ctr = 0, thres = (nnz+19)/20;
-	{}//log_out("Reading file ...");
-
 	for (i=0; i<nnz; i++)
 	{
-		if(i > 0 && i % thres == 0)
-		{
-			ctr += 5;
-			{}//log_out(" %d%%", ctr);
-		}
-
 		fscanf(input_file, "%d %d %lg\n", &X, &Y, &val);
 		X--;  /* adjust from 1-based to 0-based */
 		Y--;
@@ -134,8 +125,6 @@ void read_matrix(const int n, const int m, const int nnz, const int symmetric, M
 
 	A->nnz = pos;
 	A->r[A->n] = pos;
-
-	{}//log_out(" 100%%, filling symmetric part...");
 	
 	if(symmetric)
 	{
@@ -163,7 +152,6 @@ void read_matrix(const int n, const int m, const int nnz, const int symmetric, M
 
 		free(nb_subdiagonals);
 		free(fill_row);
-		{}//log_out(" done.\n");
 	}
 }
 

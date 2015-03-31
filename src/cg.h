@@ -53,9 +53,9 @@ typedef struct magic_pointers
 // tasks needed, but these are for both reductions that we have 17-24
 #define NORM_GRADIENT  17
 #define NORM_A_P       18
-#define RECOVERY       19
+#define RECOVERY       20
 
-void solve_cg( const Matrix *A, const double *b, double *iterate, double convergence_thres, double error_thres );
+void solve_cg(const Matrix *A, const double *b, double *iterate, double convergence_thres, double error_thres);
 
 // all the algorithmical steps of CG that will be subdivided into tasks : 
 void update_gradient(double *gradient, double *Ap, double *alpha, char *wait_for_iterate);
@@ -66,7 +66,7 @@ void update_iterate(double *iterate, char *wait_for_iterate, double *p, double *
 void compute_Ap(const Matrix *A, double *p, char *wait_for_p, char *wait_for_mvm, double *Ap);
 
 void scalar_product_task(const double *p, const double *Ap, double* r);
-void norm_task(const double *v, double* r );
+void norm_task(const double *v, double* r);
 
 void compute_beta(const double *err_sq, const double *old_err_sq, double *beta);
 void compute_alpha(double *err_sq, double *normA_p_sq, double *old_err_sq, double *old_err_sq2, double *alpha);

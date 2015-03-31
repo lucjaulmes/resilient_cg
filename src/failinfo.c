@@ -17,7 +17,7 @@
 const char * const mask_names[] = { "0 ", 
 	"X ", "Ax", "G ", "P4", "P5", "Ap", "7 ", "8 ", 
 	"Sx", "10", "Sg", "Sp", "13", "Tp", "15", "16", 
-	"Ng", "Np", "RC", "20", "21", "22", "23", "24",
+	"Ng", "Np", "19", "RC", "21", "22", "23", "24",
 	"25", "26", "27", "28", "29", "Fg", "Fp" };
 
 #include "failinfo.h"
@@ -178,7 +178,7 @@ void resilience_sighandler(int signum, siginfo_t *info, void *context UNUSED)
 
 	#if DUE
 		// mark vector of error and (pseudo-?)vector of output with error
-		mark_to_skip( block, (1 << out_vect) | (1 << vect) );
+		mark_to_skip(block, (1 << out_vect) | (1 << vect) );
 	#endif
 
 		// notify globally
@@ -384,7 +384,8 @@ int check_recovery_errors()
 {
 	int r = (int)errinfo.in_recovery_errors;
 	errinfo.in_recovery_errors = 0;
-	if( r ) fprintf(stderr, "ERROR DURING RECOVERY restart needed\n"); // this sufficiently bad to always show ?
+	if(r)
+		fprintf(stderr, "ERROR DURING RECOVERY restart needed\n"); // this sufficiently bad to always show ?
 	return r;
 }
 
@@ -398,8 +399,8 @@ int check_block(const int block, const int input_mask)
 	}
 
 	// this is called a posteriori, be sure to not mark just 'skipped'
-	const int out_mask = COMPLETE_WITH_FAIL(1 << out_vect);
 	int b;
+	const int out_mask = COMPLETE_WITH_FAIL(1 << out_vect);
 
 	do
 	{
@@ -446,7 +447,6 @@ int count_neighbour_faults(const int block, const int mask)
 
 	for(i=errinfo.neighbours->r[block]; i<errinfo.neighbours->r[block+1]; i++)
 		r += ((errinfo.skipped_blocks[ errinfo.neighbours->c[i] ] & mask) > 0);
-
 	return r;
 }
 
