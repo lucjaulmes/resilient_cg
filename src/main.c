@@ -636,7 +636,7 @@ int main(int argc, char* argv[])
 				MPI_Allreduce(&err_t, &err, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
 				MPI_Allreduce(&norm_b_t, &norm_b, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
 
-				printf("Verification : euclidian distance to solution ||Ax-b||^2 = %e, ||Ax-b||/||b|| = %e\n", err, sqrt(err/norm_b));
+				printf("Verification : euclidian distance to solution ||Ax-b||^2 = %e (local %e), ||Ax-b||/||b|| = %e\n", err, err_t, sqrt(err/norm_b));
 			}
 
 			// deallocate everything we have allocated for several solvings

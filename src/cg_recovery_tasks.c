@@ -71,7 +71,7 @@ void recover_rectify_g(const int n UNUSED, magic_pointers *mp, const double *p, 
 	error_types = aggregate_skips();
 
 	log_err(SHOW_FAILINFO, "Recovery task g for g (faults:%d), ||g|| (faults:%d) depends on Ap (faults:%d) started\n",
-			(error_types & MASK_GRADIENT) > 0, (error_types & NORM_GRADIENT) > 0, (error_types & MASK_A_P) > 0);
+			(error_types & MASK_GRADIENT) > 0, (error_types & MASK_GRADIENT) > 0, (error_types & MASK_A_P) > 0);
 	
 	if( error_types & MASK_A_P )
 		failed_recovery += abs(recover_full_Ap(mp, Ap, p, REMOVE_FAULTS));
@@ -318,8 +318,7 @@ void recover_rectify_p_early(const int n, magic_pointers *mp, double *p, double 
 
 	log_err(SHOW_FAILINFO, "Recovery task p_early for p (faults:%d) before exchange, depending on g (faults:%d) and old_p (faults:%d) started\n", (error_types & mask_p) > 0, (error_types & MASK_GRADIENT) > 0, (error_types & mask_old_p) > 0);
 
-	// PROBLEM : TASK TO BE EXECUTED IN PARALLEL IS UPDATE_ITERATE : HOW DO YOU RECOVER g ?
-	// answer : force to be before update_it
+	// NB force to execute this task before update_it so that iterate is at a coherent state if needed for g recovery
 	if( error_types & MASK_GRADIENT )
 	{
 		failed_recovery += abs(recover_full_g_recompute(mp, mp->g, KEEP_FAULTS));
@@ -327,7 +326,7 @@ void recover_rectify_p_early(const int n, magic_pointers *mp, double *p, double 
 	}
 
 	if( error_types & mask_old_p )
-		failed_recovery += abs(recover_full_old_p_invert(mp, old_p, REMOVE_FAULTS));
+		failed_recovery += abs(recover_early_full_old_p_invert(mp, old_p, REMOVE_FAULTS));
 
 	if( error_types & mask_p )
 		failed_recovery += abs(recover_full_p_repeat(mp, p, old_p, REMOVE_FAULTS));

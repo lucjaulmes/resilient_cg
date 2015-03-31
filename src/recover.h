@@ -7,7 +7,7 @@
 // before calling those, make sure that all the lost elements of x have been replaced
 // either by their initial guess (uncorrelated) or by 0 (decorellated)
 // (only for multiple faults with local strategies)
-void get_rhs(const int n, const int *rows, const int m, const int *except_cols, const int bs, const Matrix *A, const double *b, const double *g, const double *x, double *rhs);
+void get_rhs(const int n, const int *rows, const int m, const int *except_cols, const int bs, const Matrix *A, const double *b, const double *g, const double *x_glob, double *rhs);
 
 // actual work for recover_inverse done here, separated for all sets of disjoint neighbouring errors
 void cluster_neighbour_failures(const Matrix *A, const double *b, double *x, int *lost_blocks, const int nb_lost, int *recovery_sizes);
@@ -39,6 +39,7 @@ int recover_full_g_update    (magic_pointers *mp, double *g,                    
 int recover_mvm_skips_g      (magic_pointers *mp, double *g,                      const int mark_clean);
 int recover_full_Ap          (magic_pointers *mp, double *Ap, const double *p,    const int mark_clean);
 int recover_full_old_p_invert(magic_pointers *mp, double *old_p,                  const int mark_clean);
+int recover_early_full_old_p_invert(magic_pointers *mp, double *old_p,            const int mark_clean);
 
 void save_oldAp_for_old_p_recovery(magic_pointers *mp, double *old_p, const int s, const int e);
 

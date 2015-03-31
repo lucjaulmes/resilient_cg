@@ -4,6 +4,7 @@
 #include <signal.h>
 #include <setjmp.h>
 #include <errno.h>
+#include <assert.h>
 
 #include "global.h"
 #include "matrix.h"
@@ -61,10 +62,6 @@ void recover_direct(const Matrix *A, const int sgn, const double *u, const doubl
 	Matrix local;
 	local.m = A->m;
 	local.n = fbs;
-
-	if( lost + fbs > mpi_zonesize[mpi_rank] )
-		local.n = mpi_zonesize[mpi_rank] - lost;
-
 	local.v = A->v;
 	local.c = A->c;
 	local.r = & ( A->r[lost] );
@@ -88,7 +85,6 @@ void recover_direct(const Matrix *A, const int sgn, const double *u, const doubl
 		for(i=lost; i<lost+local.n; i++)
 			w[i] = - w[i];
 	}
-	//#pragma omp taskwait
 }
 
 void recover_inverse(const Matrix *A, const double *b, const double *g, double *x, int *lost_blocks, const int nb_lost)
@@ -98,10 +94,7 @@ void recover_inverse(const Matrix *A, const double *b, const double *g, double *
 	cluster_neighbour_failures(A, b, x, lost_blocks, nb_lost, recovery_sizes);
 
 	for(i=0, pos=0; pos < nb_lost; pos += recovery_sizes[i], i++)
-		//#pragma omp task label(interpolation) no_copy_deps
-			do_interpolation(A, b, g, x, lost_blocks + pos, recovery_sizes[i]);
-
-	//#pragma omp taskwait
+		do_interpolation(A, b, g, x, lost_blocks + pos, recovery_sizes[i]);
 }
 
 void cluster_neighbour_failures(const Matrix *A, const double *b, double *x, int *lost_blocks, const int nb_lost, int *recovery_sizes)
@@ -177,26 +170,18 @@ void do_interpolation(const Matrix *A, const double *b, const double *g, double 
 		return ;
 	}
 
-	if( lost_rows[nb_lost -1] + fbs > mpi_zonesize[mpi_rank] )
-		total_lost -= (lost_rows[nb_lost -1] + fbs - mpi_zonesize[mpi_rank]);
-	if( lost_cols[nb_lost -1] + fbs > A->m )
-		total_lost -= (lost_cols[nb_lost -1] + fbs - A->m);
-	
 	Matrix recup;
 	double *rhs = (double*)aligned_calloc(sizeof(double) << log2fbs, total_lost * sizeof(double));
 
 	int nnz = 0;
 	for(i=0; i<nb_lost; i++)
 	{
-		int max = lost_rows[i] + fbs;
-		if( max > mpi_zonesize[mpi_rank] )
-			max = mpi_zonesize[mpi_rank] ;
-		nnz += A->r[ max ] - A->r[ lost_rows[i] ];
+		int end = lost_rows[i] + fbs;
+		nnz += A->r[ end ] - A->r[ lost_rows[i] ];
 	}
 
 	allocate_matrix(total_lost, total_lost, nnz, &recup, sizeof(double) << log2fbs);
 
-	//#pragma omp task in([nb_lost]lost) out(recup) shared(A) firstprivate(nb_lost, fbs) label(submatrix)
 	// get the submatrix for those lines
 	get_submatrix(A, lost_rows, nb_lost, lost_cols, nb_lost, fbs, &recup);
 
@@ -217,87 +202,117 @@ void do_interpolation(const Matrix *A, const double *b, const double *g, double 
 	submatrix->i = recup.c;
 	submatrix->x = recup.v;
 
-	//#pragma omp task inout([total_lost]rhs) firstprivate(total_lost) label(cholesky)
-
-	#if VERBOSE >= SHOW_TOOMUCH
-	str matstat[100];
+	#if VERBOSE >= SHOW_FAILINFO
+	char matstat[100];
 	sprintf(matstat, "Submatrix of A with %d diagonal blocks (%dx%d", nb_lost, lost_rows[0], lost_cols[0]);
 	for(i=1; i<nb_lost; i++)
 		sprintf(matstat, ", %dx%d", lost_rows[i], lost_cols[i]);
-	log_err(SHOW_TOOMUCH, "%s) is :\n", matstat);
 
+	#if VERBOSE >= SHOW_TOOMUCH
+	log_err(SHOW_TOOMUCH, "%s) is :\n", matstat);
 	print_matrix_market(stderr, &recup, 1);
+	#else
+	log_err(SHOW_FAILINFO, "%s).\n", matstat);
+	#endif
 	#endif
 	
 	#if VERBOSE >= SHOW_FAILINFO
-	double rhs_copy[total_lost], rhs_result[total_lost], err = 0.0, norm_rhs;
+	double rhs_copy[total_lost], rhs_result[total_lost], err = 0.0, norm_rhs, norm_sol;
 	memcpy(rhs_copy, rhs, total_lost*sizeof(double));
-
-	norm_rhs = norm(fbs, rhs);
 	#endif
 
 	//cs_cholsol(submatrix, rhs, 0);
-	cs_lusol(submatrix, rhs, 0, 1e-5);
+	cs_lusol(submatrix, rhs, 0, 1e-8);
 
 	#if VERBOSE >= SHOW_FAILINFO
+	// now solution in 'rhs', real rhs in 'rhs_copy', and hopefully reconstituted in 'rhs_result'
+	mult(&recup, rhs, rhs_result);
+	norm_rhs = norm(fbs, rhs_copy);
+	norm_sol = norm(fbs, rhs);
+
 	for(i=0; i<total_lost; i++)
 		err += (rhs_copy[i] - rhs_result[i])*(rhs_copy[i] - rhs_result[i]);
 
-	norm_rhs = norm(fbs, rhs);
-	mult(&recup, rhs, rhs_result);
-	
-    log_err(SHOW_FAILINFO, "Relative error of lusol solving is %g/%g = %g\n", sqrt(err), sqrt(norm_rhs), sqrt(err/norm_rhs));
+    log_err(SHOW_FAILINFO, "Relative error of lusol solving is %g/%g = %g ; ||solution||^2 = %e\n", sqrt(err), sqrt(norm_rhs), sqrt(err/norm_rhs), norm_sol);
 	#endif
 
 	// and update the x values we interpolated, that are returned in rhs
-	for(i=0; i<total_lost; i+=fbs)
-		memcpy(x+lost_rows[i], rhs+i, fbs);
+	//for(i=0; i<nb_lost; i++)
+	//	memcpy(x+lost_rows[i], rhs+i*fbs, fbs*sizeof(double));
+	int j;
+	for(i=0; i<nb_lost; i++)
+		for(j=0; j<fbs; j++)
+			x[lost_rows[i]+j] = rhs[i*fbs+j];
+
+	log_err(SHOW_FAILINFO, "After copying, ||sol||^2 = %e. total_lost=%d\n", norm(fbs, &(x[lost_rows[0]])), total_lost);
 
 	cs_free(submatrix);
-
 	deallocate_matrix(&recup);
 	free(rhs);
 }
 
 // give rows to but in rhs, and cols to avoid
-void get_rhs(const int n, const int *rows, const int m, const int *except_cols, const int bs, const Matrix *A, const double *b, const double *g, const double *x, double *rhs)
+void get_rhs(const int n, const int *rows, const int m, const int *except_cols, const int bs, const Matrix *A, const double *b, const double *g, const double *x_glob, double *rhs)
 {
-	int i, ii, j, jj, k;
+	int i, ii, j, c, k;
 
-	if( b != NULL )
-		for(i=0, k=0; i<n; i++)
+	k=0;
+	for(i=0; i<n; i++)
+		for(ii=rows[i]; ii<rows[i]+bs; ii++, k++)
 		{
-			for(ii=rows[i]; ii<rows[i]+bs && ii<mpi_zonesize[mpi_rank]; ii++, k++)
-				rhs[k] = b[ii];
-		}
-	else
-		memset(rhs, 0, n*sizeof(double));
+			rhs[k] = ((b == NULL) ? 0 : b[ii]) - ((g == NULL) ? 0 : g[ii]);
 
-	if( g != NULL )
-		for(i=0, k=0; i<n; i++)
-		{
-			for(ii=rows[i]; ii < rows[i] + bs && ii<A->n; ii++, k++)
-				rhs[k] -= g[ii];
-		}
-
-	for(i=0, k=0; i<n; i++)
-		for(ii=rows[i]; ii<rows[i]+bs && ii<mpi_zonesize[mpi_rank]; ii++, k++)
-		{
-			// for each lost line ii, start with b_ii
-			// and remove contributions A_ii,j * x_j 
-			// from all rows j that are not lost
-			for(j=A->r[ii], jj=0; j<A->r[ii+1]; j++)
+			c=0;
+			for(j=A->r[ii]; j<A->r[ii+1]; j++)
 			{
-				// update jj so that except_cols[jj] + bs > A->c[j]
-				while(jj < m && except_cols[jj] + bs <= A->c[j])
-					jj++;
+				// make sure c points to the first block of cols whose end is beyond current col
+				while(c < m && except_cols[c] + bs <= A->c[j])
+					c++;
 
-				// if the column of item j is not in the [except_cols[jj],except_cols[jj]+bs-1] set
-				if(jj >= m || A->c[j] < except_cols[jj])
-					rhs[k] -= A->v[j] * x[ A->c[j] ];
+				// if we're out of cols to skip, or start of the next block of cols is beyond current col, then contribute
+				if(c >= m || except_cols[c] > A->c[j])
+					rhs[k] -= A->v[j] * x_glob[ A->c[j] ];
 			}
 		}
 }
+//{
+//	int i, ii, j, jj, k;
+//
+//	if( b != NULL )
+//		for(i=0, k=0; i<n; i++)
+//		{
+//			for(ii=rows[i]; ii<rows[i]+bs; ii++, k++)
+//				rhs[k] = b[ii];
+//		}
+//	else
+//		memset(rhs, 0, n*sizeof(double));
+//
+//	if( g != NULL )
+//		for(i=0, k=0; i<n; i++)
+//		{
+//			for(ii=rows[i]; ii < rows[i] + bs && ii<A->n; ii++, k++)
+//				rhs[k] -= g[ii];
+//		}
+//
+//	for(i=0, k=0; i<n; i++)
+//		for(ii=rows[i]; ii<rows[i]+bs; ii++, k++)
+//		{
+//			// for each lost line ii, start with b_ii
+//			// and remove contributions A_{ii,j} * x_j 
+//			// from all rows j that are not lost
+//			jj=0;
+//			for(j=A->r[ii]; j<A->r[ii+1]; j++)
+//			{
+//				// update jj so that except_cols[jj] + bs > A->c[j]
+//				while(jj < m && except_cols[jj] + bs <= A->c[j])
+//					jj++;
+//
+//				// if the column of item j is not in the [except_cols[jj],except_cols[jj]+bs-1] set
+//				if(jj >= m || A->c[j] < except_cols[jj])
+//					rhs[k] -= A->v[j] * x_glob[ A->c[j] ];
+//			}
+//		}
+//}
 
 // remember definitions of recover_direct/inverse
 // recover_inverse(A,b,g,x,..) : recovering x using b - g = A * x (g may be NULL then b = A * x, e.g. use for Ap = A * p )
@@ -497,6 +512,36 @@ int recover_full_p_invert(magic_pointers *mp, double *p, const int mark_clean)
 	return r;
 }
 
+int recover_early_full_old_p_invert(magic_pointers *mp, double *old_p, const int mark_clean)
+{
+	// old_p = A^-1 (Ap - sum(A * old_p) ) ... we didn't need not had time to save old_Ap into old_p : it is still in Ap
+	double *Ap = mp->Ap;
+	int i, r = 0, nb_lost = 0, mask = 1 << get_data_vectptr(old_p), *lost_blocks;
+
+	nb_lost = get_all_failed_blocks_vect(old_p, &lost_blocks);
+
+	recover_inverse(mp->A, Ap, NULL, old_p, lost_blocks, nb_lost);
+
+	r = check_recovery_errors();
+
+	if( !r && mark_clean )
+	{
+		for(i=0; i<nb_lost; i++)
+			mark_corrected(lost_blocks[i], mask);
+	}
+
+	#if VERBOSE >= SHOW_FAILINFO
+	char str[50 + 6 * nb_lost];
+	sprintf(str, "\tInterpolating %d blocks of old_p[%d] early : %d  {", nb_lost, get_data_vectptr(old_p), r);
+	for(i=0; i<nb_lost; i++)
+		sprintf(str+strlen(str),  "%d, ", lost_blocks[i]);
+	sprintf(str+strlen(str)-2, "}\n");
+	log_err(SHOW_FAILINFO, str);
+	#endif
+
+	return r;
+}
+
 
 int recover_full_old_p_invert(magic_pointers *mp, double *old_p, const int mark_clean)
 {
@@ -516,7 +561,7 @@ int recover_full_old_p_invert(magic_pointers *mp, double *old_p, const int mark_
 
 	if( r == 0 )
 	{
-		recover_inverse( mp->A, old_Ap, NULL, old_p, lost_blocks, nb_lost );
+		recover_inverse(mp->A, old_Ap, NULL, old_p, lost_blocks, nb_lost);
 
 		r = check_recovery_errors();
 
@@ -529,7 +574,7 @@ int recover_full_old_p_invert(magic_pointers *mp, double *old_p, const int mark_
 
 	#if VERBOSE >= SHOW_FAILINFO
 	char str[50 + 6 * nb_lost];
-	sprintf(str, "\tInterpolating %d blocks (early) of old_p[%d] : %d  {", nb_lost, get_data_vectptr(old_p), r);
+	sprintf(str, "\tInterpolating %d blocks of old_p[%d] : %d  {", nb_lost, get_data_vectptr(old_p), r);
 	for(i=0; i<nb_lost; i++)
 		sprintf(str+strlen(str),  "%d, ", lost_blocks[i]);
 	sprintf(str+strlen(str)-2, "}\n");

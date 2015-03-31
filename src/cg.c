@@ -58,7 +58,7 @@ void setup_exchange(const int mpi_rank, const int first, const int last, const i
 			MPI_Recv_init(v + mpi_zonestart[   i    ], mpi_zonesize[   i    ], MPI_DOUBLE, i, tag, MPI_COMM_WORLD, v_req+(j++));
 		}
 }
- 
+
 #if DUE && DUE != DUE_ROLLBACK
 #include "cg_resilient_tasks.c"
 #include "cg_recovery_tasks.c"
@@ -85,7 +85,7 @@ void compute_beta(double *err_sq, const double *old_err_sq, double *beta)
 
 	#if DUE
 	int state = aggregate_skips();
-	if( state & (MASK_GRADIENT | MASK_NORM_G | MASK_RECOVERY) )
+	if( state & (MASK_GRADIENT | MASK_NORM_G | MASK_RECOVERY | MASK_X_EXCHANGE) )
 		fprintf(stderr, "ERROR SUBSISTED PAST RECOVERY restart needed. At beta, g:%d, ||g||:%d\n", (state & MASK_GRADIENT) > 0, (state & MASK_NORM_G) > 0);
 	#endif
 
@@ -110,7 +110,7 @@ void compute_alpha(double *err_sq, double *normA_p_sq, double *old_err_sq, doubl
 		hard_reset(&mp);
 	}
 	#else
-	if( state & (MASK_ITERATE | MASK_P | MASK_OLD_P | MASK_A_P | MASK_NORM_A_P | MASK_RECOVERY) )
+	if( state & (MASK_ITERATE | MASK_P | MASK_OLD_P | MASK_A_P | MASK_NORM_A_P | MASK_RECOVERY | MASK_P_EXCHANGE) )
 		fprintf(stderr, "ERROR SUBSISTED PAST RECOVERY restart needed. At alpha, x:%d, p:%d, p':%d, Ap:%d, <p,Ap>:%d\n", (state & MASK_ITERATE) > 0, (state & MASK_P) > 0, (state & MASK_OLD_P) > 0, (state & MASK_A_P) > 0, (state & MASK_NORM_A_P) > 0);
 	#endif
 	#endif
@@ -188,7 +188,7 @@ void solve_cg(const Matrix *A, const double *b, double *it_glob, double converge
 	thres_sq = norm(mpi_zonesize[mpi_rank], b);
     MPI_Allreduce(&thres_sq, &norm_b, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
 
-	log_err(SHOW_FAILINFO, "||b||=%f\n", norm_b);
+	log_err(SHOW_FAILINFO, "||b||=%g\n", norm_b);
 
 	thres_sq = convergence_thres * convergence_thres * norm_b;
 	{}//log_out("Error shown is ||Ax-b||^2, you should plot ||Ax-b||/||b||. (||b||^2 = %e)\n", norm_b);
