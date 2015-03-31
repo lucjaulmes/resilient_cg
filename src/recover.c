@@ -86,7 +86,6 @@ void recover_direct(const Matrix *A, const int sgn, const double *u, const doubl
 		for(i=lost; i<lost+local.n; i++)
 			w[i] = - w[i];
 	}
-	//#pragma omp taskwait
 }
 
 void recover_inverse(const Matrix *A, const double *b, const double *g, double *x, int *lost_blocks, const int nb_lost)
@@ -96,10 +95,7 @@ void recover_inverse(const Matrix *A, const double *b, const double *g, double *
 	cluster_neighbour_failures(A, b, x, lost_blocks, nb_lost, recovery_sizes);
 
 	for(i=0, pos=0; pos < nb_lost; pos += recovery_sizes[i], i++)
-		//#pragma omp task label(interpolation) no_copy_deps
-			do_interpolation(A, b, g, x, lost_blocks + pos, recovery_sizes[i]);
-
-	//#pragma omp taskwait
+		do_interpolation(A, b, g, x, lost_blocks + pos, recovery_sizes[i]);
 }
 
 void cluster_neighbour_failures(const Matrix *A, const double *b, double *x, int *lost_blocks, const int nb_lost, int *recovery_sizes)
@@ -189,7 +185,6 @@ void do_interpolation(const Matrix *A, const double *b, const double *g, double 
 
 	allocate_matrix(total_lost, total_lost, nnz, &recup, sizeof(double) << log2fbs);
 
-	//#pragma omp task in([nb_lost]lost) out(recup) shared(A) firstprivate(nb_lost, fbs) label(submatrix)
 	// get the submatrix for those lines
 	get_submatrix(A, lost, nb_lost, lost, nb_lost, fbs, &recup);
 
@@ -197,21 +192,18 @@ void do_interpolation(const Matrix *A, const double *b, const double *g, double 
 	get_rhs(nb_lost, lost, nb_lost, lost, fbs, A, b, g, x, rhs);
 
 	// from csparse
-	cs *submatrix = cs_calloc (1, sizeof (cs)) ;
-	submatrix->m = recup.m ;
-	submatrix->n = recup.n ;
-	submatrix->nzmax = recup.nnz ;
-	submatrix->nz = -1 ;
+	cs *submatrix = cs_calloc(1, sizeof(cs));
+	submatrix->m = recup.m;
+	submatrix->n = recup.n;
+	submatrix->nzmax = recup.nnz;
+	submatrix->nz = -1;
 	// don't work with triplets, so has to be compressed column even though we work with compressed row
 	// but since here the matrix is symmetric they are interchangeable
 	submatrix->p = recup.r;
 	submatrix->i = recup.c;
 	submatrix->x = recup.v;
 
-	//#pragma omp task inout([total_lost]rhs) firstprivate(total_lost) label(cholesky)
 	cs_cholsol(submatrix, rhs, 0);
-
-	//#pragma omp taskwait
 
 	// and update the x values we interpolated, that are returned in rhs
 	int j, k;

@@ -22,7 +22,7 @@ void mult(const Matrix *A,  const double *V, double *W)
 }
 
 // matrix-vector multiplication (W = t(V) x A = t( t(A) x V ))
-void mult_transposed (const Matrix *A , const double *V, double *W)
+void mult_transposed(const Matrix *A , const double *V, double *W)
 {
 	int i, j, col;
 
