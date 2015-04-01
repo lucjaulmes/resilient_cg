@@ -11,18 +11,17 @@ typedef struct Precond
 	csn **N;
 } Precond;
 
-#if CKPT
 // structure used to compactly convey the data for abft
-typedef struct detect_error_data 
+typedef struct checkpoint_data 
 {
+	int instructions;
 	#if CKPT == CKPT_IN_MEMORY
 	double *save_x, *save_g, *save_p, *save_rho, *save_alpha;
 	#elif CKPT == CKPT_TO_DISK
 	double *save_rho, *save_alpha;
 	const char *checkpoint_path;
 	#endif
-} detect_error_data;
-#endif
+} checkpoint_data;
 
 // structure to hold the pointers and get them when needed
 typedef struct magic_pointers
@@ -33,7 +32,7 @@ typedef struct magic_pointers
 	double *x, *p, *old_p, *g, *Ap, *Ax, *z;
 	double *alpha, *beta, *err_sq, *rho, *old_rho, *normA_p_sq;
 	#if CKPT
-	detect_error_data *err_data;
+	checkpoint_data *ckpt_data;
 	#endif
 } magic_pointers;
 
@@ -89,6 +88,11 @@ void norm_task(const double *v, double* r);
 
 void compute_beta(const double *rho, const double *old_rho, double *beta);
 void compute_alpha(double *normA_p_sq, double *rho, double *old_rho, double *alpha, char *wait_for_alpha);
+
+void force_checkpoint(checkpoint_data *ckpt_data, double *iterate, double *gradient, double *p, double *Ap);
+void due_checkpoint(checkpoint_data *ckpt_data, double *iterate, double *gradient, double *p, double *Ap);
+void force_rollback(checkpoint_data *ckpt_data, double *iterate, double *gradient, double *p, double *Ap);
+void checkpoint_vectors(checkpoint_data *ckpt_data, int *behaviour, double *iterate, double *gradient, double *p, double *Ap);
 
 void recover_rectify_xk(const int n, magic_pointers *mp, double *x, char *wait_for_iterate);
 void recover_rectify_g_z(const int n, magic_pointers *mp, const double *p, double *Ap, double *gradient, double *z, double *err_sq, double *rho, char *wait_for_iterate);

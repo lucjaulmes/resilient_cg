@@ -141,8 +141,9 @@ void compute_beta(const double *rho, const double *old_rho, double *beta)
 
 	#if DUE
 	int state = aggregate_skips();
-	if( state & (MASK_GRADIENT | MASK_NORM_G | MASK_RECOVERY) )
-		fprintf(stderr, "ERROR SUBSISTED PAST RECOVERY restart needed. At beta, g:%d, ||g||:%d\n", (state & MASK_GRADIENT) > 0, (state & MASK_NORM_G) > 0);
+	if( state & (MASK_GRADIENT | MASK_NORM_G | MASK_Z | MASK_RHO | MASK_RECOVERY) )
+		fprintf(stderr, "ERROR SUBSISTED PAST RECOVERY restart needed. At beta, g:%d, ||g||:%d, z:%d, rho:%d\n",
+			(state & MASK_GRADIENT) > 0, (state & MASK_NORM_G) > 0, (state & MASK_Z) > 0, (state & MASK_RHO) > 0);
 	#endif
 
 	log_err(SHOW_TASKINFO, "Computing beta finished : rho = %e ; old_rho = %e ; beta = %e\n", *rho, *old_rho, *beta);
@@ -191,6 +192,13 @@ void solve_pcg(const Matrix *A, const double *b, double *iterate, double converg
 	int do_update_gradient = 0;
 	double *p, *old_p, *Ap, normA_p_sq, *gradient, *z, *Aiterate, rho = 0.0, old_rho = INFINITY, err_sq = 0.0, old_err_sq = DBL_MAX, alpha, beta = 0.0;
 	char *wait_for_p = alloc_deptoken(), *wait_for_iterate = alloc_deptoken(), *wait_for_mvm = alloc_deptoken(), *wait_for_alpha = alloc_deptoken(), *wait_for_precond[nb_blocks];
+	#if CKPT == CKPT_IN_MEMORY
+	double *save_it, *save_g, *save_p, *save_Ap, save_rho, save_alpha;
+	int do_checkpoint = 0;
+	#elif CKPT == CKPT_TO_DISK
+	double save_rho, save_alpha;
+	int do_checkpoint = 0;
+	#endif
 	
 	Precond *M;
 	allocate_preconditioner(&M, get_nb_failblocks(), wait_for_precond);
@@ -206,6 +214,7 @@ void solve_pcg(const Matrix *A, const double *b, double *iterate, double converg
 	save_it  = (double*)aligned_calloc(sizeof(double) << get_log2_failblock_size(), n * sizeof(double));
 	save_g   = (double*)aligned_calloc(sizeof(double) << get_log2_failblock_size(), n * sizeof(double));
 	save_p   = (double*)aligned_calloc(sizeof(double) << get_log2_failblock_size(), n * sizeof(double));
+	save_Ap  = (double*)aligned_calloc(sizeof(double) << get_log2_failblock_size(), n * sizeof(double));
 	#endif
 
 	// some parameters pre-computed, and show some informations
@@ -216,13 +225,13 @@ void solve_pcg(const Matrix *A, const double *b, double *iterate, double converg
 	mp = (magic_pointers){.A = A, .M = M, .b = b, .x = iterate, .p = p, .old_p = old_p, .g = gradient, .z = z, .Ap = Ap, .Ax = Aiterate,
 							.alpha = &alpha, .beta = &beta, .err_sq = &err_sq, .rho = &rho, .old_rho = &old_rho, .normA_p_sq = &normA_p_sq};
 	#if CKPT
-	detect_error_data err_data = (detect_error_data) {
+	checkpoint_data ckpt_data = (checkpoint_data) {
 		.save_rho = &save_rho, .save_alpha = &save_alpha,
 		#if CKPT == CKPT_IN_MEMORY
 		.save_x = save_it, .save_g = save_g, .save_p = save_p, .save_rho = &save_rho, .save_alpha = &save_alpha
 		#endif
 	};
-	mp.err_data = err_data;
+	mp.ckpt_data = &ckpt_data;
 	#endif
 	
 
@@ -243,14 +252,14 @@ void solve_pcg(const Matrix *A, const double *b, double *iterate, double converg
 
 			scalar_product_task(gradient, z, &rho, RHO);
 
-			#if DUE
+			#if DUE == DUE_ASYNC || DUE == DUE_IN_PATH
 			recover_rectify_g_z(n, &mp, old_p, Ap, gradient, z, &err_sq, &rho, wait_for_iterate);
 			#endif
 
 			compute_beta(&rho, &old_rho, &beta);
 
 			update_iterate(iterate, wait_for_iterate, old_p, &alpha);
-			#if DUE
+			#if DUE == DUE_ASYNC || DUE == DUE_IN_PATH
 			recover_rectify_xk(n, &mp, iterate, wait_for_iterate);
 			#endif
 		}
@@ -265,11 +274,22 @@ void solve_pcg(const Matrix *A, const double *b, double *iterate, double converg
 
 			scalar_product_task(gradient, z, &rho, RHO);
 
-			#if DUE
+			#if CKPT
+			if( r == 0 )
+				force_checkpoint(&ckpt_data, iterate, gradient, old_p, Ap);
+			#endif
+
+			#if DUE == DUE_ASYNC || DUE == DUE_IN_PATH
 			recover_rectify_x_g_z(n, &mp, iterate, gradient, z, &err_sq, &rho, wait_for_mvm);
 			#endif
 
 			compute_beta(&rho, &old_rho, &beta);
+
+			// after first beta, we are sure to have the first x, g, and checkpoint
+			// so we can start injecting errors
+			if( r == 0 )
+				#pragma omp task in(beta) label(start_injection)
+				start_error_injection();
 		}
 
 		update_p(p, old_p, wait_for_p, z, &beta);
@@ -314,6 +334,10 @@ void solve_pcg(const Matrix *A, const double *b, double *iterate, double converg
 
 			if( do_update_gradient <= 0 )
 				do_update_gradient = RECOMPUTE_GRADIENT_FREQ;
+			#if CKPT
+			if( do_checkpoint <= 0 )
+				do_checkpoint = CHECKPOINT_FREQ;
+			#endif
 		}
 
 		norm_task(gradient, &err_sq);
@@ -325,6 +349,18 @@ void solve_pcg(const Matrix *A, const double *b, double *iterate, double converg
 		}
 
 		compute_alpha(&normA_p_sq, &rho, &old_rho, &alpha, wait_for_alpha);
+
+		// should happen after p, Ap are ready and before (post-alpha) iterate and gradient updates
+		// so just after (or just before) alpha basically
+		#if CKPT // NB. this implies DUE_ROLLBACK
+		if(failures)
+		{
+			do_checkpoint = 0;
+			force_rollback(&ckpt_data, iterate, gradient, old_p, Ap);
+		}
+		else if( --do_checkpoint == 0 )
+			due_checkpoint(&ckpt_data, iterate, gradient, old_p, Ap);
+		#endif
 	}
 
 	#pragma omp taskwait 
@@ -350,5 +386,12 @@ void solve_pcg(const Matrix *A, const double *b, double *iterate, double converg
 	free(wait_for_alpha);
 	free(wait_for_iterate);
 	deallocate_preconditioner(M, wait_for_precond);
+
+	#if CKPT == CKPT_IN_MEMORY
+	free(save_it);
+	free(save_g);
+	free(save_p);
+	free(save_Ap);
+	#endif
 }
 

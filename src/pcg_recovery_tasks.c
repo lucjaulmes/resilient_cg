@@ -4,13 +4,12 @@ void hard_reset(magic_pointers *mp)
 	// This method can be used as a fallback when DUE techniques don't work.
 	// Primary use is to implement other techniques (against which to compare) 
 	#if CKPT
-	force_rollback(mp->A->n, mp->err_data, mp->x, mp->g, mp->old_p, mp->Ap);
+	force_rollback(mp->A->n, mp->ckpt_data, mp->x, mp->g, mp->old_p, mp->Ap);
 	#else
 	// here we are called at alpha (the function will finish executing normally)
 	// we want ||p||_A = INF to have alpha = 0, err_sq = INF so that next beta = 0
 	*(mp->beta) = 0.0;
 	*(mp->alpha) = 0.0;
-	*(mp->err_sq) = DBL_MAX;
 	*(mp->rho) = DBL_MAX;
 	*(mp->old_rho) = INFINITY;
 	*(mp->normA_p_sq) = INFINITY;
@@ -25,7 +24,8 @@ void hard_reset(magic_pointers *mp)
 #pragma omp task inout([n]x, *wait_for_iterate) label(recover_xk) priority(20) no_copy_deps
 void recover_rectify_xk(const int n UNUSED, magic_pointers *mp, double *x, char *wait_for_iterate UNUSED)
 {
-	if( !get_nb_failed_blocks() )
+	int faults = get_nb_failed_blocks();
+	if( !faults )
 	{
 		log_err(SHOW_FAILINFO, "Skipping x recovery task cause nothing failed\n");
 		return;
@@ -56,7 +56,8 @@ void recover_rectify_xk(const int n UNUSED, magic_pointers *mp, double *x, char 
 #endif
 void recover_rectify_g_z(const int n UNUSED, magic_pointers *mp, const double *p, double *Ap, double *gradient, double *z, double *err_sq, double *rho, char *wait_for_iterate UNUSED)
 {
-	if( !get_nb_failed_blocks() )
+	int faults = get_nb_failed_blocks();
+	if( !faults )
 	{
 		log_err(SHOW_FAILINFO, "Skipping g_z recovery task cause nothing failed\n");
 		return;
@@ -98,7 +99,8 @@ void recover_rectify_g_z(const int n UNUSED, magic_pointers *mp, const double *p
 	double local_err = 0.0, local_rho = 0.0, page_r;
 
 	#if VERBOSE >= SHOW_FAILINFO
-	char str[500] = "\tAdding blocks that were skipped in reduction:";
+	char str[100+20*faults];
+	sprintf(str, "\tAdding blocks that were skipped in reduction:");
 	#endif
 
 	for(i=0; i<get_nb_failblocks(); i++)
@@ -151,13 +153,14 @@ void recover_rectify_g_z(const int n UNUSED, magic_pointers *mp, const double *p
 }
 
 #if DUE == DUE_IN_PATH
-#pragma omp task inout(*err_sq, [n]x) in(*wait_for_mvm) concurrent(*rho, [n]gradient, [n]z) label(recover_xk_g) priority(0) no_copy_deps
+#pragma omp task inout(*err_sq, *rho, [n]x) in(*wait_for_mvm) concurrent([n]gradient, [n]z) label(recover_xk_g) priority(0) no_copy_deps
 #else
 #pragma omp task inout([n]x) in(*wait_for_mvm) concurrent(*err_sq, *rho, [n]gradient, [n]z) label(recover_xk_g) priority(0) no_copy_deps
 #endif
 void recover_rectify_x_g_z(const int n, magic_pointers *mp, double *x, double *gradient, double *z, double *err_sq, double *rho, char *wait_for_mvm UNUSED)
 {
-	if( !get_nb_failed_blocks() )
+	int faults = get_nb_failed_blocks();
+	if( !faults )
 	{
 		log_err(SHOW_FAILINFO, "Skipping x_g_z recovery task cause nothing failed\n");
 		return;
@@ -206,7 +209,8 @@ void recover_rectify_x_g_z(const int n, magic_pointers *mp, double *x, double *g
 	double local_err = 0.0, local_rho = 0.0, page_r;
 
 	#if VERBOSE >= SHOW_FAILINFO
-	char str[500] = "\tAdding blocks that were skipped in reduction:";
+	char str[100+20*faults];
+	sprintf(str, "\tAdding blocks that were skipped in reduction:");
 	#endif
 
 	for(i=0; i<get_nb_failblocks(); i++)
@@ -259,7 +263,8 @@ void recover_rectify_x_g_z(const int n, magic_pointers *mp, double *x, double *g
 #endif
 void recover_rectify_p_Ap(const int n, magic_pointers *mp, double *p, double *old_p, double *Ap, double *normA_p_sq, char *wait_for_mvm UNUSED)
 {
-	if( !get_nb_failed_blocks() )
+	int faults = get_nb_failed_blocks();
+	if( !faults )
 	{
 		log_err(SHOW_FAILINFO, "Skipping p_Ap recovery task cause nothing failed\n");
 		return;
@@ -278,7 +283,7 @@ void recover_rectify_p_Ap(const int n, magic_pointers *mp, double *p, double *ol
 		(error_types & mask_p) > 0, (error_types & MASK_A_P) > 0, (error_types & MASK_NORM_A_P) > 0, (error_types & MASK_Z) > 0, (error_types & mask_old_p) > 0);
 
 	if( error_types & MASK_Z )
-		failed_recovery += abs(recover_full_z(mp, mp->g, REMOVE_FAULTS));
+		failed_recovery += abs(recover_full_z(mp, mp->z, REMOVE_FAULTS));
 
 	if( error_types & mask_old_p )
 		failed_recovery += abs(recover_full_old_p_invert(mp, old_p, REMOVE_FAULTS));
@@ -342,7 +347,8 @@ void recover_rectify_p_Ap(const int n, magic_pointers *mp, double *p, double *ol
 	double local_r = 0.0, page_r;
 
 	#if VERBOSE >= SHOW_FAILINFO
-	char str[500] = "\tAdding blocks that were skipped in reduction:";
+	char str[100+20*faults];
+	sprintf(str, "\tAdding blocks that were skipped in reduction:");
 	#endif
 
 	for(i=0; i<get_nb_failblocks(); i++)
