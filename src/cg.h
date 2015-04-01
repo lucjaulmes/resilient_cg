@@ -4,18 +4,16 @@
 #include "global.h"
 #include "matrix.h"
 
-// structure used to compactly convey the data for abft
-typedef struct detect_error_data 
+typedef struct checkpoint_data 
 {
-	int error_detected, prev_error;
-	double helper_1, helper_2, helper_3, helper_4;
+	int instructions;
 	#if CKPT == CKPT_IN_MEMORY
 	double *save_x, *save_g, *save_p, *save_Ap, *save_err_sq, *save_alpha;
 	#elif CKPT == CKPT_TO_DISK
 	double *save_err_sq, *save_alpha;
 	const char *checkpoint_path;
 	#endif
-} detect_error_data;
+} checkpoint_data;
 
 // structure to hold the pointers and get them when needed
 typedef struct magic_pointers
@@ -24,7 +22,9 @@ typedef struct magic_pointers
 	const double *b;
 	double *x, *p, *old_p, *g, *Ap, *Ax;
 	double *alpha, *beta, *err_sq, *old_err_sq, *normA_p_sq;
-	detect_error_data *err_data;
+	#if CKPT
+	checkpoint_data *ckpt_data;
+	#endif
 } magic_pointers;
 
 // define a X-macro to associate the name of a variable in magic_pointers to its constant
@@ -55,7 +55,7 @@ typedef struct magic_pointers
 #define NORM_A_P       18
 #define RECOVERY       19
 
-void solve_cg(const Matrix *A, const double *b, double *iterate, double convergence_thres, double error_thres);
+void solve_cg(const Matrix *A, const double *b, double *iterate, double convergence_thres);
 
 // all the algorithmical steps of CG that will be subdivided into tasks : 
 void update_gradient(double *gradient, double *Ap, double *alpha, char *wait_for_iterate);
@@ -71,14 +71,14 @@ void norm_task(const double *v, double* r );
 void compute_beta(const double *err_sq, const double *old_err_sq, double *beta);
 void compute_alpha(double *err_sq, double *normA_p_sq, double *old_err_sq, double *old_err_sq2, double *alpha);
 
-void check_sdc_alpha_invariant(const int save, detect_error_data *err_data, const double *b, double *iterate, double *gradient, double *p, double *Ap, double *err_sq, double *alpha, const double threshold);
-void check_sdc_p_Ap_orthogonal(const int save, detect_error_data *err_data, double *iterate, double *gradient, double *p, double *Ap, double *err_sq, const double threshold);
-void check_sdc_recompute_grad(const int save, detect_error_data *err_data, const double *b, double *iterate, double *gradient, double *p, double *Ap, char *wait_for_mvm, double *Aiterate, double *err_sq, const double threshold);
+void check_sdc_alpha_invariant(const int save, checkpoint_data *ckpt_data, const double *b, double *iterate, double *gradient, double *p, double *Ap, double *err_sq, double *alpha, const double threshold);
+void check_sdc_p_Ap_orthogonal(const int save, checkpoint_data *ckpt_data, double *iterate, double *gradient, double *p, double *Ap, double *err_sq, const double threshold);
+void check_sdc_recompute_grad(const int save, checkpoint_data *ckpt_data, const double *b, double *iterate, double *gradient, double *p, double *Ap, char *wait_for_mvm, double *Aiterate, double *err_sq, const double threshold);
 
-void force_rollback(detect_error_data *err_data, double *iterate, double *gradient, double *p, double *Ap);
-void force_checkpoint(detect_error_data *err_data, double *iterate, double *gradient, double *p, double *Ap);
-void due_checkpoint(detect_error_data *err_data, double *iterate, double *gradient, double *p, double *Ap);
-void checkpoint_vectors(detect_error_data *err_data, int *behaviour, double *iterate, double *gradient, double *p, double *Ap);
+void force_rollback(checkpoint_data *ckpt_data, double *iterate, double *gradient, double *p, double *Ap);
+void force_checkpoint(checkpoint_data *ckpt_data, double *iterate, double *gradient, double *p, double *Ap);
+void due_checkpoint(checkpoint_data *ckpt_data, double *iterate, double *gradient, double *p, double *Ap);
+void checkpoint_vectors(checkpoint_data *ckpt_data, int *behaviour, double *iterate, double *gradient, double *p, double *Ap);
 
 void recover_rectify_xk(const int n, magic_pointers *mp, double *x, char *wait_for_iterate);
 void recover_rectify_g(const int n, magic_pointers *mp, const double *p, double *Ap, double *gradient, double *err_sq, char *wait_for_iterate);

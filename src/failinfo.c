@@ -88,7 +88,7 @@ void setup_resilience(const Matrix *A, const int nb, magic_pointers *mp)
 	#endif
 
 	#if CKPT == CKPT_TO_DISK
-	mp->err_data->checkpoint_path = errinfo.ckpt;
+	mp->ckpt_data->checkpoint_path = errinfo.ckpt;
 	#endif
 
 	// now using the variable number of args set the pointers in errinfo.data for bit flipping / finding errors

@@ -18,17 +18,10 @@ extrae_type_t extrae_convergence_power_event = 9300002;
 extrae_type_t extrae_convergence_significand_event = 9300003;
 extrae_type_t extrae_failures_event = 9300004;
 
-extrae_type_t extrae_sdc_power_event = 9300005;
-extrae_type_t extrae_sdc_significand_event = 9300006;
-extrae_type_t extrae_sdc_revert_event = 9300007;
-
 extrae_value_t extrae_measure_start = 1, extrae_measure_stop = -1, extrae_measure_none = 0;
 
 extrae_type_t log_conv_types [] = {9300001, 9300002, 9300003, 9300004};
 extrae_value_t log_conv_vals [4] ;
-
-extrae_type_t log_sdc_types [] = {9300005, 9300006, 9300007};
-extrae_value_t log_sdc_vals [3] ;
 
 #else
 
@@ -65,19 +58,6 @@ void log_convergence(const int r UNUSED, const double e UNUSED, const int f UNUS
 	log_out("%d, % e %d\n", r, e, f);
 }
 
-void log_sdc(const double e UNUSED, const int f UNUSED)
-{
-	#ifdef EXTRAE_EVENTS
-	int exp;
-	double significand = frexp(e, &exp);
-	significand = ldexp(significand, 63);
-	log_sdc_vals[0] = (exp+960);
-	log_sdc_vals[1] = (long long)significand;
-	log_sdc_vals[2] = f;
-	Extrae_nevent(3, log_sdc_types, log_sdc_vals);
-	#endif
-	log_out("SDC_CHECK % e %d\n", e, f);
-}
 #endif
 
 #ifdef EXTRAE_EVENTS

@@ -19,10 +19,6 @@ magic_pointers mp;
 #include "cg_normal_tasks.c"
 #endif
 
-#if SDC
-#include "cg_sdc_checks.c"
-#endif
-
 #if CKPT
 #include "cg_checkpoint.c"
 #endif
@@ -77,7 +73,7 @@ static inline void swap(double **v, double **w)
 	*w = swap;
 }
 
-void solve_cg(const Matrix *A, const double *b, double *iterate, double convergence_thres, double error_thres UNUSED)
+void solve_cg(const Matrix *A, const double *b, double *iterate, double convergence_thres)
 {
 	// do some memory allocations
 	double norm_b, thres_sq;
@@ -93,9 +89,6 @@ void solve_cg(const Matrix *A, const double *b, double *iterate, double converge
 	double save_err_sq, save_alpha;
 	int do_checkpoint = 0;
 	#endif
-	#if SDC
-	int do_check_sdc = CHECK_SDC_FREQ;
-	#endif
 
 	p        = (double*)aligned_calloc(sizeof(double) << get_log2_failblock_size(), n * sizeof(double));
 	old_p    = (double*)aligned_calloc(sizeof(double) << get_log2_failblock_size(), n * sizeof(double));
@@ -107,39 +100,26 @@ void solve_cg(const Matrix *A, const double *b, double *iterate, double converge
 	save_it  = (double*)aligned_calloc(sizeof(double) << get_log2_failblock_size(), n * sizeof(double));
 	save_g   = (double*)aligned_calloc(sizeof(double) << get_log2_failblock_size(), n * sizeof(double));
 	save_p   = (double*)aligned_calloc(sizeof(double) << get_log2_failblock_size(), n * sizeof(double));
-	#if SDC == SDC_ORTHO
-	save_Ap  = NULL;
-	#else
 	save_Ap  = (double*)aligned_calloc(sizeof(double) << get_log2_failblock_size(), n * sizeof(double));
-	#endif
 	#endif
 
 	// some parameters pre-computed, and show some informations
 	norm_b = norm(n, b);
 	thres_sq = convergence_thres * convergence_thres * norm_b;
-	{}//log_out("Error shown is ||Ax-b||^2, you should plot ||Ax-b||/||b||. (||b||^2 = %e)\n", norm_b);
+	log_out("Error shown is ||Ax-b||^2, you should plot ||Ax-b||/||b||. (||b||^2 = %e)\n", norm_b);
 
-	detect_error_data err_data = (detect_error_data) {.error_detected = SAVE_CHECKPOINT, .prev_error = 0, .helper_1 = 0.0, .helper_2 = 0.0, .helper_3 = 0.0, .helper_4 = 0.0,
-	#if CKPT == CKPT_IN_MEMORY
-		.save_x = save_it, .save_g = save_g, .save_p = save_p, .save_Ap = save_Ap, .save_err_sq = &save_err_sq, .save_alpha = &save_alpha
-	#elif CKPT == CKPT_TO_DISK
-		.save_err_sq = &save_err_sq, .save_alpha = &save_alpha
-	#endif
-	};
-	mp = (magic_pointers){.A = A, .b = b, .x = iterate, .p = p, .old_p = old_p, .g = gradient, .Ap = Ap, .Ax = Aiterate, .err_data = &err_data,
+	mp = (magic_pointers){.A = A, .b = b, .x = iterate, .p = p, .old_p = old_p, .g = gradient, .Ap = Ap, .Ax = Aiterate,
 							.alpha = &alpha, .beta = &beta, .err_sq = &err_sq, .old_err_sq = &old_err_sq, .normA_p_sq = &normA_p_sq};
-
-	#if SDC == SDC_GRADIENT
-	double norm_A = 0.0; // A spd : row norm <=> col norm , ||A|| = max || A_col i || forall i
-	int i;
-	for(i=0; i<A->n; i++)
-		norm_A = fmax(norm_A, sqrt(norm(A->r[i+1] - A->r[i], A->v + A->r[i] )));
-		//norm_A += sqrt(norm(A->r[i+1] - A->r[i], A->v + A->r[i] ));
-	
-	err_data.helper_4 = norm_A * sqrt(norm_b);
+	#if CKPT
+	checkpoint_data ckpt_data = (checkpoint_data) {
+		#if CKPT == CKPT_IN_MEMORY
+		.save_x = save_it, .save_g = save_g, .save_p = save_p, .save_Ap = save_Ap,
+		#endif
+		.instructions = SAVE_CHECKPOINT, .save_err_sq = &save_err_sq, .save_alpha = &save_alpha
+	};
+	mp.ckpt_data = &ckpt_data;
 	#endif
 
-	
 	setup_resilience(A, 6, &mp);
 	start_measure();
 
@@ -173,35 +153,13 @@ void solve_cg(const Matrix *A, const double *b, double *iterate, double converge
 
 			recompute_gradient_mvm(A, iterate, wait_for_iterate, wait_for_mvm, Aiterate);
 
-			#if SDC == SDC_GRADIENT
-			do_check_sdc -= RECOMPUTE_GRADIENT_FREQ;
-			#if DUE == DUE_ROLLBACK
-			if(failures)
-			{
-				do_update_gradient = do_checkpoint = do_check_sdc = 0;
-				force_rollback(&err_data, iterate, gradient, old_p, Ap);
-			}
-			else
-			#endif
-			if(r > 0 && do_check_sdc == 0)
-			{
-				do_checkpoint -= CHECK_SDC_FREQ;
-
-				update_gradient(gradient, Ap, &alpha, wait_for_iterate);
-
-				check_sdc_recompute_grad(do_checkpoint == 0, &err_data, b, iterate, gradient, old_p, Ap, wait_for_mvm, Aiterate, &old_err_sq, error_thres);
-			}
-			else
-				recompute_gradient_update(gradient, wait_for_mvm, Aiterate, b);
-			#else
 			recompute_gradient_update(gradient, wait_for_mvm, Aiterate, b);
-			#endif
 
 			norm_task(gradient, &err_sq);
 
 			#if CKPT
 			if(r == 0)
-				force_checkpoint(&err_data, iterate, gradient, old_p, Ap);
+				force_checkpoint(&ckpt_data, iterate, gradient, old_p, Ap);
 			#endif
 
 			#if DUE == DUE_ASYNC || DUE == DUE_IN_PATH
@@ -219,23 +177,6 @@ void solve_cg(const Matrix *A, const double *b, double *iterate, double converge
 
 		update_p(p, old_p, wait_for_p, gradient, &beta);
 
-		#if SDC == SDC_ORTHO
-		// should happen in between p and Ap, to check if the new p and old Ap are orthogonal
-		#if DUE == DUE_ROLLBACK
-		if(failures)
-		{
-			do_checkpoint = do_check_sdc = 0;
-			force_rollback(&err_data, iterate, gradient, p, Ap);
-		}
-		else
-		#endif
-		if(-- do_check_sdc == 0)
-		{
-			do_checkpoint -= CHECK_SDC_FREQ ;
-			check_sdc_p_Ap_orthogonal(do_checkpoint == 0, &err_data, iterate, gradient, p, Ap, &err_sq, error_thres);
-		}
-		#endif
-
 		compute_Ap(A, p, wait_for_p, wait_for_mvm, Ap);
 
 		scalar_product_task(p, Ap, &normA_p_sq);
@@ -246,23 +187,15 @@ void solve_cg(const Matrix *A, const double *b, double *iterate, double converge
 
 		// when reaching this point, all tasks of loop should be created.
 		// then waiting start : should be released halfway through the loop.
-		// We want this to be after alpha on normal iterations, after AxIt, and after checking sdc 
+		// We want this to be after alpha on normal iterations, after AxIt
 		// but it should not wait for recovery to finish on recovery iterations
 		if(!do_update_gradient)
 		{
-			#if SDC == SDC_ALPHA
-			_Pragma(STRINGIFY(omp taskwait on(old_err_sq2, err_data.prev_error, *wait_for_iterate)))
-			#else
-			_Pragma(STRINGIFY(omp taskwait on(old_err_sq2, *wait_for_iterate)))
-			#endif
+			#pragma omp taskwait on(old_err_sq2, *wait_for_iterate)
 		}
 		else
 		{
-			#if SDC == SDC_ALPHA
-			_Pragma(STRINGIFY(omp taskwait on(old_err_sq2, err_data.prev_error)))
-			#else
-			_Pragma(STRINGIFY(omp taskwait on(old_err_sq2)))
-			#endif
+			#pragma omp taskwait on(old_err_sq2)
 		}
 
 		// swapping p's so we reduce pressure on the execution of the update iterate tasks
@@ -292,38 +225,20 @@ void solve_cg(const Matrix *A, const double *b, double *iterate, double converge
 			if(do_checkpoint <= 0)
 				do_checkpoint = CHECKPOINT_FREQ;
 			#endif
-			#if SDC
-			if(do_check_sdc <= 0)
-				do_check_sdc = CHECK_SDC_FREQ;
-			#endif
 		}
 
 		compute_alpha(&err_sq, &normA_p_sq, &old_err_sq, &old_err_sq2, &alpha);
 
 		// should happen after p, Ap are ready and before (post-alpha) iterate and gradient updates
 		// so just after (or just before) alpha basically
-		#if CKPT && SDC == SDC_NONE // NB. this implies DUE_ROLLBACK
+		#if CKPT // NB. this implies DUE_ROLLBACK
 		if(failures)
 		{
 			do_checkpoint = 0;
-			force_rollback(&err_data, iterate, gradient, old_p, Ap);
+			force_rollback(&ckpt_data, iterate, gradient, old_p, Ap);
 		}
 		else if(--do_checkpoint == 0)
-			due_checkpoint(&err_data, iterate, gradient, old_p, Ap);
-		#elif SDC == SDC_ALPHA
-		#if DUE == DUE_ROLLBACK // ALPHA + ROLLBACK
-		if(failures)
-		{
-			do_checkpoint = do_check_sdc = 0;
-			force_rollback(&err_data, iterate, gradient, old_p, Ap);
-		}
-		else 
-		#endif
-		if(-- do_check_sdc == 0)
-		{
-			do_checkpoint -= CHECK_SDC_FREQ;
-			check_sdc_alpha_invariant(do_checkpoint == 0, &err_data, b, iterate, gradient, old_p, Ap, &old_err_sq, &alpha, error_thres);
-		}
+			due_checkpoint(&ckpt_data, iterate, gradient, old_p, Ap);
 		#endif
 	}
 
@@ -333,8 +248,6 @@ void solve_cg(const Matrix *A, const double *b, double *iterate, double converge
 	
 	failures = check_errors_signaled();
 	log_convergence(r-1, old_err_sq2, failures);
-
-	{}//log_out("\n\n------\nConverged at rank %d\n------\n\n", r);
 
 	printf("CG method finished iterations:%d with error:%e (failures:%d)\n", r, sqrt((err_sq==0.0?old_err_sq:err_sq)/norm_b), total_failures);
 

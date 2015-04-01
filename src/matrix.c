@@ -94,17 +94,8 @@ void read_matrix(const int n, const int m, const int nnz, const int symmetric, M
 	A->n = n;
 	A->m = m;
 
-	int ctr = 0, thres = (nnz+19)/20;
-	{}//log_out("Reading file ...");
-
 	for (i=0; i<nnz; i++)
 	{
-		if(i > 0 && i % thres == 0)
-		{
-			ctr += 5;
-			{}//log_out(" %d%%", ctr);
-		}
-
 		fscanf(input_file, "%d %d %lg\n", &X, &Y, &val);
 		X--;  /* adjust from 1-based to 0-based */
 		Y--;
@@ -134,8 +125,6 @@ void read_matrix(const int n, const int m, const int nnz, const int symmetric, M
 
 	A->nnz = pos;
 	A->r[A->n] = pos;
-
-	{}//log_out(" 100%%, filling symmetric part...");
 	
 	if(symmetric)
 	{
@@ -163,7 +152,6 @@ void read_matrix(const int n, const int m, const int nnz, const int symmetric, M
 
 		free(nb_subdiagonals);
 		free(fill_row);
-		{}//log_out(" done.\n");
 	}
 }
 
