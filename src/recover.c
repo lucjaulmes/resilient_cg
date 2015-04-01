@@ -395,6 +395,27 @@ int recover_g_update(magic_pointers *mp, double *g, int block)
 	return r;
 }
 
+int recover_g_from_p_diff(magic_pointers *mp, double *g, const double beta, const double *p, const double *old_p, int block)
+{
+	// g = -beta old_p + p
+	int r = -1;
+
+	if( !(is_failed_not_skipped_block(block, MASK_OLD_P) || is_failed_not_skipped_block(block, MASK_P)) )
+	{
+		int fbs = get_failblock_size(), blockpos = block << get_log2_failblock_size();
+		if( blockpos + fbs > mp->A->n )
+			fbs = mp->A->n - blockpos;
+
+		daxpy(fbs, -beta, old_p + blockpos, p + blockpos, g + blockpos);
+
+		r = check_recovery_errors();
+	}
+
+	log_err(SHOW_FAILINFO, "\tRepeating update for block %d of g : %d\n", block, r);
+
+	return r;
+}
+
 int recover_p_repeat(magic_pointers *mp, double *p, const double *old_p, int block)
 {
 	// p = beta * g + p

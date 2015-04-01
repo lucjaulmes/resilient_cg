@@ -42,21 +42,25 @@ void determine_mpi_neighbours(const Matrix *A, const int mpi_rank, const int mpi
 		}
 }
 
-void setup_exchange(const int mpi_rank, const int first, const int last, const int tag, double *v, MPI_Request v_req[])
+void setup_exchange(const int mpi_rank, const int first, const int last, const int tag, double *v, int mpi_stride, MPI_Request v_req[])
 {
 	int i, j=0;
-
 	// now check with which MPI block we communicate, depending on its rows
 	// this is reflexive since the matrix is symmetric
+
 	for(i=first; i<=last; i++)
 		if(i!=mpi_rank)
-		{
-			// sends are always from mpi_rank start,size
-			MPI_Send_init(v + mpi_zonestart[mpi_rank], mpi_zonesize[mpi_rank], MPI_DOUBLE, i, tag, MPI_COMM_WORLD, v_req+(j++));
-
 			// recvs are always from i start,size
-			MPI_Recv_init(v + mpi_zonestart[   i    ], mpi_zonesize[   i    ], MPI_DOUBLE, i, tag, MPI_COMM_WORLD, v_req+(j++));
-		}
+			MPI_Recv_init(v + (mpi_stride? mpi_zonestart[   i    ]:   i    ),
+								mpi_stride? mpi_zonesize[   i    ]:   i    ,
+								MPI_DOUBLE, i, tag, MPI_COMM_WORLD, v_req+(j++));
+
+	for(i=first; i<=last; i++)
+		if(i!=mpi_rank)
+			// sends are always from mpi_rank start,size
+			MPI_Send_init(v + (mpi_stride? mpi_zonestart[mpi_rank]:mpi_rank),
+								mpi_stride? mpi_zonesize[mpi_rank]:mpi_rank,
+								MPI_DOUBLE, i, tag, MPI_COMM_WORLD, v_req+(j++));
 }
 
 #if DUE && DUE != DUE_ROLLBACK
@@ -64,10 +68,6 @@ void setup_exchange(const int mpi_rank, const int first, const int last, const i
 #include "cg_recovery_tasks.c"
 #else
 #include "cg_normal_tasks.c"
-#endif
-
-#if SDC
-#include "cg_sdc_checks.c"
 #endif
 
 #if CKPT
@@ -129,11 +129,11 @@ static inline void swap(double **v, double **w)
 	*w = swap;
 }
 
-void solve_cg(const Matrix *A, const double *b, double *it_glob, double convergence_thres, double error_thres UNUSED)
+void solve_cg(const Matrix *A, const double *b, double *it_glob, double convergence_thres)
 {
 	// do some memory allocations
 	double norm_b, thres_sq;
-	const int n = A->n;
+	const int n UNUSED = A->n;
 	int r = -1, total_failures = 0, failures = 0;
 	int do_update_gradient = 0;
 	double *iterate, *p_glob, *old_p_glob, *p, *old_p, *Ap, *gradient, *Aiterate;
@@ -145,9 +145,6 @@ void solve_cg(const Matrix *A, const double *b, double *it_glob, double converge
 	#elif CKPT == CKPT_TO_DISK
 	double save_err_sq, save_alpha;
 	int do_checkpoint = 0;
-	#endif
-	#if SDC
-	int do_check_sdc = CHECK_SDC_FREQ;
 	#endif
 	
 	int first_mpix, last_mpix, count_mpix;
@@ -169,49 +166,34 @@ void solve_cg(const Matrix *A, const double *b, double *it_glob, double converge
 	save_it  = (double*)aligned_calloc( sizeof(double) << get_log2_failblock_size(), mpi_zonesize[mpi_rank] * sizeof(double));
 	save_g   = (double*)aligned_calloc( sizeof(double) << get_log2_failblock_size(), mpi_zonesize[mpi_rank] * sizeof(double));
 	save_p   = (double*)aligned_calloc( sizeof(double) << get_log2_failblock_size(), mpi_zonesize[mpi_rank] * sizeof(double));
-	#if SDC == SDC_ORTHO
-	save_Ap  = NULL;
-	#else
 	save_Ap  = (double*)aligned_calloc( sizeof(double) << get_log2_failblock_size(), mpi_zonesize[mpi_rank] * sizeof(double));
-	#endif
 	#endif
 
 	// setting up communications for x and p exchanges
-	MPI_Request x_req[2*count_mpix], p1_req[2*count_mpix], p2_req[2*count_mpix], *p_req;
-	setup_exchange(mpi_rank, first_mpix, last_mpix, 1, it_glob,		x_req);
-	setup_exchange(mpi_rank, first_mpix, last_mpix, 2, p_glob,		p1_req);
-	setup_exchange(mpi_rank, first_mpix, last_mpix, 3, old_p_glob,	p2_req);
+	MPI_Request x_req[2*count_mpix], p1_req[2*count_mpix], p2_req[2*count_mpix];
+	MPI_Request *p_req = p1_req;
 
-	p_req = p1_req;
+	setup_exchange(mpi_rank, first_mpix, last_mpix, 1, it_glob,		1, x_req);
+	setup_exchange(mpi_rank, first_mpix, last_mpix, 2, p_glob,		1, p1_req);
+	setup_exchange(mpi_rank, first_mpix, last_mpix, 3, old_p_glob,	1, p2_req);
 
 	// some parameters pre-computed, and show some informations (borrow thres_sq to be out_buf, get norm in norm_b)
 	thres_sq = norm(mpi_zonesize[mpi_rank], b);
     MPI_Allreduce(&thres_sq, &norm_b, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
 
-	log_err(SHOW_FAILINFO, "||b||=%g\n", norm_b);
-
 	thres_sq = convergence_thres * convergence_thres * norm_b;
-	{}//log_out("Error shown is ||Ax-b||^2, you should plot ||Ax-b||/||b||. (||b||^2 = %e)\n", norm_b);
+	log_out("Error shown is ||Ax-b||^2, you should plot ||Ax-b||/||b||. (||b||^2 = %e)\n", norm_b);
 
-	detect_error_data err_data = (detect_error_data) {.error_detected = SAVE_CHECKPOINT, .prev_error = 0, .helper_1 = 0.0, .helper_2 = 0.0, .helper_3 = 0.0, .helper_4 = 0.0,
-	#if CKPT == CKPT_IN_MEMORY
-		.save_x = save_it, .save_g = save_g, .save_p = save_p, .save_Ap = save_Ap, .save_err_sq = &save_err_sq, .save_alpha = &save_alpha
-	#elif CKPT == CKPT_TO_DISK
-		.save_err_sq = &save_err_sq, .save_alpha = &save_alpha
-	#endif
-	};
-	mp = (magic_pointers){.A = A, .b = b, .x = iterate, .p = p, .old_p = old_p, .g = gradient, .Ap = Ap, .Ax = Aiterate, .err_data = &err_data,
+	mp = (magic_pointers){.A = A, .b = b, .x = iterate, .p = p, .old_p = old_p, .g = gradient, .Ap = Ap, .Ax = Aiterate,
 							.alpha = &alpha, .beta = &beta, .err_sq = &err_sq, .old_err_sq = &old_err_sq, .normA_p_sq = &normA_p_sq};
-
-	#if SDC == SDC_GRADIENT
-	int i;
-	double norm_A = 0.0; // A spd : row norm <=> col norm , ||A|| = max || A_col i || forall i
-	for(i=0; i<mpi_zonesize[mpi_rank]; i++)
-		norm_A = fmax(norm_A, sqrt(norm( A->r[i+1] - A->r[i], A->v + A->r[i] )));
-		//norm_A += sqrt(norm( A->r[i+1] - A->r[i], A->v + A->r[i] ));
-
-	MPI_Allreduce(&norm_A, &(err_data.helper_4), 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
-	err_data.helper_4 *= sqrt(norm_b);
+	#if CKPT
+	checkpoint_data ckpt_data = (checkpoint_data) {
+		#if CKPT == CKPT_IN_MEMORY
+		.save_x = save_it, .save_g = save_g, .save_p = save_p, .save_Ap = save_Ap,
+		#endif
+		.instructions = SAVE_CHECKPOINT, .save_err_sq = &save_err_sq, .save_alpha = &save_alpha
+	};
+	mp.ckpt_data = &ckpt_data;
 	#endif
 
 	setup_resilience(A, 6, &mp);
@@ -260,36 +242,13 @@ void solve_cg(const Matrix *A, const double *b, double *it_glob, double converge
 			// first part of recompute g : A*x
 			recompute_gradient_mvm(A, it_glob, wait_for_iterate, wait_for_mvm, Aiterate);
 
-			// second part of recompute g : b - Ax, sometimes more complicated or replaced due to SDC/DUE
-			#if SDC == SDC_GRADIENT
-			do_check_sdc -= RECOMPUTE_GRADIENT_FREQ;
-			#if DUE == DUE_ROLLBACK
-			if(failures)
-			{
-				do_update_gradient = do_checkpoint = do_check_sdc = 0;
-				force_rollback(&err_data, iterate, gradient, old_p, Ap);
-			}
-			else
-			#endif
-			if( r > 0 && do_check_sdc == 0 )
-			{
-				do_checkpoint -= CHECK_SDC_FREQ;
-
-				update_gradient(gradient, Ap, &alpha, wait_for_iterate);
-
-				check_sdc_recompute_grad(n, do_checkpoint == 0, &err_data, b, iterate, gradient, old_p, Ap, wait_for_mvm, Aiterate, &old_err_sq, error_thres);
-			}
-			else
-				recompute_gradient_update(gradient, wait_for_mvm, Aiterate, b);
-			#else
 			recompute_gradient_update(gradient, wait_for_mvm, Aiterate, b);
-			#endif
 
 			norm_task(gradient, &err_sq);
 
 			#if CKPT
 			if( r == 0 )
-				force_checkpoint(&err_data, iterate, gradient, old_p, Ap);
+				force_checkpoint(&ckpt_data, iterate, gradient, old_p, Ap);
 			#endif
 
 			#if DUE == DUE_ASYNC || DUE == DUE_IN_PATH
@@ -337,23 +296,6 @@ void solve_cg(const Matrix *A, const double *b, double *it_glob, double converge
 		// which is during the communication (MPI_Allgartherv)
 		//#pragma omp taskwait on(*start_rt_work, *wait_for_iterate)
 
-		#if SDC == SDC_ORTHO
-		// should happen in between p and Ap, to check if the new p and old Ap are orthogonal
-		#if DUE == DUE_ROLLBACK
-		if(failures)
-		{
-			do_checkpoint = do_check_sdc = 0;
-			force_rollback(&err_data, iterate, gradient, p, Ap);
-		}
-		else
-		#endif
-		if( -- do_check_sdc == 0 )
-		{
-			do_checkpoint -= CHECK_SDC_FREQ ;
-			check_sdc_p_Ap_orthogonal(n, do_checkpoint == 0, &err_data, iterate, gradient, p, Ap, &err_sq, error_thres);
-		}
-		#endif
-
 		compute_Ap(A, p_glob, wait_for_p, wait_for_mvm, Ap);
 
 		scalar_product_task(p, Ap, &normA_p_sq);
@@ -392,10 +334,6 @@ void solve_cg(const Matrix *A, const double *b, double *it_glob, double converge
 			if( do_checkpoint <= 0 )
 				do_checkpoint = CHECKPOINT_FREQ;
 			#endif
-			#if SDC
-			if( do_check_sdc <= 0 )
-				do_check_sdc = CHECK_SDC_FREQ;
-			#endif
 		}
 
 		// if we will recompute the gradient, prepare to listen for incoming iterate exchanges in compute_alpha
@@ -403,28 +341,14 @@ void solve_cg(const Matrix *A, const double *b, double *it_glob, double converge
 
 		// should happen after p, Ap are ready and before (post-alpha) iterate and gradient updates
 		// so just after (or just before) alpha basically
-		#if CKPT && SDC == SDC_NONE // NB. this implies DUE_ROLLBACK
+		#if CKPT // NB. this implies DUE_ROLLBACK
 		if(failures)
 		{
 			do_checkpoint = 0;
-			force_rollback(&err_data, iterate, gradient, old_p, Ap);
+			force_rollback(&ckpt_data, iterate, gradient, old_p, Ap);
 		}
 		else if( --do_checkpoint == 0 )
-			due_checkpoint(&err_data, iterate, gradient, old_p, Ap);
-		#elif SDC == SDC_ALPHA
-		#if DUE == DUE_ROLLBACK // ALPHA + ROLLBACK
-		if(failures)
-		{
-			do_checkpoint = do_check_sdc = 0;
-			force_rollback(&err_data, iterate, gradient, old_p, Ap);
-		}
-		else 
-		#endif
-		if( -- do_check_sdc == 0 )
-		{
-			do_checkpoint -= CHECK_SDC_FREQ;
-			check_sdc_alpha_invariant(n, do_checkpoint == 0, &err_data, b, iterate, gradient, old_p, Ap, &old_err_sq, &alpha, error_thres);
-		}
+			due_checkpoint(&ckpt_data, iterate, gradient, old_p, Ap);
 		#endif
 	}
 
@@ -434,8 +358,6 @@ void solve_cg(const Matrix *A, const double *b, double *it_glob, double converge
 	
 	failures = check_errors_signaled();
 	log_convergence(r-1, old_err_sq, failures);
-
-	{}//log_out("\n\n------\nConverged at rank %d\n------\n\n", r);
 
 	printf("CG method finished iterations:%d with error:%e (failures:%d)\n", r, sqrt((err_sq==0.0?old_err_sq:err_sq)/norm_b), total_failures);
 

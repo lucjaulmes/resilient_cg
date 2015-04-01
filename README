@@ -38,30 +38,21 @@ Self explanatory targets to make one or more of the above are (plain|ompss)?(deb
 ######################################
 
 The default make target will be a non-resilient textbook Conjugate Gradient.
-You may then choose resilience strategies for Detected Uncorrected Errors (DUE),
-e.g. a memory page failure, and a detector for Silent Data Corruption (SDC).
+You may then choose resilience strategies for Detected Uncorrected Errors (DUE).
 
 Options are :
 DUE: none async path rollback lossy
-SDC: none alpha ortho grad
 
-If using an SDC detector or the rollback DUE strategy, you will need to choose a 
-(not "none") checkpointing method as well.
+If using rollback, you will need to choose a (not "none") checkpointing method as well.
 CKPT: none disk mem
 
-Finally, if you choose to detect SDC or to checkpoint, you must choose frequencies
-(in number of iterations) to do so, thus SDC_FREQ and CKPT_FREQ.
-If SDC=grad, SDC_FREQ must be a multiple of RECOMPUTE_GRAD_FREQ (defaults to 50).
-If SDC is used, CKPT_FREQ must be a multiple of SDC_FREQ.
-
-The name of each configuration's directory is then DUE_SDC(SDC_FREQ)_CKPT(CKPT_FREQ)
+The name of each configuration's directory is then DUE_CKPT(CKPT_FREQ)
 Some valid examples :
 
     configuration :                                            directory :
     
-    DUE=none                                                  none_none_none
-    DUE=rollback CKPT=disk CKPT_FREQ=100                      rollblack_none_disk100
-    DUE=async SDC=alpha SDC_FREQ=50 CKPT=mem CKPT_FREQ=200    async_alpha50_mem200
+    DUE=none                                                  none_none
+    DUE=rollback CKPT=disk CKPT_FREQ=100                      rollblack_disk100
 
 ######################################
 #              RUNNING               #
@@ -94,7 +85,6 @@ Possible options are :
                     Must be a multiple of the system page size (and a power of 2).
   -disk  /path/dir  Path to a directory on local disk for checkpointing (default $TMPDIR).
   -ckpt             Prefix of the name of checkpoint files.
-  -sdc    tol       Consider SDC occured if detector yields a value > tol (default 1e-12).
 All options apply to every following input file. You may re-specify them for each file.
 
 
@@ -111,6 +101,5 @@ In the subdirectory utils/ you will find paraver configuration files that allow 
 symbols outputted to traces that are specific to this application.
 
 The trace_to_plot.py script extracts these informations from configuration files into a
-format that can be fed to any viewing tool, to plot convergence and SDC detection values
-over time.
+format that can be fed to any viewing tool, to plot convergence over time.
 
