@@ -76,6 +76,9 @@ void checkpoint_vectors(checkpoint_data *ckpt_data, int *behaviour, double *iter
 
 		#pragma omp task in(*behaviour) inout(iterate[s:e-1], gradient[s:e-1], p[s:e-1], Ap[s:e-1]) firstprivate(i, s, e) label(checkpoint_vectors) priority(100) no_copy_deps
 		{
+			if(*behaviour != SAVE_CHECKPOINT)
+				reset_failed_skipped_blocks();
+			
 		#if CKPT == CKPT_IN_MEMORY
 			if(*behaviour == SAVE_CHECKPOINT)
 			{
