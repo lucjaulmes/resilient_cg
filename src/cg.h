@@ -23,7 +23,7 @@ typedef struct magic_pointers
 	const Matrix *A;
 	const double *b;
 	double *x, *p, *old_p, *g, *Ap, *Ax;
-	double *alpha, *beta, *err_sq, *old_err_sq, *normA_p_sq;
+	double *alpha, *beta, *old_beta, *err_sq, *old_err_sq, *normA_p_sq;
 	#if CKPT
 	checkpoint_data *ckpt_data;
 	#endif
@@ -61,8 +61,9 @@ typedef struct magic_pointers
 
 void solve_cg(const Matrix *A, const double *b, double *iterate, double convergence_thres);
 
-void determine_mpi_neighbours(const Matrix *A, const int mpi_rank, const int mpi_size, int *first, int *last);
-void setup_exchange(const int mpi_rank, const int first, const int last, const int tag, double *v, int mpi_stride, MPI_Request v_req[]);
+void determine_mpi_neighbours(const Matrix *A, const int from_row, const int to_row, const int mpi_rank, const int mpi_size, int *first, int *last);
+void setup_exchange_vect(const int mpi_rank, const int first, const int last, const int tag, double *v, MPI_Request v_req[]);
+void setup_exchange_flag(const int mpi_rank, const int first, const int last, const int tag, int *v, MPI_Request v_req[]);
 
 // all the algorithmical steps of CG that will be subdivided into tasks : 
 void update_gradient(double *gradient, double *Ap, double *alpha, char *wait_for_iterate);
@@ -81,19 +82,17 @@ void compute_alpha(double *err_sq, double *normA_p_sq, double *old_err_sq, doubl
 void exchange_iterate(const int n, const int mpi_exchanges, double *iterate, char *wait_for_iterate, char *wait_for_mvm, MPI_Request *mpi_request);
 void exchange_p(const int n, const int mpi_exchanges, double *p, char *wait_for_p, char *wait_for_mvm, MPI_Request *mpi_request);
 
-void check_sdc_alpha_invariant(const int save, checkpoint_data *ckpt_data, const double *b, double *iterate, double *gradient, double *p, double *Ap, double *err_sq, double *alpha, const double threshold);
-void check_sdc_p_Ap_orthogonal(const int save, checkpoint_data *ckpt_data, double *iterate, double *gradient, double *p, double *Ap, double *err_sq, const double threshold);
-void check_sdc_recompute_grad(const int save, checkpoint_data *ckpt_data, const double *b, double *iterate, double *gradient, double *p, double *Ap, char *wait_for_mvm, double *Aiterate, double *err_sq, const double threshold);
-
 void force_rollback(checkpoint_data *ckpt_data, double *iterate, double *gradient, double *p, double *Ap);
 void force_checkpoint(checkpoint_data *ckpt_data, double *iterate, double *gradient, double *p, double *Ap);
 void due_checkpoint(checkpoint_data *ckpt_data, double *iterate, double *gradient, double *p, double *Ap);
 void checkpoint_vectors(checkpoint_data *ckpt_data, int *behaviour, double *iterate, double *gradient, double *p, double *Ap);
 
-void recover_rectify_xk(const int n, magic_pointers *mp, double *x, char *wait_for_iterate);
+void recover_rectify_xk(const int n, magic_pointers *mp, double *x, char *wait_for_iterate, int first_n, int last_n, int *need_x, MPI_Request *need_x_req, MPI_Request *x_req);
 void recover_rectify_g(const int n, magic_pointers *mp, const double *p, double *Ap, double *gradient, double *err_sq, char *wait_for_iterate);
 void recover_rectify_x_g(const int n, magic_pointers *mp, double *x, double *gradient, double *err_sq, char *wait_for_mvm);
 void recover_rectify_p_Ap(const int n, magic_pointers *mp, double *p, double *old_p, double *Ap, double *normA_p_sq, char *wait_for_mvm, char *wait_for_iterate);
-void recover_rectify_p_early(const int n, magic_pointers *mp, double *p, double *old_p, char *wait_for_p UNUSED, char *wait_for_p2 UNUSED);
+void recover_rectify_p_early(const int n, magic_pointers *mp, double *p, double *old_p, char *wait_for_p UNUSED, char *wait_for_p2 UNUSED, int first_n, int last_n, int *need_x, MPI_Request *need_x_req, MPI_Request *x_req);
+
+void exchange_x_for_recovery(int check_need, int first_n, int last_n, int *need_x, MPI_Request *need_x_req, MPI_Request *x_req);
 
 #endif // CG_H_INCLUDED

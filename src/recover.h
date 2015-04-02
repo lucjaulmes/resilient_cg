@@ -27,8 +27,8 @@ int recover_Ap(magic_pointers *mp, double *Ap, const double *p, int block);
 int recover_Ax(magic_pointers *mp, double *Ax, int block);
 // - daxpy's
 int recover_g_update(magic_pointers *mp, double *g, int block);
-int recover_g_from_p_diff(magic_pointers *mp, double *g, const double beta, const double *p, const double *old_p, int block);
 int recover_p_repeat(magic_pointers *mp, double *p, const double *old_p, int block);
+int recover_g_from_p_diff(magic_pointers *mp, double *g, const double beta, const double *p, const double *old_p, int block);
 
 // for recovery/rectification tasks, when repairing vectors fully is needed
 int recover_x_lossy          (magic_pointers *mp, double *x);
@@ -41,8 +41,7 @@ int recover_mvm_skips_g      (magic_pointers *mp, double *g,                    
 int recover_full_Ap          (magic_pointers *mp, double *Ap, const double *p,      const int mark_clean);
 int recover_full_old_p_invert(magic_pointers *mp, double *old_p,                    const int mark_clean);
 int recover_early_full_old_p_invert(magic_pointers *mp, double *old_p,              const int mark_clean);
-
-int recover_full_g_from_p    (magic_pointers *mp, double *g, const double old_beta, const double *p, const double *old_p, const int mark_clean);
+int recover_full_g_from_p_diff(magic_pointers *mp, double *g, const double beta, const double *p, const double *old_p, const int mark_clean);
 
 void save_oldAp_for_old_p_recovery(magic_pointers *mp, double *old_p, const int s, const int e);
 

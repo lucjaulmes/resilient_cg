@@ -22,23 +22,87 @@ void hard_reset(magic_pointers *mp)
 	#endif
 }
 
-#pragma omp task inout([n]x, *wait_for_iterate) label(recover_xk) priority(20) no_copy_deps
-void recover_rectify_xk(const int n UNUSED, magic_pointers *mp, double *x, char *wait_for_iterate UNUSED)
+void exchange_x_for_recovery(int check_need, int first_n, int last_n, int *need_x, MPI_Request *need_x_req, MPI_Request *x_req)
 {
-	int faults = get_nb_failed_blocks();
-	if( !faults )
-	{
-		log_err(SHOW_FAILINFO, "Skipping x recovery task cause nothing failed\n");
-		return;
-	}
+	int nn = last_n-first_n, nx = 0;
+	MPI_Request exchanges_needed[2*nn];
 
+	MPI_Request *x_recv = x_req, *x_send = x_req+nn;
+	int *need_x_send = need_x, *need_x_recv = need_x+nn;
+	
+	// if we have failures, set 1 in every mpi_neighbour of a failed page, otherwise 0
+	if(check_need)
+	{
+		int i, first_n_page, last_n_page, first_n_needed = mpi_size, last_n_needed = 0;
+		const int log2fbs = get_log2_failblock_size();
+
+		for(i=0; i < get_nb_failblocks(); i++)
+		{
+			if( !is_skipped_block(i, MASK_GRADIENT|MASK_ITERATE) )
+				continue;
+
+			determine_mpi_neighbours(mp.A, i << log2fbs, (i+1) << log2fbs, mpi_rank, mpi_size, &first_n_page, &last_n_page);
+
+			if( first_n_needed > first_n_page )
+				first_n_needed = first_n_page;
+			if(  last_n_needed <  last_n_page )
+				 last_n_needed =  last_n_page;
+		}
+
+		int j=0; // j = i - first_n - (i > mpi_rank ? 1 : 0)
+		for(i=first_n; i<=last_n; i++)
+			if( i != mpi_rank )
+			{
+				if(first_n_needed <= i && i <= last_n_needed)
+				{
+					need_x_recv[j] = 1;
+					exchanges_needed[nx++] = x_recv[j];
+				}
+				else
+					need_x_recv[j] = 0;
+
+				j++;
+			}
+	}
+	else
+		memset(need_x_recv, 0, 2*nn*sizeof(int));
+
+	// exchange flags to know which real MPI exchanges will be needed
+	MPI_Startall(2*nn, need_x_req);
+	MPI_Waitall(2*nn, need_x_req, MPI_STATUSES_IGNORE);
+
+	#if VERBOSE >= VERBOSE_SHOWFAILINFO
+	int n_recv = nx;
+	#endif
+
+	// add needed x requests and start/wait on them
+	int r;
+	for(r=0; r<nn; r++)
+		if(need_x_send[r])
+			exchanges_needed[nx++] = x_send[r];
+
+	if( nx )
+	{
+		log_err(SHOW_FAILINFO, "Need for x exchange for recovery : %d/%d receives, %d/%d sends\n", n_recv, nn, nx-n_recv, nn);
+		MPI_Startall(nx, exchanges_needed);
+		MPI_Waitall(nx, exchanges_needed, MPI_STATUSES_IGNORE);
+	}
+}
+
+#pragma omp task inout([n]x, *wait_for_iterate) label(recover_xk) priority(20) no_copy_deps
+void recover_rectify_xk(const int n UNUSED, magic_pointers *mp, double *x, char *wait_for_iterate UNUSED, int first_n, int last_n, int *need_x, MPI_Request *need_x_req, MPI_Request *x_req)
+{
 	int failed_recovery = 0;
 
 	enter_task(RECOVERY);
-
-	log_err(SHOW_FAILINFO, "Recovery task x for x (faults:%d) started\n", has_skipped_blocks(MASK_ITERATE));
 	
-	if( has_skipped_blocks(MASK_ITERATE) )
+	int x_failed = has_skipped_blocks(MASK_ITERATE);
+
+	log_err(SHOW_FAILINFO, "Recovery task x for x (faults:%d) started\n", x_failed);
+
+	exchange_x_for_recovery(x_failed, first_n, last_n, need_x, need_x_req, x_req);
+
+	if( x_failed )
 		failed_recovery += abs(recover_full_xk(mp, x, REMOVE_FAULTS));
 	
 	if( failed_recovery )
@@ -80,7 +144,7 @@ void recover_rectify_g(const int n UNUSED, magic_pointers *mp, const double *p, 
 	
 	if( error_types & MASK_GRADIENT )
 	{
-		failed_recovery += abs(recover_full_g_recompute(mp, gradient, KEEP_FAULTS));
+		failed_recovery += abs(recover_full_g_from_p_diff(mp, mp->g, *(mp->beta), p, p==mp->p?mp->old_p:mp->p, KEEP_FAULTS));
 		failed_recovery += abs(recover_full_g_update(mp, gradient, REMOVE_FAULTS));
 	}
 
@@ -237,10 +301,7 @@ void recover_rectify_p_Ap(const int n, magic_pointers *mp, double *p, double *ol
 
 	error_types = aggregate_skips();
 
-	log_err(SHOW_FAILINFO, "Recovery task p_Ap for p (faults:%d), Ap (faults:%d) and <p,Ap> (faults:%d) depending on g (faults:%d) and old_p (faults:%d) started\n", (error_types & mask_p) > 0, (error_types & MASK_A_P) > 0, (error_types & MASK_NORM_A_P) > 0, (error_types & MASK_GRADIENT) > 0, (error_types & mask_old_p) > 0);
-
-	if( error_types & MASK_GRADIENT )
-		failed_recovery += abs(recover_full_g_recompute(mp, mp->g, REMOVE_FAULTS));
+	log_err(SHOW_FAILINFO, "Recovery task p_Ap for p (faults:%d), Ap (faults:%d) and <p,Ap> (faults:%d) depending on old_p (faults:%d) started\n", (error_types & mask_p) > 0, (error_types & MASK_A_P) > 0, (error_types & MASK_NORM_A_P) > 0, (error_types & mask_old_p) > 0);
 
 	if( error_types & mask_old_p )
 		failed_recovery += abs(recover_full_old_p_invert(mp, old_p, REMOVE_FAULTS));
@@ -306,15 +367,8 @@ void recover_rectify_p_Ap(const int n, magic_pointers *mp, double *p, double *ol
 #else
 #pragma omp task concurrent(*wait_for_p, *wait_for_p2, [n]p) label(recover_p_early) priority(5) no_copy_deps
 #endif
-void recover_rectify_p_early(const int n UNUSED, magic_pointers *mp, double *p, double *old_p, char *wait_for_p UNUSED, char *wait_for_p2 UNUSED)
+void recover_rectify_p_early(const int n UNUSED, magic_pointers *mp, double *p, double *old_p, char *wait_for_p UNUSED, char *wait_for_p2 UNUSED, int first_n, int last_n, int *need_x, MPI_Request *need_x_req, MPI_Request *x_req)
 {
-	int faults = get_nb_failed_blocks();
-	if( !faults )
-	{
-		log_err(SHOW_FAILINFO, "Skipping p_early recovery task cause nothing failed\n");
-		return;
-	}
-
 	// this should happen concurrently to norm_task's, and split work onto more tasks if there is too much work
 	const int mask_p = 1 << get_data_vectptr(p), mask_old_p = 1 << get_data_vectptr(old_p);
 	int failed_recovery = 0, error_types;
@@ -326,10 +380,15 @@ void recover_rectify_p_early(const int n UNUSED, magic_pointers *mp, double *p, 
 
 	log_err(SHOW_FAILINFO, "Recovery task p_early for p (faults:%d) before exchange, depending on g (faults:%d) and old_p (faults:%d) started\n", (error_types & mask_p) > 0, (error_types & MASK_GRADIENT) > 0, (error_types & mask_old_p) > 0);
 
+	exchange_x_for_recovery(error_types & MASK_GRADIENT, first_n, last_n, need_x, need_x_req, x_req);
+
 	// NB force to execute this task before update_it so that iterate is at a coherent state if needed for g recovery
 	if( error_types & MASK_GRADIENT )
 	{
+		// for each page of g failed, if corresponding pages of p are skipped, 
+		// we can get the old g from old p and old_old_p (at iteration -2, not overwritten)
 		failed_recovery += abs(recover_full_g_recompute(mp, mp->g, KEEP_FAULTS));
+		
 		failed_recovery += abs(recover_full_g_update(mp, mp->g, REMOVE_FAULTS));
 	}
 

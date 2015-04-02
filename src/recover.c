@@ -202,39 +202,8 @@ void do_interpolation(const Matrix *A, const double *b, const double *g, double 
 	submatrix->i = recup.c;
 	submatrix->x = recup.v;
 
-	#if VERBOSE >= SHOW_FAILINFO
-	char matstat[100];
-	sprintf(matstat, "Submatrix of A with %d diagonal blocks (%dx%d", nb_lost, lost_rows[0], lost_cols[0]);
-	for(i=1; i<nb_lost; i++)
-		sprintf(matstat, ", %dx%d", lost_rows[i], lost_cols[i]);
-
-	#if VERBOSE >= SHOW_TOOMUCH
-	log_err(SHOW_TOOMUCH, "%s) is :\n", matstat);
-	print_matrix_market(stderr, &recup, 1);
-	#else
-	log_err(SHOW_FAILINFO, "%s).\n", matstat);
-	#endif
-	#endif
-	
-	#if VERBOSE >= SHOW_FAILINFO
-	double rhs_copy[total_lost], rhs_result[total_lost], err = 0.0, norm_rhs, norm_sol;
-	memcpy(rhs_copy, rhs, total_lost*sizeof(double));
-	#endif
-
 	//cs_cholsol(submatrix, rhs, 0);
 	cs_lusol(submatrix, rhs, 0, 1e-8);
-
-	#if VERBOSE >= SHOW_FAILINFO
-	// now solution in 'rhs', real rhs in 'rhs_copy', and hopefully reconstituted in 'rhs_result'
-	mult(&recup, rhs, rhs_result);
-	norm_rhs = norm(fbs, rhs_copy);
-	norm_sol = norm(fbs, rhs);
-
-	for(i=0; i<total_lost; i++)
-		err += (rhs_copy[i] - rhs_result[i])*(rhs_copy[i] - rhs_result[i]);
-
-    log_err(SHOW_FAILINFO, "Relative error of lusol solving is %g/%g = %g ; ||solution||^2 = %e\n", sqrt(err), sqrt(norm_rhs), sqrt(err/norm_rhs), norm_sol);
-	#endif
 
 	// and update the x values we interpolated, that are returned in rhs
 	//for(i=0; i<nb_lost; i++)
@@ -243,8 +212,6 @@ void do_interpolation(const Matrix *A, const double *b, const double *g, double 
 	for(i=0; i<nb_lost; i++)
 		for(j=0; j<fbs; j++)
 			x[lost_rows[i]+j] = rhs[i*fbs+j];
-
-	log_err(SHOW_FAILINFO, "After copying, ||sol||^2 = %e. total_lost=%d\n", norm(fbs, &(x[lost_rows[0]])), total_lost);
 
 	cs_free(submatrix);
 	deallocate_matrix(&recup);
@@ -399,8 +366,9 @@ int recover_g_from_p_diff(magic_pointers *mp, double *g, const double beta, cons
 {
 	// g = -beta old_p + p
 	int r = -1;
+	const int vect_p = get_data_vectptr(p), vect_old_p = get_data_vectptr(old_p);
 
-	if( !(is_failed_not_skipped_block(block, MASK_OLD_P) || is_failed_not_skipped_block(block, MASK_P)) )
+	if( !is_skipped_block(block, 1 << vect_p) && !is_skipped_block(block, 1 << vect_old_p) )
 	{
 		int fbs = get_failblock_size(), blockpos = block << get_log2_failblock_size();
 		if( blockpos + fbs > mp->A->n )
@@ -411,7 +379,7 @@ int recover_g_from_p_diff(magic_pointers *mp, double *g, const double beta, cons
 		r = check_recovery_errors();
 	}
 
-	log_err(SHOW_FAILINFO, "\tRepeating update for block %d of g : %d\n", block, r);
+	log_err(SHOW_FAILINFO, "\tRecovering g from p[%d from %d] update with beta %e block %d : %d\n", vect_p, vect_old_p, beta, block, r);
 
 	return r;
 }
@@ -743,3 +711,22 @@ int recover_full_Ap(magic_pointers *mp, double *Ap, const double *p, const int m
 	return r;
 }
 
+int recover_full_g_from_p_diff(magic_pointers *mp, double *g, const double beta, const double *p, const double *old_p, const int mark_clean)
+{
+	int i, r = 0, rr;
+
+	for(i=0; i < get_nb_failblocks(); i++)
+	{
+		if( !is_skipped_block(i, MASK_GRADIENT) )
+			continue;
+
+		rr = recover_g_from_p_diff(mp, g, beta, p, old_p, i);
+
+		if( mark_clean && !rr )
+			mark_corrected(i, MASK_GRADIENT);
+
+		r += abs(rr);
+	}
+
+	return r;
+}

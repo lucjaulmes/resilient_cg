@@ -14,11 +14,11 @@
 
 magic_pointers mp;
 
-void determine_mpi_neighbours(const Matrix *A, const int mpi_rank, const int mpi_size, int *first, int *last)
+void determine_mpi_neighbours(const Matrix *A, const int from_row, const int to_row, const int mpi_rank, const int mpi_size, int *first, int *last)
 {
 	// find our furthest neighbour in both direction
 	int max_col = 0, min_col = A->n, i;
-	for(i=0; i<mpi_zonesize[mpi_rank]; i++)
+	for(i=from_row; i<to_row; i++)
 	{
 		// using the fact that each A->c is sorted on A->r[i]..A->r[i+1]-1
 		if( A->c[A->r[i]] < min_col )
@@ -42,7 +42,7 @@ void determine_mpi_neighbours(const Matrix *A, const int mpi_rank, const int mpi
 		}
 }
 
-void setup_exchange(const int mpi_rank, const int first, const int last, const int tag, double *v, int mpi_stride, MPI_Request v_req[])
+void setup_exchange_vect(const int mpi_rank, const int first, const int last, const int tag, double *v, MPI_Request v_req[])
 {
 	int i, j=0;
 	// now check with which MPI block we communicate, depending on its rows
@@ -51,16 +51,32 @@ void setup_exchange(const int mpi_rank, const int first, const int last, const i
 	for(i=first; i<=last; i++)
 		if(i!=mpi_rank)
 			// recvs are always from i start,size
-			MPI_Recv_init(v + (mpi_stride? mpi_zonestart[   i    ]:   i    ),
-								mpi_stride? mpi_zonesize[   i    ]:   i    ,
-								MPI_DOUBLE, i, tag, MPI_COMM_WORLD, v_req+(j++));
+			MPI_Recv_init(v + mpi_zonestart[   i    ], mpi_zonesize[   i    ], MPI_DOUBLE, i, tag, MPI_COMM_WORLD, v_req+(j++));
 
 	for(i=first; i<=last; i++)
 		if(i!=mpi_rank)
 			// sends are always from mpi_rank start,size
-			MPI_Send_init(v + (mpi_stride? mpi_zonestart[mpi_rank]:mpi_rank),
-								mpi_stride? mpi_zonesize[mpi_rank]:mpi_rank,
-								MPI_DOUBLE, i, tag, MPI_COMM_WORLD, v_req+(j++));
+			MPI_Send_init(v + mpi_zonestart[mpi_rank], mpi_zonesize[mpi_rank], MPI_DOUBLE, i, tag, MPI_COMM_WORLD, v_req+(j++));
+}
+
+void setup_exchange_flag(const int mpi_rank, const int first, const int last, const int tag, int *v, MPI_Request v_req[])
+{
+	int i, j=0;
+	// for flags, we assume same organization in v[] than in v_req[]
+
+	for(i=first; i<=last; i++)
+		if(i!=mpi_rank)
+		{
+			MPI_Recv_init(v+j, 1, MPI_INT, i, tag, MPI_COMM_WORLD, v_req+j);
+			j++;
+		}
+
+	for(i=first; i<=last; i++)
+		if(i!=mpi_rank)
+		{
+			MPI_Send_init(v+j, 1, MPI_INT, i, tag, MPI_COMM_WORLD, v_req+j);
+			j++;
+		}
 }
 
 #if DUE && DUE != DUE_ROLLBACK
@@ -81,6 +97,7 @@ void compute_beta(double *err_sq, const double *old_err_sq, double *beta)
 	double loc_err_sq = *err_sq;
 	MPI_Allreduce(&loc_err_sq, err_sq, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
 
+	*(mp.old_beta) = *beta;
 	*beta = *err_sq / *old_err_sq;
 
 	#if DUE
@@ -137,7 +154,7 @@ void solve_cg(const Matrix *A, const double *b, double *it_glob, double converge
 	int r = -1, total_failures = 0, failures = 0;
 	int do_update_gradient = 0;
 	double *iterate, *p_glob, *old_p_glob, *p, *old_p, *Ap, *gradient, *Aiterate;
-	double normA_p_sq = 0.0, err_sq = 0.0, old_err_sq = INFINITY, alpha = 0.0, beta = 0.0;
+double normA_p_sq = 0.0, err_sq = 0.0, old_err_sq = INFINITY, alpha = 0.0, beta = 0.0, old_beta = 0.0;
 	char *wait_for_p = alloc_deptoken(), *wait_for_iterate = alloc_deptoken(), *wait_for_mvm = alloc_deptoken(), *start_rt_work = alloc_deptoken();
 	#if CKPT == CKPT_IN_MEMORY
 	double *save_it, *save_g, *save_p, *save_Ap, save_err_sq, save_alpha;
@@ -148,7 +165,7 @@ void solve_cg(const Matrix *A, const double *b, double *it_glob, double converge
 	#endif
 	
 	int first_mpix, last_mpix, count_mpix;
-	determine_mpi_neighbours(A, mpi_rank, mpi_size, &first_mpix, &last_mpix);
+	determine_mpi_neighbours(A, 0, mpi_zonesize[mpi_rank], mpi_rank, mpi_size, &first_mpix, &last_mpix);
 	count_mpix = last_mpix - first_mpix;
 
 	p_glob     = (double*)aligned_calloc( sizeof(double) << get_log2_failblock_size(), A->m * sizeof(double));
@@ -170,12 +187,20 @@ void solve_cg(const Matrix *A, const double *b, double *it_glob, double converge
 	#endif
 
 	// setting up communications for x and p exchanges
-	MPI_Request x_req[2*count_mpix], p1_req[2*count_mpix], p2_req[2*count_mpix];
-	MPI_Request *p_req = p1_req;
+	MPI_Request x_req[2*count_mpix], p1_req[2*count_mpix], p2_req[2*count_mpix], *p_req = p1_req;
 
-	setup_exchange(mpi_rank, first_mpix, last_mpix, 1, it_glob,		1, x_req);
-	setup_exchange(mpi_rank, first_mpix, last_mpix, 2, p_glob,		1, p1_req);
-	setup_exchange(mpi_rank, first_mpix, last_mpix, 3, old_p_glob,	1, p2_req);
+	setup_exchange_vect(mpi_rank, first_mpix, last_mpix, 1, it_glob,	x_req);
+	setup_exchange_vect(mpi_rank, first_mpix, last_mpix, 2, p_glob,		p1_req);
+	setup_exchange_vect(mpi_rank, first_mpix, last_mpix, 3, old_p_glob,	p2_req);
+
+	#if DUE == DUE_ASYNC || DUE == DUE_IN_PATH
+	MPI_Request need_x_req[2*count_mpix];
+	int need_x[2*count_mpix];
+	setup_exchange_flag(mpi_rank, first_mpix, last_mpix, 4, need_x,		need_x_req);
+
+	MPI_Startall(2*count_mpix, need_x_req);
+	MPI_Waitall(2*count_mpix, need_x_req, MPI_STATUSES_IGNORE);
+	#endif
 
 	// some parameters pre-computed, and show some informations (borrow thres_sq to be out_buf, get norm in norm_b)
 	thres_sq = norm(mpi_zonesize[mpi_rank], b);
@@ -185,7 +210,7 @@ void solve_cg(const Matrix *A, const double *b, double *it_glob, double converge
 	log_out("Error shown is ||Ax-b||^2, you should plot ||Ax-b||/||b||. (||b||^2 = %e)\n", norm_b);
 
 	mp = (magic_pointers){.A = A, .b = b, .x = iterate, .p = p, .old_p = old_p, .g = gradient, .Ap = Ap, .Ax = Aiterate,
-							.alpha = &alpha, .beta = &beta, .err_sq = &err_sq, .old_err_sq = &old_err_sq, .normA_p_sq = &normA_p_sq};
+						.alpha = &alpha, .beta = &beta, .old_beta = &old_beta, .err_sq = &err_sq, .old_err_sq = &old_err_sq, .normA_p_sq = &normA_p_sq};
 	#if CKPT
 	checkpoint_data ckpt_data = (checkpoint_data) {
 		#if CKPT == CKPT_IN_MEMORY
@@ -268,7 +293,7 @@ void solve_cg(const Matrix *A, const double *b, double *it_glob, double converge
 		update_p(p, old_p, wait_for_p, start_rt_work, gradient, &beta);
 
 		#if DUE == DUE_ASYNC || DUE == DUE_IN_PATH
-		recover_rectify_p_early(mpi_zonesize[mpi_rank], &mp, p, old_p, wait_for_p, wait_for_iterate);
+		recover_rectify_p_early(mpi_zonesize[mpi_rank], &mp, p, old_p, wait_for_p, wait_for_iterate, first_mpix, last_mpix, need_x, need_x_req, x_req);
 		#endif
 
 		// if possible, execute the update iterate really late
@@ -277,7 +302,7 @@ void solve_cg(const Matrix *A, const double *b, double *it_glob, double converge
 			update_iterate(iterate, wait_for_iterate, wait_for_p, old_p, &alpha);
 
 			#if DUE == DUE_ASYNC
-			recover_rectify_xk(mpi_zonesize[mpi_rank], &mp, iterate, wait_for_iterate);
+			recover_rectify_xk(mpi_zonesize[mpi_rank], &mp, iterate, wait_for_iterate, first_mpix, last_mpix, need_x, need_x_req, x_req);
 			#endif
 		}
 
@@ -328,7 +353,7 @@ void solve_cg(const Matrix *A, const double *b, double *it_glob, double converge
 				do_update_gradient = RECOMPUTE_GRADIENT_FREQ;
 			#if DUE == DUE_IN_PATH
 			else
-				recover_rectify_xk(mpi_zonesize[mpi_rank], &mp, iterate, (char*)&normA_p_sq);
+				recover_rectify_xk(mpi_zonesize[mpi_rank], &mp, iterate, (char*)&normA_p_sq, first_mpix, last_mpix, need_x, need_x_req, x_req);
 			#endif
 			#if CKPT
 			if( do_checkpoint <= 0 )
@@ -374,6 +399,9 @@ void solve_cg(const Matrix *A, const double *b, double *it_glob, double converge
 		MPI_Request_free(x_req+r);
 		MPI_Request_free(p1_req+r);
 		MPI_Request_free(p2_req+r);
+		#if DUE == DUE_ASYNC || DUE == DUE_IN_PATH
+		MPI_Request_free(need_x_req+r);
+		#endif
 	}
 
 	free(p_glob);
