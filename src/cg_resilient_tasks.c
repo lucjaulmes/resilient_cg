@@ -114,7 +114,7 @@ void recompute_gradient_mvm(const Matrix *A, double *iterate, char *wait_for_ite
 		int s = get_block_start(i), e = get_block_end(i);
 
 		// Aiterate <- A * iterate
-		#pragma omp task in(iterate[s:e-1], *wait_for_iterate) concurrent(*wait_for_mvm) out(Aiterate[s:e-1]) firstprivate(s, e) label(AxIt) priority(10) no_copy_deps
+		#pragma omp task in(iterate[0:A->m-1], *wait_for_iterate) concurrent(*wait_for_mvm) out(Aiterate[s:e-1]) firstprivate(s, e) label(AxIt) priority(10) no_copy_deps
 		{
 			int j, k, l, page = s >> get_log2_failblock_size(), skips;
 			const int fbs = get_failblock_size();
@@ -235,10 +235,10 @@ void compute_Ap(const Matrix *A, double *p, char *wait_for_p UNUSED, char *wait_
 		int s = get_block_start(i), e = get_block_end(i);
 
 		// Ap <- A * p
-		#pragma omp task in(p[s:e-1], *wait_for_p) concurrent(*wait_for_mvm) out(Ap[s:e-1]) firstprivate(s, e) label(Axp) priority(20) no_copy_deps
+		#pragma omp task in(p[0:A->m-1], *wait_for_p) concurrent(*wait_for_mvm) out(Ap[s:e-1]) firstprivate(s, e) label(Axp) priority(20) no_copy_deps
 		{
 			int j, k, l, page = s >> get_log2_failblock_size(), skips;
-			const int fbs = get_failblock_size(), mask = 1 << get_data_vectptr(p);
+			const int fbs = get_failblock_size(), mask = 1 << get_data_vectptr(p+mpi_zonestart[mpi_rank]);
 
 			enter_task(VECT_A_P);
 

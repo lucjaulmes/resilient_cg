@@ -79,14 +79,14 @@ void setup_exchange_flag(const int mpi_rank, const int first, const int last, co
 		}
 }
 
-#if DUE && DUE != DUE_ROLLBACK
+#if DUE == DUE_ASYNC || DUE == DUE_IN_PATH || DUE == DUE_LOSSY
 #include "cg_resilient_tasks.c"
 #include "cg_recovery_tasks.c"
 #else
 #include "cg_normal_tasks.c"
 #endif
 
-#if CKPT
+#if DUE == DUE_ROLLBACK
 #include "cg_checkpoint.c"
 #endif
 
@@ -103,7 +103,11 @@ void compute_beta(double *err_sq, const double *old_err_sq, double *beta)
 	#if DUE
 	int state = aggregate_skips();
 	if( state & (MASK_GRADIENT | MASK_NORM_G | MASK_RECOVERY | MASK_X_EXCHANGE) )
+	{
+		// just mark them as ok, or use hard_reset(), or abort run altogether
+		clear_failed(MASK_GRADIENT | MASK_NORM_G | MASK_RECOVERY | MASK_X_EXCHANGE);
 		fprintf(stderr, "ERROR SUBSISTED PAST RECOVERY restart needed. At beta, g:%d, ||g||:%d\n", (state & MASK_GRADIENT) > 0, (state & MASK_NORM_G) > 0);
+	}
 	#endif
 
 	log_err(SHOW_TASKINFO, "Computing beta finished : err_sq = %e ; old_err_sq = %e ; beta = %e \n", *err_sq, *old_err_sq, *beta);
@@ -118,18 +122,14 @@ void compute_alpha(double *err_sq, double *normA_p_sq, double *old_err_sq, doubl
 	*alpha = *err_sq / *normA_p_sq ;
 	*old_err_sq = *err_sq;
 
-	#if DUE
+	#if DUE == DUE_ASYNC || DUE == DUE_IN_PATH
 	int state = aggregate_skips();
-	#if DUE == DUE_LOSSY
-	if( state )
-	{
-		log_err(SHOW_FAILINFO, "There was an error, restarting (eventual lossy x interpolation)");
-		hard_reset(&mp);
-	}
-	#else
 	if( state & (MASK_ITERATE | MASK_P | MASK_OLD_P | MASK_A_P | MASK_NORM_A_P | MASK_RECOVERY | MASK_P_EXCHANGE) )
+	{
+		// just mark them as ok, or use hard_reset(), or abort run altogether
+		clear_failed(MASK_ITERATE | MASK_P | MASK_OLD_P | MASK_A_P | MASK_NORM_A_P | MASK_RECOVERY | MASK_P_EXCHANGE);
 		fprintf(stderr, "ERROR SUBSISTED PAST RECOVERY restart needed. At alpha, x:%d, p:%d, p':%d, Ap:%d, <p,Ap>:%d\n", (state & MASK_ITERATE) > 0, (state & MASK_P) > 0, (state & MASK_OLD_P) > 0, (state & MASK_A_P) > 0, (state & MASK_NORM_A_P) > 0);
-	#endif
+	}
 	#endif
 
 	log_err(SHOW_TASKINFO, "Computing alpha finished : normA_p_sq = %+e ; err_sq = %e ; alpha = %e\n", *normA_p_sq, *err_sq, *alpha);
@@ -154,7 +154,7 @@ void solve_cg(const Matrix *A, const double *b, double *it_glob, double converge
 	int r = -1, total_failures = 0, failures = 0;
 	int do_update_gradient = 0;
 	double *iterate, *p_glob, *old_p_glob, *p, *old_p, *Ap, *gradient, *Aiterate;
-double normA_p_sq = 0.0, err_sq = 0.0, old_err_sq = INFINITY, alpha = 0.0, beta = 0.0, old_beta = 0.0;
+	double normA_p_sq = 0.0, err_sq = 0.0, old_err_sq = INFINITY, alpha = 0.0, beta = 0.0, old_beta = 0.0;
 	char *wait_for_p = alloc_deptoken(), *wait_for_iterate = alloc_deptoken(), *wait_for_mvm = alloc_deptoken(), *start_rt_work = alloc_deptoken();
 	#if CKPT == CKPT_IN_MEMORY
 	double *save_it, *save_g, *save_p, *save_Ap, save_err_sq, save_alpha;
@@ -193,13 +193,11 @@ double normA_p_sq = 0.0, err_sq = 0.0, old_err_sq = INFINITY, alpha = 0.0, beta 
 	setup_exchange_vect(mpi_rank, first_mpix, last_mpix, 2, p_glob,		p1_req);
 	setup_exchange_vect(mpi_rank, first_mpix, last_mpix, 3, old_p_glob,	p2_req);
 
-	#if DUE == DUE_ASYNC || DUE == DUE_IN_PATH
+	#if DUE == DUE_LOSSY || DUE == DUE_ASYNC || DUE == DUE_IN_PATH
 	MPI_Request need_x_req[2*count_mpix];
 	int need_x[2*count_mpix];
+	memset(need_x, 0, 2*count_mpix*sizeof(int));
 	setup_exchange_flag(mpi_rank, first_mpix, last_mpix, 4, need_x,		need_x_req);
-
-	MPI_Startall(2*count_mpix, need_x_req);
-	MPI_Waitall(2*count_mpix, need_x_req, MPI_STATUSES_IGNORE);
 	#endif
 
 	// some parameters pre-computed, and show some informations (borrow thres_sq to be out_buf, get norm in norm_b)
@@ -207,7 +205,9 @@ double normA_p_sq = 0.0, err_sq = 0.0, old_err_sq = INFINITY, alpha = 0.0, beta 
     MPI_Allreduce(&thres_sq, &norm_b, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
 
 	thres_sq = convergence_thres * convergence_thres * norm_b;
+	#if VERBOSE >= SHOW_DBGINFO && (!defined PERFORMANCE || defined EXTRAE_EVENTS)
 	log_out("Error shown is ||Ax-b||^2, you should plot ||Ax-b||/||b||. (||b||^2 = %e)\n", norm_b);
+	#endif
 
 	mp = (magic_pointers){.A = A, .b = b, .x = iterate, .p = p, .old_p = old_p, .g = gradient, .Ap = Ap, .Ax = Aiterate,
 						.alpha = &alpha, .beta = &beta, .old_beta = &old_beta, .err_sq = &err_sq, .old_err_sq = &old_err_sq, .normA_p_sq = &normA_p_sq};
@@ -258,7 +258,17 @@ double normA_p_sq = 0.0, err_sq = 0.0, old_err_sq = INFINITY, alpha = 0.0, beta 
 					//MPI_Allgatherv(MPI_IN_PLACE, 0/*ignored*/, MPI_DOUBLE, it_glob, mpi_zonesize, mpi_zonestart, MPI_DOUBLE, MPI_COMM_WORLD);
 
 					MPI_Startall(2*count_mpix, x_req);
+					#if VERBOSE < SHOW_FAILINFO
 					MPI_Waitall(2*count_mpix, x_req, MPI_STATUSES_IGNORE);
+					#else
+					MPI_Status mpi_status[2*count_mpix];
+					MPI_Waitall(2*count_mpix, x_req, mpi_status);
+					char print_status[25+70*count_mpix];
+					sprintf(print_status, "MPI_Status for x_req (verif) :");
+					for(int z=0; z<2*count_mpix; z++)
+						sprintf(print_status+strlen(print_status), " %d:{SOURCE=%d, TAG=%d, ERROR=%d}", z, mpi_status[z].MPI_SOURCE, mpi_status[z].MPI_TAG, mpi_status[z].MPI_ERROR);
+					log_err(SHOW_FAILINFO, "%s\n", print_status);
+					#endif
 
 					exit_task();
 				}
@@ -298,13 +308,7 @@ double normA_p_sq = 0.0, err_sq = 0.0, old_err_sq = INFINITY, alpha = 0.0, beta 
 
 		// if possible, execute the update iterate really late
 		if( do_update_gradient > 0 )
-		{
 			update_iterate(iterate, wait_for_iterate, wait_for_p, old_p, &alpha);
-
-			#if DUE == DUE_ASYNC
-			recover_rectify_xk(mpi_zonesize[mpi_rank], &mp, iterate, wait_for_iterate, first_mpix, last_mpix, need_x, need_x_req, x_req);
-			#endif
-		}
 
 		#pragma omp task inout(p_glob[0:n-1]) in(*wait_for_p) out(*wait_for_mvm) firstprivate(p_req, count_mpix) label(exchange_p) priority(100) no_copy_deps
 		{
@@ -312,7 +316,17 @@ double normA_p_sq = 0.0, err_sq = 0.0, old_err_sq = INFINITY, alpha = 0.0, beta 
 			//MPI_Allgatherv(MPI_IN_PLACE, 0/*ignored*/, MPI_DOUBLE, p_glob, mpi_zonesize, mpi_zonestart, MPI_DOUBLE, MPI_COMM_WORLD);
 
 			MPI_Startall(2*count_mpix, p_req);
+			#if VERBOSE < SHOW_FAILINFO
 			MPI_Waitall(2*count_mpix, p_req, MPI_STATUSES_IGNORE);
+			#else
+			MPI_Status mpi_status[2*count_mpix];
+			MPI_Waitall(2*count_mpix, p_req, mpi_status);
+			char print_status[25+70*count_mpix];
+			sprintf(print_status, "MPI_Status for x_req (verif) :");
+			for(int z=0; z<2*count_mpix; z++)
+				sprintf(print_status+strlen(print_status), " %d:{SOURCE=%d, TAG=%d, ERROR=%d}", z, mpi_status[z].MPI_SOURCE, mpi_status[z].MPI_TAG, mpi_status[z].MPI_ERROR);
+			log_err(SHOW_FAILINFO, "%s\n", print_status);
+			#endif
 
 			exit_task();
 		}
@@ -324,6 +338,16 @@ double normA_p_sq = 0.0, err_sq = 0.0, old_err_sq = INFINITY, alpha = 0.0, beta 
 		compute_Ap(A, p_glob, wait_for_p, wait_for_mvm, Ap);
 
 		scalar_product_task(p, Ap, &normA_p_sq);
+
+		// concurrent(wait_for_mvm) and low priority if async : after p_exchange and everything with better prio--> out(wait_for_iterate) allows to postpone p_Ap a bit
+		// inout(normA_p_sq) if in_path
+		#if DUE == DUE_ASYNC
+		if( do_update_gradient > 0 )
+			recover_rectify_xk(mpi_zonesize[mpi_rank], &mp, iterate, wait_for_mvm, wait_for_iterate, first_mpix, last_mpix, need_x, need_x_req, x_req);
+		#elif DUE == DUE_IN_PATH
+		if( do_update_gradient > 0 )
+			recover_rectify_xk(mpi_zonesize[mpi_rank], &mp, iterate, (char*)&normA_p_sq, wait_for_iterate, first_mpix, last_mpix, need_x, need_x_req, x_req);
+		#endif
 
 		#if DUE == DUE_ASYNC || DUE == DUE_IN_PATH
 		recover_rectify_p_Ap(mpi_zonesize[mpi_rank], &mp, p, old_p, Ap, &normA_p_sq, wait_for_mvm, wait_for_iterate);
@@ -351,10 +375,6 @@ double normA_p_sq = 0.0, err_sq = 0.0, old_err_sq = INFINITY, alpha = 0.0, beta 
 
 			if( do_update_gradient <= 0 )
 				do_update_gradient = RECOMPUTE_GRADIENT_FREQ;
-			#if DUE == DUE_IN_PATH
-			else
-				recover_rectify_xk(mpi_zonesize[mpi_rank], &mp, iterate, (char*)&normA_p_sq, first_mpix, last_mpix, need_x, need_x_req, x_req);
-			#endif
 			#if CKPT
 			if( do_checkpoint <= 0 )
 				do_checkpoint = CHECKPOINT_FREQ;
@@ -366,14 +386,39 @@ double normA_p_sq = 0.0, err_sq = 0.0, old_err_sq = INFINITY, alpha = 0.0, beta 
 
 		// should happen after p, Ap are ready and before (post-alpha) iterate and gradient updates
 		// so just after (or just before) alpha basically
-		#if CKPT // NB. this implies DUE_ROLLBACK
-		if(failures)
-		{
-			do_checkpoint = 0;
-			force_rollback(&ckpt_data, iterate, gradient, old_p, Ap);
-		}
-		else if( --do_checkpoint == 0 )
+		#if DUE == DUE_ROLLBACK
+		if( --do_checkpoint == 0 )
 			due_checkpoint(&ckpt_data, iterate, gradient, old_p, Ap);
+		else
+		{
+			double *alpha_ptr UNUSED = &alpha;
+			#pragma omp task label(check_failures) inout(*alpha_ptr, do_checkpoint) no_copy_deps
+			{
+				int skips_here = aggregate_skips(), skips_world;
+				MPI_Allreduce(&skips_here, &skips_world, 1, MPI_INT, MPI_BOR, MPI_COMM_WORLD);
+
+				if( skips_world )
+				{
+					force_rollback(&ckpt_data, iterate, gradient, old_p, Ap);
+					do_checkpoint = -1;
+					#pragma omp taskwait
+				}
+			}
+		}
+		#elif DUE == DUE_LOSSY
+		double *alpha_ptr UNUSED = &alpha;
+		#pragma omp task label(check_failures) inout(*alpha_ptr, do_update_gradient) shared(need_x, need_x_req, x_req) no_copy_deps
+		{
+			int skips_here = aggregate_skips(), skips_world;
+			MPI_Allreduce(&skips_here, &skips_world, 1, MPI_INT, MPI_BOR, MPI_COMM_WORLD);
+
+			if( skips_world )
+			{
+				log_err(SHOW_FAILINFO, "There was an error, restarting (eventual lossy x interpolation)\n");
+				hard_reset(&mp, &do_update_gradient, skips_here, first_mpix, last_mpix, need_x, need_x_req, x_req);
+				#pragma omp taskwait
+			}
+		}
 		#endif
 	}
 
@@ -382,24 +427,38 @@ double normA_p_sq = 0.0, err_sq = 0.0, old_err_sq = INFINITY, alpha = 0.0, beta 
 	stop_measure();
 	
 	failures = check_errors_signaled();
+	total_failures += failures;
 	log_convergence(r-1, old_err_sq, failures);
 
-	printf("CG method finished iterations:%d with error:%e (failures:%d)\n", r, sqrt((err_sq==0.0?old_err_sq:err_sq)/norm_b), total_failures);
-
 	// stop resilience stuff that's still going on
-	unset_resilience();
+	int injected_faults = unset_resilience();
+
+	int count_failures[4] = {total_failures, injected_faults, 0, 0};
+	MPI_Allreduce(count_failures, count_failures+2, 2, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
+
+	log_out("CG method finished iterations:%d with error:%e (failures:%d injected:%d)\n", r, sqrt((err_sq==0.0?old_err_sq:err_sq)/norm_b), count_failures[2], count_failures[3]);
 
 	// This is after solving, to be able to compute the verification later on
 	//MPI_Allgatherv(MPI_IN_PLACE, 0/*ignored*/, MPI_DOUBLE, it_glob, mpi_zonesize, mpi_zonestart, MPI_DOUBLE, MPI_COMM_WORLD);
 	MPI_Startall(2*count_mpix, x_req);
+	#if VERBOSE < SHOW_FAILINFO
 	MPI_Waitall(2*count_mpix, x_req, MPI_STATUSES_IGNORE);
+	#else
+	MPI_Status mpi_status[2*count_mpix];
+	MPI_Waitall(2*count_mpix, x_req, mpi_status);
+	char print_status[25+70*count_mpix];
+	sprintf(print_status, "MPI_Status for x_req (verif) :");
+	for(int z=0; z<2*count_mpix; z++)
+		sprintf(print_status+strlen(print_status), " %d:{SOURCE=%d, TAG=%d, ERROR=%d}", z, mpi_status[z].MPI_SOURCE, mpi_status[z].MPI_TAG, mpi_status[z].MPI_ERROR);
+	log_err(SHOW_FAILINFO, "%s\n", print_status);
+	#endif
 
 	for(r=0; r<2*count_mpix; r++)
 	{
 		MPI_Request_free(x_req+r);
 		MPI_Request_free(p1_req+r);
 		MPI_Request_free(p2_req+r);
-		#if DUE == DUE_ASYNC || DUE == DUE_IN_PATH
+		#if DUE == DUE_LOSSY || DUE == DUE_ASYNC || DUE == DUE_IN_PATH
 		MPI_Request_free(need_x_req+r);
 		#endif
 	}

@@ -1,25 +1,44 @@
 
-void hard_reset(magic_pointers *mp)
+void hard_reset(magic_pointers *mp, int *do_update_gradient, int failures, int first_n, int last_n, int *need_x, MPI_Request *need_x_req, MPI_Request *x_req)
 {
-	// This method can be used as a fallback when DUE techniques don't work.
-	// Primary use is to implement other techniques (against which to compare) 
-	#if CKPT
-	force_rollback(mp->A->n, mp->ckpt_data, mp->x, mp->g, mp->old_p, mp->Ap);
-	#else
-	// here we are called at alpha (the function will finish executing normally)
-	// we want ||p||_A = INF to have alpha = 0, err_sq = INF so that next beta = 0
+	// here we are called just after alpha
+	// we want have alpha = 0 to avoid any invalid updates, and err_sq = INF so that next beta = 0
 	*(mp->beta) = 0.0;
 	*(mp->alpha) = 0.0;
-	*(mp->err_sq) = DBL_MAX;
+	*(mp->err_sq) = 0.0;
+	*(mp->normA_p_sq) = 0.0;
 	*(mp->old_err_sq) = INFINITY;
-	*(mp->normA_p_sq) = INFINITY;
 
-	recover_x_lossy(mp, mp->x);
+	exchange_x_for_recovery(failures & MASK_ITERATE, first_n, last_n, need_x, need_x_req, x_req);
 
-	recompute_gradient_mvm(mp->A, mp->x, NULL, NULL, mp->Ax);
-	recompute_gradient_update(mp->g, NULL, mp->Ax, mp->b);
-	clear_failed( ~0 );
-	#endif
+	if( failures & MASK_ITERATE )
+		recover_x_lossy(mp, mp->x);
+
+	if( failures )
+		clear_failed( ~0 );
+
+	// if this task is not instantly followed by a recomputation, do it here manually
+	if( *do_update_gradient != RECOMPUTE_GRADIENT_FREQ )
+	{
+		int n UNUSED = mp->A->n, count_mpix = last_n - first_n; // last+1, -self
+		double *it_glob = mp->x - mpi_zonestart[mpi_rank];
+		#pragma omp task inout(it_glob[0:n-1]) firstprivate(x_req, count_mpix) label(exchange_x) priority(100) no_copy_deps
+		{
+			enter_task(MPI_X_EXCHANGE);
+			//MPI_Allgatherv(MPI_IN_PLACE, 0/*ignored*/, MPI_DOUBLE, it_glob, mpi_zonesize, mpi_zonestart, MPI_DOUBLE, MPI_COMM_WORLD);
+
+			MPI_Startall(2*count_mpix, x_req);
+			MPI_Waitall(2*count_mpix, x_req, MPI_STATUSES_IGNORE);
+
+			exit_task();
+		}
+
+		recompute_gradient_mvm(mp->A, it_glob, NULL, NULL, mp->Ax);
+		recompute_gradient_update(mp->g, NULL, mp->Ax, mp->b);
+		#pragma omp taskwait
+
+		*do_update_gradient = RECOMPUTE_GRADIENT_FREQ;
+	}
 }
 
 void exchange_x_for_recovery(int check_need, int first_n, int last_n, int *need_x, MPI_Request *need_x_req, MPI_Request *x_req)
@@ -28,6 +47,9 @@ void exchange_x_for_recovery(int check_need, int first_n, int last_n, int *need_
 	MPI_Request exchanges_needed[2*nn];
 
 	MPI_Request *x_recv = x_req, *x_send = x_req+nn;
+
+	// NB ; the following seems reverse because of double communication pattern :
+	// we first send whether we need to recieve, and recieve whether we need to send
 	int *need_x_send = need_x, *need_x_recv = need_x+nn;
 	
 	// if we have failures, set 1 in every mpi_neighbour of a failed page, otherwise 0
@@ -65,13 +87,23 @@ void exchange_x_for_recovery(int check_need, int first_n, int last_n, int *need_
 			}
 	}
 	else
-		memset(need_x_recv, 0, 2*nn*sizeof(int));
+		memset(need_x_recv, 0, nn*sizeof(int));
 
 	// exchange flags to know which real MPI exchanges will be needed
 	MPI_Startall(2*nn, need_x_req);
+	#if VERBOSE < SHOW_FAILINFO
 	MPI_Waitall(2*nn, need_x_req, MPI_STATUSES_IGNORE);
+	#else
+	MPI_Status mpi_status[2*nn];
+	MPI_Waitall(2*nn, need_x_req, mpi_status);
+	char print_status[25+75*nn];
+	sprintf(print_status, "MPI_Status for need_x_req :");
+	for(int z=0; z<2*nn; z++)
+		sprintf(print_status+strlen(print_status), " %d:{SOURCE=%d, TAG=%d, ERROR=%d}", z, mpi_status[z].MPI_SOURCE, mpi_status[z].MPI_TAG, mpi_status[z].MPI_ERROR);
+	log_err(SHOW_FAILINFO, "%s\n", print_status);
+	#endif
 
-	#if VERBOSE >= VERBOSE_SHOWFAILINFO
+	#if VERBOSE >= SHOW_FAILINFO
 	int n_recv = nx;
 	#endif
 
@@ -83,14 +115,28 @@ void exchange_x_for_recovery(int check_need, int first_n, int last_n, int *need_
 
 	if( nx )
 	{
-		log_err(SHOW_FAILINFO, "Need for x exchange for recovery : %d/%d receives, %d/%d sends\n", n_recv, nn, nx-n_recv, nn);
+		log_err(SHOW_FAILINFO, "\tNeed for x exchange for recovery : %d/%d receives, %d/%d sends\n", n_recv, nn, nx-n_recv, nn);
 		MPI_Startall(nx, exchanges_needed);
+		#if VERBOSE < SHOW_FAILINFO
 		MPI_Waitall(nx, exchanges_needed, MPI_STATUSES_IGNORE);
+		#else
+		MPI_Waitall(nx, exchanges_needed, mpi_status);
+		sprintf(print_status, "MPI_Status for need_x_req :");
+		for(int z=0; z<nx; z++)
+			sprintf(print_status+strlen(print_status), " %d:{SOURCE=%d, TAG=%d, ERROR=%d}", z, mpi_status[z].MPI_SOURCE, mpi_status[z].MPI_TAG, mpi_status[z].MPI_ERROR);
+		log_err(SHOW_FAILINFO, "%s\n", print_status);
+		#endif
 	}
+	else
+		log_err(SHOW_FAILINFO, "\tNo need for x exchange for recovery\n");
 }
 
-#pragma omp task inout([n]x, *wait_for_iterate) label(recover_xk) priority(20) no_copy_deps
-void recover_rectify_xk(const int n UNUSED, magic_pointers *mp, double *x, char *wait_for_iterate UNUSED, int first_n, int last_n, int *need_x, MPI_Request *need_x_req, MPI_Request *x_req)
+#if DUE == DUE_IN_PATH
+#pragma omp task inout([n]x, *wait_for_iterate, *wait_for_prev) label(recover_xk) priority(0) no_copy_deps
+#else
+#pragma omp task inout([n]x, *wait_for_iterate) concurrent(*wait_for_prev) label(recover_xk) priority(5) no_copy_deps
+#endif
+void recover_rectify_xk(const int n UNUSED, magic_pointers *mp, double *x, char *wait_for_prev UNUSED, char *wait_for_iterate UNUSED, int first_n, int last_n, int *need_x, MPI_Request *need_x_req, MPI_Request *x_req)
 {
 	int failed_recovery = 0;
 

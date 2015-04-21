@@ -87,7 +87,7 @@ void force_checkpoint(checkpoint_data *ckpt_data, double *iterate, double *gradi
 void due_checkpoint(checkpoint_data *ckpt_data, double *iterate, double *gradient, double *p, double *Ap);
 void checkpoint_vectors(checkpoint_data *ckpt_data, int *behaviour, double *iterate, double *gradient, double *p, double *Ap);
 
-void recover_rectify_xk(const int n, magic_pointers *mp, double *x, char *wait_for_iterate, int first_n, int last_n, int *need_x, MPI_Request *need_x_req, MPI_Request *x_req);
+void recover_rectify_xk(const int n, magic_pointers *mp, double *x, char *wait_for_prev, char *wait_for_iterate, int first_n, int last_n, int *need_x, MPI_Request *need_x_req, MPI_Request *x_req);
 void recover_rectify_g(const int n, magic_pointers *mp, const double *p, double *Ap, double *gradient, double *err_sq, char *wait_for_iterate);
 void recover_rectify_x_g(const int n, magic_pointers *mp, double *x, double *gradient, double *err_sq, char *wait_for_mvm);
 void recover_rectify_p_Ap(const int n, magic_pointers *mp, double *p, double *old_p, double *Ap, double *normA_p_sq, char *wait_for_mvm, char *wait_for_iterate);

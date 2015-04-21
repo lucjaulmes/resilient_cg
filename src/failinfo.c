@@ -61,8 +61,72 @@ void populate_global(const int n, const int fail_size_bytes, const int fault_str
 		#endif
 	};
 
-	sim_err = (error_sim_data){ .lambda = lambda, .nerr = nerr, .info = &errinfo };
+	sim_err = (error_sim_data){ .lambda = lambda, .nerr_world = nerr, .nerr_run = 0, .nerr_injected = 0, .info = &errinfo, .faults_nsec = NULL};
 }
+
+void decide_err_time(error_sim_data *sim_err)
+{
+	int i, nerr = sim_err->nerr_world, faults_rank[nerr];
+	long long faults_nsec_world[nerr];
+
+	if( mpi_rank == 0 )
+	{
+		double total_time = 0, mtbe = sim_err->lambda / (double)nerr, faults_unscaled[nerr+1];
+
+		log_err(SHOW_FAILINFO, "Error is going to be simulated with exponential distribution to get %d errors in duration %e (mtbe ~%g)\n", nerr, sim_err->lambda, mtbe);
+
+		// at first, create unscaled intervals between evenst (start, {faults}, end)
+		for(i=0; i<nerr+1; i++)
+		{
+			faults_unscaled[i] = exponential(mtbe, (double)rand()/(double)RAND_MAX);
+			total_time += faults_unscaled[i];
+		}
+
+		// now scale back total time interval to time given as parameter (in ns for sleep function)
+		const double factor = sim_err->lambda * 1e3 / total_time;
+		for(i=0; i<nerr; i++)
+		{
+			faults_nsec_world[i] = (long long)(factor * faults_unscaled[i] + 0.5);
+			faults_rank[i] = rand() % mpi_size;
+		}
+	}
+	
+	// exchange faults sim information and only keep in faults_nsec_world the local faults
+	MPI_Bcast(faults_nsec_world, nerr, MPI_LONG_LONG_INT, 0, MPI_COMM_WORLD);
+	MPI_Bcast(faults_rank,       nerr, MPI_INT,           0, MPI_COMM_WORLD);
+
+	sim_err->nerr_run = 0;
+	for(i=0; i<nerr; i++)
+		if( faults_rank[i] == mpi_rank )
+			sim_err->nerr_run++;
+
+	
+	if( sim_err->nerr_run == 0 )
+	{
+		sim_err->faults_nsec = NULL; // double-tap
+		log_err(SHOW_FAILINFO, "No error injections on rank %d\n", mpi_rank);
+	}
+	else
+	{
+		sim_err->faults_nsec = calloc(sim_err->nerr_run, sizeof(long long));
+
+		int j=0;
+		for(i=0; i<nerr && j < sim_err->nerr_run; i++)
+		{
+			sim_err->faults_nsec[j] += faults_nsec_world[i];
+			if( faults_rank[i] == mpi_rank )
+				j++;
+		}
+
+		#if VERBOSE >= SHOW_FAILINFO
+		char str[12*sim_err->nerr_run]; str[0] = '\0';
+		for(i=0; i<sim_err->nerr_run; i++)
+			sprintf(str + strlen(str), ", %lld", sim_err->faults_nsec[i]);
+		log_err(SHOW_FAILINFO, "Intervals in ns between %d error injections on rank %d are %s\n", sim_err->nerr_run, mpi_rank, str+2);
+		#endif
+	}
+}
+
 
 void setup_resilience(const Matrix *A UNUSED, const int nb, magic_pointers *mp)
 {
@@ -99,6 +163,7 @@ void setup_resilience(const Matrix *A UNUSED, const int nb, magic_pointers *mp)
 	errinfo.in_recovery_errors = 0;
 	errinfo.errors = 0;
 	errinfo.skips = 0;
+	sim_err.nerr_injected = 0;
 
 	// finally set the handler for signals that will simulate (SIGSEGV) or report real errors (SIGBUS)
 	struct sigaction sigact;
@@ -113,11 +178,14 @@ void setup_resilience(const Matrix *A UNUSED, const int nb, magic_pointers *mp)
 	if( sigaction(SIGSEGV, &sigact, NULL) !=  0)
 		fprintf(stderr, "error setting signal handler for %d (%s)\n", SIGSEGV, strsignal(SIGSEGV));
 
-	// start semaphore locked : released in release_error_injection
+	// start semaphore locked : released in start_error_injection
 	sem_init(&sim_err.start_sim, 0, 0);
+
+	if( sim_err.nerr_world )
+		decide_err_time(&sim_err);
 	
 	// if simulating faults, create thread to do so
-	if( sim_err.lambda != 0 )
+	if(sim_err.lambda != 0 && (sim_err.nerr_world == 0 || sim_err.nerr_run > 0))
 		pthread_create(&sim_err.th, NULL, &simulate_failures, (void*)&sim_err);
 }
 
@@ -126,12 +194,15 @@ void start_error_injection()
 	sem_post(&sim_err.start_sim);
 }
 
-void unset_resilience()
+int unset_resilience()
 {
 	if( sim_err.lambda != 0 && sim_err.th )
 	{
 		pthread_cancel(sim_err.th);
 		pthread_join(sim_err.th, NULL);
+
+		if( sim_err.faults_nsec != NULL )
+			free(sim_err.faults_nsec);
 	}
 
 	sem_destroy(&sim_err.start_sim);
@@ -147,6 +218,11 @@ void unset_resilience()
 	sigaction(SIGBUS, &sigact, NULL);
 	sigaction(SIGSEGV, &sigact, NULL);
 
+	// use X-macros to cancel all mprotect's still lying around
+	#define X(constant, name) mprotect(errinfo.data[constant-1], sizeof(double) * mpi_zonesize[mpi_rank], PROT_READ | PROT_WRITE);
+	ASSOC_CONST_MP
+	#undef X
+	
 	#if DUE
 	deallocate_matrix(errinfo.neighbours);
 	free(errinfo.neighbours);
@@ -154,6 +230,8 @@ void unset_resilience()
 	#endif
 
 	free(errinfo.data);
+
+	return sim_err.nerr_injected;
 }
 
 void resilience_sighandler(int signum, siginfo_t *info, void *context UNUSED)
@@ -191,13 +269,7 @@ void resilience_sighandler(int signum, siginfo_t *info, void *context UNUSED)
 			errinfo.in_recovery_errors++;
 		#endif
 
-
-		// old : unprotect, mess with data in the page
-		//if( signum == SIGSEGV )
-		//	mprotect(page, sizeof(double) << get_log2_failblock_size(), PROT_READ | PROT_WRITE);
-		//memset(page, 0x00, sizeof(double) << get_log2_failblock_size());
-
-		// new : plain replace memory page
+		// replace memory page
 		mmap(page, sizeof(double) << get_log2_failblock_size(), PROT_READ|PROT_WRITE, MAP_FIXED|MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
 
 
@@ -215,11 +287,10 @@ void silent_deallocating_sighandler(int signum, siginfo_t *info, void *context U
 	// handler to silently deallocate memory even where we removed authorizations
 	if(signum == SIGSEGV && info->si_code == SEGV_ACCERR)
 	{
-		int block, vect = get_data_blockptr(info->si_addr, &block), r;
 		void * page = (void*)((long)info->si_addr - ((long)info->si_addr % (sizeof(double) << get_log2_failblock_size())));
-		r = mprotect(page, sizeof(double) << get_log2_failblock_size(), PROT_READ | PROT_WRITE);
+		int r UNUSED = mprotect(page, sizeof(double) << get_log2_failblock_size(), PROT_READ | PROT_WRITE);
 
-		fprintf(stderr, "SILENT handler caught %d SIGSEGV (%d SEGV_ACCERR), pointing to %p [vect %d, block %2d], mprotect returned %d\n", signum, info->si_code, info->si_addr, vect, block, r);
+		log_err(SHOW_DBGINFO, "SILENT handler caught %d SIGSEGV (%d SEGV_ACCERR), pointing to %p, mprotect returned %d\n", signum, info->si_code, info->si_addr, r);
 	}
 	else
 	{
@@ -238,58 +309,19 @@ void* simulate_failures(void* ptr)
 	//pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
 	//pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);
 
-	int i, nerr = sim_err->nerr;
-	long long faults_nsec[nerr];
-
-	if( nerr )
-	{
-		double total_time = 0, mtbe = sim_err->lambda / (double)nerr, faults_unscaled[nerr+1];
-
-		log_err(SHOW_FAILINFO, "Error is going to be simulated with exponential distribution (e^(-x/lambda))/lambda microseconds, lambda [~mtbe] = %e"
-				", and time scaled back for %d errors in duration %e\n", mtbe, nerr, sim_err->lambda);
-
-		// at first, create unscaled intervals between evenst (start, {faults}, end)
-		for(i=0; i<nerr+1; i++)
-		{
-			faults_unscaled[i] = exponential(mtbe, (double)rand()/(double)RAND_MAX);
-			total_time += faults_unscaled[i];
-		}
-
-		// now scale back total time interval to time given as parameter (in ns for sleep function)
-		const double factor = sim_err->lambda * 1e3 / total_time;
-		for(i=0; i<nerr; i++)
-			faults_nsec[i] = (long long)(factor * faults_unscaled[i] + 0.5);
-
-		#if VERBOSE >= SHOW_FAILINFO
-		char str[12*nerr]; str[0] = '\0';
-		for(i=0; i<nerr; i++)
-			sprintf(str + strlen(str), ", %lld", faults_nsec[i]);
-		log_err(SHOW_FAILINFO, "Intervals in ns between error injections are %s\n", str+2);
-		#endif
-
-		i=0;
-	}
-	else
-		log_err(SHOW_FAILINFO, "Error is going to be simulated with exponential distribution (e^(-x/lambda))/lambda microseconds, lambda [~mtbe] = %e\n", sim_err->lambda);
-	
+	int i, nerr = sim_err->nerr_run;
+	long long *faults_nsec = sim_err->faults_nsec;
 
 	// Now wait for everything to be nicely started & first gradient to exist etc.
 	sem_wait(&sim_err->start_sim);
 	// Release immediately so thread can be cancelled without problems to destroy semaphore
 	sem_post(&sim_err->start_sim);
 
-	while(1)
+	//for(i=0; i< (nerr?nerr:INT_MAX) ; i++)
+	//DEBUG -- inject only 2 faults with -l mtbe
+	for(i=0; i< (nerr?nerr:2) ; i++)
 	{
-		long long next_fault_nsec;
-		if( nerr )
-		{
-			if( i >= nerr )
-				break;
-			else
-				next_fault_nsec = faults_nsec[i++];
-		}
-		else
-			next_fault_nsec = (long long)( exponential(sim_err->lambda, (double)rand()/(double)RAND_MAX) * 1e3);
+		long long next_fault_nsec = nerr ? faults_nsec[i] : (long long)( exponential(sim_err->lambda, (double)rand()/(double)RAND_MAX) * 1e3);
 
 		next_sim_fault.tv_sec = next_fault_nsec / (long long)(1e9); // secs to next fault
 		next_sim_fault.tv_nsec = next_fault_nsec % (long long)(1e9); // nanosecs to next fault
@@ -318,9 +350,11 @@ void cause_mpr(error_sim_data *sim_err)
 	int rand_page = (int)( ((double)rand() / (double)RAND_MAX) * sim_err->info->nb_failblocks ) ;
 	int vect      = (int)( ((double)rand() / (double)RAND_MAX) * sim_err->info->nb_data ) ;
 
+	sim_err->nerr_injected++;
+
 	double* addr = sim_err->info->data[ vect ] + rand_page * sim_err->info->failblock_size;
 
-	log_err(SHOW_DBGINFO, "Error is going to be triggered on page %3d of vector %s (%d) : %p\n", rand_page, vect_name(vect+1), vect+1, (void*)addr);
+	log_err(SHOW_DBGINFO, "Error %d is going to be triggered on page %3d of vector %s (%d) : %p\n", sim_err->nerr_injected, rand_page, vect_name(vect+1), vect+1, (void*)addr);
 
 	mprotect((void*)addr, sizeof(double) << sim_err->info->log2fbs, PROT_NONE);
 	//madvise((void*)addr, sysconf(_SC_PAGESIZE), MADV_HWPOISON);

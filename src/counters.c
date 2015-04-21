@@ -58,7 +58,9 @@ void log_convergence(const int r UNUSED, const double e UNUSED, const int f UNUS
 	log_conv_vals[3] = f;
 	Extrae_nevent(4, log_conv_types, log_conv_vals);
 	#endif
+	#if VERBOSE >= SHOW_DBGINFO
 	log_out("%d, % e %d\n", r, e, f);
+	#endif
 }
 
 #endif
@@ -129,10 +131,6 @@ void setup_measure()
 
 void start_measure()
 {
-	#if VERBOSE >= SHOW_DBGINFO
-	log_out("Starting measures\n");
-	#endif
-
 	#ifdef GETTIMEOFDAY
 	gettimeofday( &start_time, NULL );
 	#endif 
@@ -150,12 +148,10 @@ void stop_measure()
 
 	#ifdef GETTIMEOFDAY
 	gettimeofday( &stop_time, NULL );
-	printf("gettimeofday_Usecs:%e\n", (1e6 * (stop_time.tv_sec - start_time.tv_sec)) + stop_time.tv_usec - start_time.tv_usec);
+	double max_time, time_here = (1e6 * (stop_time.tv_sec - start_time.tv_sec)) + stop_time.tv_usec - start_time.tv_usec;
+	MPI_Allreduce(&time_here, &max_time, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+	log_out("gettimeofday_Usecs:%e\n", max_time);
 	#endif 
-
-	#if VERBOSE >= SHOW_DBGINFO
-	log_out("Ended measures\n");
-	#endif
 
 	#ifdef EXTRAE_EVENTS
 	#ifdef _OMPSS

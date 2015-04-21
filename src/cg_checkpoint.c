@@ -30,7 +30,10 @@ void due_checkpoint(checkpoint_data *ckpt_data, double *iterate, double *gradien
 	// reuse pragma check
 	#pragma omp task out(*behaviour) inout(*ckpt_data, *old_err_sq) label(due_checkpoint) no_copy_deps
 	{
-		if(!aggregate_skips())
+		int skips_here = aggregate_skips(), skips_world;
+		MPI_Allreduce(&skips_here, &skips_world, 1, MPI_INT, MPI_BOR, MPI_COMM_WORLD);
+
+		if(!skips_world)
 		{
 			log_err(SHOW_DBGINFO, "SAVING CHECKPOINT\n");
 
@@ -101,7 +104,7 @@ void checkpoint_vectors(checkpoint_data *ckpt_data, int *behaviour, double *iter
 		#elif CKPT == CKPT_TO_DISK
 			char path[250];
 			int ckpt_fd;
-			sprintf(path, "%s%d", ckpt_data->checkpoint_path, i);
+			sprintf(path, "%s%d", ckpt_data->checkpoint_path, world_block(i));
 
 			if(*behaviour == SAVE_CHECKPOINT)
 			{
@@ -113,7 +116,6 @@ void checkpoint_vectors(checkpoint_data *ckpt_data, int *behaviour, double *iter
 					fprintf(stderr, "ERROR Unable to open file %s to write checkpoint.\n", path);
 					perror("open() error message is ");
 				}
-
 
 				write(ckpt_fd,  iterate+s,  (e-s) * sizeof(double));
 				write(ckpt_fd,  gradient+s, (e-s) * sizeof(double));

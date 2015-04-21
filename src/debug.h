@@ -62,9 +62,13 @@
 #else
 
 #undef VERBOSE
-
-#define log_out(...) {}
 #define log_err(...) {}
+
+#ifdef SILENT
+#define log_out(...) {}
+#else
+#define log_out(...) if( mpi_rank == 0 ) printf(__VA_ARGS__)
+#endif
 
 #endif
 

@@ -40,7 +40,7 @@ void set_blocks_sparse(Matrix *A, int nb_blocks, const int fail_size, const int 
 	mpi_zonesize  = (int*)malloc( (  mpi_size  ) * sizeof(int));
 	int mpiworld_blocks = (nb_blocks) * mpi_size;
 
-	printf("mpi rank is %d out of %d : with %d blocks per rank, we have %d total blocks\n", mpi_rank, mpi_size, nb_blocks, mpiworld_blocks);
+	log_err(SHOW_DBGINFO, "mpi rank is %d out of %d : with %d blocks per rank, we have %d total blocks\n", mpi_rank, mpi_size, nb_blocks, mpiworld_blocks);
 
 	// compute block repartition now we have the matrix, arrange for block limits to be on fail block limits
 	int i, r, b, pos = 0, next_stop = 0, ideal_bs, inc_pos;
@@ -409,7 +409,7 @@ int main(int argc, char* argv[])
 	long fail_size;
 	double lambda = 0, cv_thres = 1e-10;
 	#if CKPT == CKPT_TO_DISK
-	char *checkpoint_path = getenv("TMPDIR"), *checkpoint_prefix = "", ckpt[50];
+	char *checkpoint_path = getenv("TMPDIR"), *checkpoint_prefix = "cg_ckpt", ckpt[50];
 	#else
 	char *checkpoint_path = NULL, *checkpoint_prefix = NULL;
 	#endif
@@ -418,10 +418,11 @@ int main(int argc, char* argv[])
 	fail_size = sysconf(_SC_PAGESIZE); // default page size ?
 	unsigned int seed = 1591613054 ;// time(NULL);
 
-	//int mpi_args = 0, mpi_thread_level = MPI_THREAD_FUNNELED/*SINGLE,FUNNELED,SERIALIZED,MULTIPLE*/, mpi_size = 1;
+	//int mpi_args = 0, mpi_thread_level = MPI_THREAD_FUNNELED/*SINGLE,FUNNELED,SERIALIZED,MULTIPLE*/;
 	//MPI_Init_thread(&mpi_args, NULL, mpi_thread_level, &mpi_thread_level);
 	//assert( mpi_thread_level == MPI_THREAD_SERIALIZED );
-	//printf("Asked for mpi thread level %d, got mpi_thread_level:%d\n", MPI_THREAD_FUNNELED, mpi_thread_level);
+	//log_err(SHOW_DBGINFO, "Asked for mpi thread level %d, got mpi_thread_level:%d\n", MPI_THREAD_FUNNELED, mpi_thread_level);
+
 	int mpi_args = 0;
 	MPI_Init(&mpi_args, NULL);
 
@@ -557,7 +558,7 @@ int main(int argc, char* argv[])
 			const char *ckpt = NULL;
 			#endif
 
-			printf(header);
+			log_out(header);
 
 			populate_global(mpi_zonesize[mpi_rank], fail_size, fault_strat, nerr, lambda, ckpt);
 
@@ -576,7 +577,7 @@ int main(int argc, char* argv[])
 				// seed = 0 -> random : time for randomness, +j to get different seeds even if solving < 1s
 				unsigned int real_seed = seed == 0 ? time(NULL) + j : seed;
 				if( runs > 1 )
-					printf("run:%d seed:%u\n", j, real_seed);
+					log_out("run:%d seed:%u\n", j, real_seed);
 
 				srand(real_seed);
 
@@ -611,7 +612,7 @@ int main(int argc, char* argv[])
 				MPI_Allreduce(&err_t, &err, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
 				MPI_Allreduce(&norm_b_t, &norm_b, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
 
-				printf("Verification : euclidian distance to solution ||Ax-b||^2 = %e (local %e), ||Ax-b||/||b|| = %e\n", err, err_t, sqrt(err/norm_b));
+				log_out("Verification : euclidian distance to solution ||Ax-b||^2 = %e (local %e), ||Ax-b||/||b|| = %e\n", err, err_t, sqrt(err/norm_b));
 			}
 
 			// deallocate everything we have allocated for several solvings

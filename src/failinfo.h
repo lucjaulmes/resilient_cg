@@ -107,9 +107,10 @@ typedef struct error_sim_data
 {
 	// simulation infos, parameters, etc.
 	double lambda;
-	int nerr;
+	int nerr_world, nerr_run, nerr_injected;
 	pthread_t th;
 	sem_t start_sim;
+	long long *faults_nsec;
 
 	analyze_err *info;
 } error_sim_data;
@@ -219,8 +220,9 @@ void* simulate_failures(void *ptr);
 // setup methods, called before anything happens
 void populate_global(const int n, const int fail_size_bytes, const int fault_strat, const int max_err, const double lambda, const char *checkpoint_path);
 void setup_resilience(const Matrix *A, const int nb, magic_pointers *mp);
+void decide_err_time(error_sim_data *sim_err);
 void start_error_injection();
-void unset_resilience();
+int unset_resilience();
 void compute_neighbourhoods(const Matrix *mat, const int bs, Matrix *neighbours);
 
 void get_failed_neighbourset(const int *all_lost, const int nb_lost, const int start_block, int *set, int *num);

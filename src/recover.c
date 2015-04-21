@@ -411,10 +411,11 @@ int recover_x_lossy(magic_pointers *mp, double *x)
 	// yay, can't fail ! A and b from "safe backup store"
 	int *lost_blocks, nb_lost = get_all_failed_blocks(MASK_ITERATE, &lost_blocks);
 
-	recover_inverse(mp->A, mp->b, NULL, x, lost_blocks, nb_lost);
-
 	if( nb_lost )
+	{
+		recover_inverse(mp->A, mp->b, NULL, x, lost_blocks, nb_lost);
 		free( lost_blocks );
+	}
 
 	clear_failed(MASK_ITERATE);
 
