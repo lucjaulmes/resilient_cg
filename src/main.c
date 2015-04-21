@@ -442,7 +442,7 @@ int main(int argc, char* argv[])
 				// seed = 0 -> random : time for randomness, +j to get different seeds even if solving < 1s
 				unsigned int real_seed = seed == 0 ? time(NULL) + j : seed;
 				if( runs > 1 )
-					printf("run:%d seed:%u ", j, real_seed);
+					printf("run:%d seed:%u\n", j, real_seed);
 
 				srand(real_seed);
 

@@ -14,10 +14,11 @@ void hard_reset(magic_pointers *mp)
 	*(mp->old_rho) = INFINITY;
 	*(mp->normA_p_sq) = INFINITY;
 
+	reset_failed_skipped_blocks();
+
 	recover_x_lossy(mp, mp->x);
 
 	recompute_gradient(mp->g, mp->A, mp->x, NULL, NULL, mp->Ax, mp->b);
-	reset_failed_skipped_blocks();
 	#endif
 }
 
@@ -50,9 +51,9 @@ void recover_rectify_xk(const int n UNUSED, magic_pointers *mp, double *x, char 
 }
 
 #if DUE == DUE_IN_PATH
-#pragma omp task inout(*err_sq, [n]Ap) out(*wait_for_iterate) concurrent(*rho, [n]gradient, [n]z) label(recover_g) priority(0) no_copy_deps
+#pragma omp task inout(*err_sq, *rho, [n]Ap) out(*wait_for_iterate) concurrent([n]gradient, [n]z) label(recover_g_z) priority(0) no_copy_deps
 #else
-#pragma omp task inout([n]Ap) out(*wait_for_iterate) concurrent(*err_sq, *rho, [n]gradient, [n]z) label(recover_g) priority(0) no_copy_deps
+#pragma omp task inout([n]Ap) out(*wait_for_iterate) concurrent(*err_sq, *rho, [n]gradient, [n]z) label(recover_g_z) priority(0) no_copy_deps
 #endif
 void recover_rectify_g_z(const int n UNUSED, magic_pointers *mp, const double *p, double *Ap, double *gradient, double *z, double *err_sq, double *rho, char *wait_for_iterate UNUSED)
 {
@@ -153,9 +154,9 @@ void recover_rectify_g_z(const int n UNUSED, magic_pointers *mp, const double *p
 }
 
 #if DUE == DUE_IN_PATH
-#pragma omp task inout(*err_sq, *rho, [n]x) in(*wait_for_mvm) concurrent([n]gradient, [n]z) label(recover_xk_g) priority(0) no_copy_deps
+#pragma omp task inout(*err_sq, *rho, [n]x) in(*wait_for_mvm) concurrent([n]gradient, [n]z) label(recover_xk_g_z) priority(0) no_copy_deps
 #else
-#pragma omp task inout([n]x) in(*wait_for_mvm) concurrent(*err_sq, *rho, [n]gradient, [n]z) label(recover_xk_g) priority(0) no_copy_deps
+#pragma omp task inout([n]x) in(*wait_for_mvm) concurrent(*err_sq, *rho, [n]gradient, [n]z) label(recover_xk_g_z) priority(0) no_copy_deps
 #endif
 void recover_rectify_x_g_z(const int n, magic_pointers *mp, double *x, double *gradient, double *z, double *err_sq, double *rho, char *wait_for_mvm UNUSED)
 {

@@ -61,7 +61,7 @@ void populate_global(const int n, const int fail_size_bytes, const int fault_str
 		#endif
 	};
 
-	sim_err = (error_sim_data){ .lambda = lambda, .nerr = nerr, .info = &errinfo };
+	sim_err = (error_sim_data){ .lambda = lambda, .nerr = nerr, .nerr_injected = 0, .info = &errinfo };
 }
 
 void setup_resilience(const Matrix *A UNUSED, const int nb, magic_pointers *mp)
@@ -126,7 +126,7 @@ void start_error_injection()
 	sem_post(&sim_err.start_sim);
 }
 
-void unset_resilience()
+int unset_resilience()
 {
 	if( sim_err.lambda != 0 && sim_err.th )
 	{
@@ -147,6 +147,11 @@ void unset_resilience()
 	sigaction(SIGBUS, &sigact, NULL);
 	sigaction(SIGSEGV, &sigact, NULL);
 
+	// use X-macros to cancel all mprotect's still lying around
+	#define X(constant, name) mprotect(errinfo.data[constant-1], sim_err.info->nb_failblocks * sim_err.info->failblock_size * sizeof(double), PROT_READ | PROT_WRITE);
+	ASSOC_CONST_MP
+	#undef X
+
 	#if DUE
 	deallocate_matrix(errinfo.neighbours);
 	free(errinfo.neighbours);
@@ -154,6 +159,8 @@ void unset_resilience()
 	#endif
 
 	free(errinfo.data);
+
+	return sim_err.nerr_injected;
 }
 
 void resilience_sighandler(int signum, siginfo_t *info, void *context UNUSED)
@@ -208,11 +215,10 @@ void silent_deallocating_sighandler(int signum, siginfo_t *info, void *context U
 	// handler to silently deallocate memory even where we removed authorizations
 	if(signum == SIGSEGV && info->si_code == SEGV_ACCERR)
 	{
-		int block, vect = get_data_blockptr(info->si_addr, &block), r;
 		void * page = (void*)((long)info->si_addr - ((long)info->si_addr % (sizeof(double) << get_log2_failblock_size())));
-		r = mprotect(page, sizeof(double) << get_log2_failblock_size(), PROT_READ | PROT_WRITE);
+		int r = mprotect(page, sizeof(double) << get_log2_failblock_size(), PROT_READ | PROT_WRITE);
 
-		fprintf(stderr, "SILENT handler caught %d SIGSEGV (%d SEGV_ACCERR), pointing to %p [vect %d, block %2d], mprotect returned %d\n", signum, info->si_code, info->si_addr, vect, block, r);
+		fprintf(stderr, "SILENT handler caught %d SIGSEGV (%d SEGV_ACCERR), pointing to %p, mprotect returned %d\n", signum, info->si_code, info->si_addr, r);
 	}
 	else
 	{
@@ -232,7 +238,8 @@ void* simulate_failures(void* ptr)
 	//pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);
 
 	int i, nerr = sim_err->nerr;
-	long long faults_nsec[nerr+1];
+	long long faults_nsec[nerr];
+	sim_err->nerr_injected = 0;
 
 	if( nerr )
 	{
@@ -276,7 +283,7 @@ void* simulate_failures(void* ptr)
 		long long next_fault_nsec;
 		if( nerr )
 		{
-			if( i > nerr )
+			if( i >= nerr )
 				break;
 			else
 				next_fault_nsec = faults_nsec[i++];
@@ -308,12 +315,14 @@ void* simulate_failures(void* ptr)
 
 void cause_mpr(error_sim_data *sim_err)
 {
+	sim_err->nerr_injected++;
+
 	int rand_page = (int)( ((double)rand() / (double)RAND_MAX) * sim_err->info->nb_failblocks ) ;
 	int vect      = (int)( ((double)rand() / (double)RAND_MAX) * sim_err->info->nb_data ) ;
 
 	double* addr = sim_err->info->data[ vect ] + rand_page * sim_err->info->failblock_size;
 
-	log_err(SHOW_DBGINFO, "Error is going to be triggered on page %3d of vector %s (%d) : %p\n", rand_page, vect_name(vect+1), vect+1, (void*)addr);
+	log_err(SHOW_DBGINFO,"Error is going to be triggered on page %3d of vector %s (%d) : %p\n", rand_page, vect_name(vect+1), vect+1, (void*)addr);
 
 	mprotect((void*)addr, sizeof(double) << sim_err->info->log2fbs, PROT_NONE);
 	//madvise((void*)addr, sysconf(_SC_PAGESIZE), MADV_HWPOISON);
@@ -679,6 +688,5 @@ void compute_neighbourhoods(const Matrix *mat, const int bs, Matrix *neighbours)
 
 	neighbours->r[neighbours->n] = neighbours->nnz = pos;
 }
-
 
 

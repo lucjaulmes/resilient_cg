@@ -111,7 +111,7 @@ void recompute_gradient(double *gradient, const Matrix *A, double *iterate, char
 		int s = get_block_start(i), e = get_block_end(i);
 
 		// Aiterate <- A * iterate
-		#pragma omp task in(iterate[0:A->n-1], *wait_for_iterate) concurrent(*wait_for_mvm) out(Aiterate[s:e-1]) firstprivate(s, e) label(AxIt) priority(10) no_copy_deps
+		#pragma omp task in(iterate[0:A->m-1], *wait_for_iterate) concurrent(*wait_for_mvm) out(Aiterate[s:e-1]) firstprivate(s, e) label(AxIt) priority(10) no_copy_deps
 		{
 			int k, l;
 			for(l=s; l<e; l++)
@@ -164,7 +164,7 @@ void compute_Ap(const Matrix *A, double *p, char *wait_for_p UNUSED, char *wait_
 		int s = get_block_start(i), e = get_block_end(i);
 
 		// Ap <- A * p
-		#pragma omp task in(p[0:A->n-1], *wait_for_p) concurrent(*wait_for_mvm) out(Ap[s:e-1]) firstprivate(s, e) label(Axp) priority(20) no_copy_deps
+		#pragma omp task in(p[0:A->m-1], *wait_for_p) concurrent(*wait_for_mvm) out(Ap[s:e-1]) firstprivate(s, e) label(Axp) priority(20) no_copy_deps
 		{
 			int k, l;
 			for(l=s; l<e; l++)

@@ -78,7 +78,7 @@ void checkpoint_vectors(checkpoint_data *ckpt_data, int *behaviour, double *iter
 		{
 			if(*behaviour != SAVE_CHECKPOINT)
 				reset_failed_skipped_blocks();
-			
+
 		#if CKPT == CKPT_IN_MEMORY
 			if(*behaviour == SAVE_CHECKPOINT)
 			{

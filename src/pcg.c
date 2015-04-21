@@ -142,8 +142,11 @@ void compute_beta(const double *rho, const double *old_rho, double *beta)
 	#if DUE
 	int state = aggregate_skips();
 	if( state & (MASK_GRADIENT | MASK_NORM_G | MASK_Z | MASK_RHO | MASK_RECOVERY) )
+	{
+		clear_failed(MASK_GRADIENT | MASK_NORM_G | MASK_Z | MASK_RHO | MASK_RECOVERY);
 		fprintf(stderr, "ERROR SUBSISTED PAST RECOVERY restart needed. At beta, g:%d, ||g||:%d, z:%d, rho:%d\n",
 			(state & MASK_GRADIENT) > 0, (state & MASK_NORM_G) > 0, (state & MASK_Z) > 0, (state & MASK_RHO) > 0);
+	}
 	#endif
 
 	log_err(SHOW_TASKINFO, "Computing beta finished : rho = %e ; old_rho = %e ; beta = %e\n", *rho, *old_rho, *beta);
@@ -165,7 +168,10 @@ void compute_alpha(double *normA_p_sq, double *rho, double *old_rho, double *alp
 	}
 	#else
 	if( state & (MASK_ITERATE | MASK_P | MASK_OLD_P | MASK_A_P | MASK_NORM_A_P | MASK_RECOVERY) )
+	{
+		clear_failed(MASK_ITERATE | MASK_P | MASK_OLD_P | MASK_A_P | MASK_NORM_A_P | MASK_RECOVERY);
 		fprintf(stderr, "ERROR SUBSISTED PAST RECOVERY restart needed. At alpha, x:%d, p:%d, p':%d, Ap:%d, <p,Ap>:%d\n", (state & MASK_ITERATE) > 0, (state & MASK_P) > 0, (state & MASK_OLD_P) > 0, (state & MASK_A_P) > 0, (state & MASK_NORM_A_P) > 0);
+	}
 	#endif
 	#endif
 
@@ -259,7 +265,7 @@ void solve_pcg(const Matrix *A, const double *b, double *iterate, double converg
 			compute_beta(&rho, &old_rho, &beta);
 
 			update_iterate(iterate, wait_for_iterate, old_p, &alpha);
-			#if DUE == DUE_ASYNC || DUE == DUE_IN_PATH
+			#if DUE == DUE_ASYNC
 			recover_rectify_xk(n, &mp, iterate, wait_for_iterate);
 			#endif
 		}
@@ -334,6 +340,10 @@ void solve_pcg(const Matrix *A, const double *b, double *iterate, double converg
 
 			if( do_update_gradient <= 0 )
 				do_update_gradient = RECOMPUTE_GRADIENT_FREQ;
+			#if DUE == DUE_IN_PATH
+			else
+				recover_rectify_xk(n, &mp, iterate, (char*)&normA_p_sq);
+			#endif
 			#if CKPT
 			if( do_checkpoint <= 0 )
 				do_checkpoint = CHECKPOINT_FREQ;
@@ -370,10 +380,10 @@ void solve_pcg(const Matrix *A, const double *b, double *iterate, double converg
 	failures = check_errors_signaled();
 	log_convergence(r-1, old_err_sq, failures);
 
-	printf("CG method finished iterations:%d with error:%e (failures:%d)\n", r, sqrt((err_sq==0.0?old_err_sq:err_sq)/norm_b), total_failures);
-
 	// stop resilience stuff that's still going on
-	unset_resilience();
+	int inj = unset_resilience();
+
+	printf("CG method finished iterations:%d with error:%e (failures:%d injected:%d)\n", r, sqrt((err_sq==0.0?old_err_sq:err_sq)/norm_b), total_failures, inj);
 
 	free(p);
 	free(old_p);
