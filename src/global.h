@@ -18,11 +18,6 @@
 #define RECOMPUTE_GRADIENT_FREQ 50
 #endif
 
-#define SDC_NONE	 0
-#define SDC_ALPHA    1
-#define SDC_ORTHO    2
-#define SDC_GRADIENT 3
-
 #define CKPT_NONE		0
 #define CKPT_TO_DISK	1
 #define CKPT_IN_MEMORY	2
@@ -33,29 +28,19 @@
 #define DUE_ROLLBACK	3
 #define DUE_LOSSY		4
 
-#if SDC
-	#if ! CHECK_SDC_FREQ
-	#error you have to define a SDC check frequency
-	#endif
-	
-	#if (SDC == SDC_GRADIENT) && (CHECK_SDC_FREQ % RECOMPUTE_GRADIENT_FREQ) != 0
-	#error Using GRADIENT as SDC detection, CHECK_SDC_FREQ must be a multiple of RECOMPUTE_GRADIENT_FREQ
-	#endif
-#endif
-
-#if SDC || DUE == DUE_ROLLBACK
+#if DUE == DUE_ROLLBACK
 	#if CKPT == CKPT_NONE
-	#error you have to define a checkpoint strategy
+	#error you have to define a checkpoint strategy to use rollback
 	#endif
 #endif
 
 #if CKPT
-	#if ! SDC && DUE != DUE_ROLLBACK
+	#if DUE != DUE_ROLLBACK
 	#error checkpointing strategy defined but not used
 	#endif
 
-	#if ! CHECKPOINT_FREQ || (SDC && (CHECKPOINT_FREQ % CHECK_SDC_FREQ ) != 0) // multiple of check_sdc_freq if sdc is on
-	#error you have to define a checkpoint frequency, multiple of CHECK_SDC_FREQ if you enable SDC checking
+	#if CHECKPOINT_FREQ == 0
+	#error you have to define a checkpoint frequency
 	#endif
 #endif
 

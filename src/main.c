@@ -90,16 +90,13 @@ void usage(char* arg0)
 			"  -disk  /path/dir  Path to a directory on local disk for checkpointing (default $TMPDIR).\n"
 			"  -ckpt             Prefix of the name of checkpoint files.\n"
 	#endif
-	#if SDC
-			"  -sdc    tol       Consider SDC occured if detector yields a value > tol (default 1e-12).\n"
-	#endif
 			"All options apply to every following input file. You may re-specify them for each file.\n\n", arg0);
 	exit(1);
 }
 
 // we return how many parameters we consumed, -1 for error
 int read_param(int argsleft, char* argv[], double *lambda, int *runs, int *threads UNUSED, int *blocks, long *fail_size, int *fault_strat, 
-			int *nerr, unsigned int *seed, double *cv_thres, double *err_thres, char **checkpoint_path UNUSED, char **checkpoint_prefix UNUSED)
+			int *nerr, unsigned int *seed, double *cv_thres, char **checkpoint_path UNUSED, char **checkpoint_prefix UNUSED)
 {
 	if( strcmp(argv[0], "-r") == 0 )
 	{
@@ -255,23 +252,6 @@ int read_param(int argsleft, char* argv[], double *lambda, int *runs, int *threa
 
 		return 3;
 	}
-	else if( strcmp(argv[0], "-sdc") == 0 )
-	{
-		// we want at least the double and a matrix market file after
-		if( argsleft <= 2 )
-			return -1;
-
-		*err_thres = strtod(argv[1], NULL);
-
-		#if SDC == 0
-		if( *err_thres <= DBL_EPSILON )
-		#else
-		if( *err_thres <= 0.0 )
-		#endif
-			return -1;
-
-		return 2;
-	}
 	#if CKPT == CKPT_TO_DISK
 	else if( strcmp(argv[0], "-disk") == 0 )
 	{
@@ -368,7 +348,7 @@ int main(int argc, char* argv[])
 
 	int fault_strat = MULTFAULTS_GLOBAL, nerr = 0;
 	long fail_size;
-	double lambda = 0, cv_thres = 1e-10, err_thres = 1e-12;
+	double lambda = 0, cv_thres = 1e-10;
 	#if CKPT == CKPT_TO_DISK
 	char *checkpoint_path = getenv("TMPDIR"), *checkpoint_prefix = "", ckpt[50];
 	#else
@@ -383,7 +363,7 @@ int main(int argc, char* argv[])
 	// Iterate over parameters (usually open files)
 	for(f=1; f<argc; f += nb_read )
 	{
-		nb_read = read_param(argc - f, &argv[f], &lambda, &runs, &nb_threads, &nb_blocks, &fail_size, &fault_strat, &nerr, &seed, &cv_thres, &err_thres, &checkpoint_path, &checkpoint_prefix);
+		nb_read = read_param(argc - f, &argv[f], &lambda, &runs, &nb_threads, &nb_blocks, &fail_size, &fault_strat, &nerr, &seed, &cv_thres, &checkpoint_path, &checkpoint_prefix);
 
 		// error happened
 		if( nb_read < 0 )
@@ -424,11 +404,6 @@ int main(int argc, char* argv[])
 			else
 				sprintf(strchr(header, '\n'), " lambda:%e\n", lambda);
 
-			#if SDC
-			const char * const sdc_names[] = {"none", "alpha", "gradient", "orthogonal"};
-			sprintf(strchr(header, '\n'), " sdc:%s sdc_freq:%d sdc_thres:%e\n", sdc_names[SDC], CHECK_SDC_FREQ, err_thres);
-			#endif
-
 			#if CKPT
 			const char * const ckpt_names[] = {"none", "in_memory", "to_disk"};
 			sprintf(strchr(header, '\n'), " ckpt:%s ckpt_freq:%d\n", ckpt_names[CKPT], CHECKPOINT_FREQ);
@@ -464,7 +439,7 @@ int main(int argc, char* argv[])
 				// seed = 0 -> random : time for randomness, +j to get different seeds even if solving < 1s
 				unsigned int real_seed = seed == 0 ? time(NULL) + j : seed;
 				if( runs > 1 )
-					printf("run:%d seed:%u ", j, real_seed);
+					printf("run:%d seed:%u\n", j, real_seed);
 
 				srand(real_seed);
 
@@ -477,7 +452,7 @@ int main(int argc, char* argv[])
 					x[i] = 0.0;
 				}
 
-				solve_cg(&matrix, b, x, cv_thres, err_thres);
+				solve_cg(&matrix, b, x, cv_thres);
 
 				// compute verification
 				mult(&matrix, x, s);

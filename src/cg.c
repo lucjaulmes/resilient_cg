@@ -19,27 +19,9 @@ magic_pointers mp;
 #include "cg_normal_tasks.c"
 #endif
 
-#if SDC
-#include "cg_sdc_checks.c"
-#endif
-
 #if CKPT
 #include "cg_checkpoint.c"
 #endif
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 #pragma omp task in(*err_sq, *old_err_sq) out(*beta) label(compute_beta) priority(100) no_copy_deps
 void compute_beta(const double *err_sq, const double *old_err_sq, double *beta)
@@ -50,7 +32,10 @@ void compute_beta(const double *err_sq, const double *old_err_sq, double *beta)
 	#if DUE
 	int state = aggregate_skips();
 	if( state & (MASK_GRADIENT | MASK_NORM_G | MASK_RECOVERY) )
+	{
+		clear_failed(MASK_GRADIENT | MASK_NORM_G | MASK_RECOVERY);
 		fprintf(stderr, "ERROR SUBSISTED PAST RECOVERY restart needed. At beta, g:%d, ||g||:%d\n", (state & MASK_GRADIENT) > 0, (state & MASK_NORM_G) > 0);
+	}
 	#endif
 
 	log_err(SHOW_TASKINFO, "Computing beta finished : err_sq = %e ; old_err_sq = %e ; beta = %e\n", *err_sq, *old_err_sq, *beta);
@@ -73,7 +58,10 @@ void compute_alpha(double *err_sq, double *normA_p_sq, double *old_err_sq, doubl
 	}
 	#else
 	if( state & (MASK_ITERATE | MASK_P | MASK_OLD_P | MASK_A_P | MASK_NORM_A_P | MASK_RECOVERY) )
+	{
+		clear_failed(MASK_ITERATE | MASK_P | MASK_OLD_P | MASK_A_P | MASK_NORM_A_P | MASK_RECOVERY);
 		fprintf(stderr, "ERROR SUBSISTED PAST RECOVERY restart needed. At alpha, x:%d, p:%d, p':%d, Ap:%d, <p,Ap>:%d\n", (state & MASK_ITERATE) > 0, (state & MASK_P) > 0, (state & MASK_OLD_P) > 0, (state & MASK_A_P) > 0, (state & MASK_NORM_A_P) > 0);
+	}
 	#endif
 	#endif
 
@@ -91,7 +79,7 @@ static inline void swap(double **v, double **w)
 	*w = swap;
 }
 
-void solve_cg( const Matrix *A, const double *b, double *iterate, double convergence_thres, double error_thres UNUSED)
+void solve_cg(const Matrix *A, const double *b, double *iterate, double convergence_thres)
 {
 	// do some memory allocations
 	double norm_b, thres_sq;
@@ -107,9 +95,6 @@ void solve_cg( const Matrix *A, const double *b, double *iterate, double converg
 	double save_err_sq, save_alpha;
 	int do_checkpoint = 0;
 	#endif
-	#if SDC
-	int do_check_sdc = CHECK_SDC_FREQ;
-	#endif
 
 	p        = (double*)aligned_calloc(sizeof(double) << get_log2_failblock_size(), n * sizeof(double));
 	old_p    = (double*)aligned_calloc(sizeof(double) << get_log2_failblock_size(), n * sizeof(double));
@@ -121,11 +106,7 @@ void solve_cg( const Matrix *A, const double *b, double *iterate, double converg
 	save_it  = (double*)aligned_calloc(sizeof(double) << get_log2_failblock_size(), n * sizeof(double));
 	save_g   = (double*)aligned_calloc(sizeof(double) << get_log2_failblock_size(), n * sizeof(double));
 	save_p   = (double*)aligned_calloc(sizeof(double) << get_log2_failblock_size(), n * sizeof(double));
-	#if SDC == SDC_ORTHO
-	save_Ap  = NULL;
-	#else
 	save_Ap  = (double*)aligned_calloc(sizeof(double) << get_log2_failblock_size(), n * sizeof(double));
-	#endif
 	#endif
 
 	// some parameters pre-computed, and show some informations
@@ -133,27 +114,18 @@ void solve_cg( const Matrix *A, const double *b, double *iterate, double converg
 	thres_sq = convergence_thres * convergence_thres * norm_b;
 	log_out("Error shown is ||Ax-b||^2, you should plot ||Ax-b||/||b||. (||b||^2 = %e)\n", norm_b);
 
-	detect_error_data err_data = (detect_error_data) {.error_detected = SAVE_CHECKPOINT, .prev_error = 0, .helper_1 = 0.0, .helper_2 = 0.0, .helper_3 = 0.0, .helper_4 = 0.0,
-	#if CKPT == CKPT_IN_MEMORY
-		.save_x = save_it, .save_g = save_g, .save_p = save_p, .save_Ap = save_Ap, .save_err_sq = &save_err_sq, .save_alpha = &save_alpha
-	#elif CKPT == CKPT_TO_DISK
-		.save_err_sq = &save_err_sq, .save_alpha = &save_alpha
-	#endif
-	};
-	mp = (magic_pointers){.A = A, .b = b, .x = iterate, .p = p, .old_p = old_p, .g = gradient, .Ap = Ap, .Ax = Aiterate, .err_data = &err_data,
+	mp = (magic_pointers){.A = A, .b = b, .x = iterate, .p = p, .old_p = old_p, .g = gradient, .Ap = Ap, .Ax = Aiterate,
 							.alpha = &alpha, .beta = &beta, .err_sq = &err_sq, .old_err_sq = &old_err_sq, .normA_p_sq = &normA_p_sq};
-
-	#if SDC == SDC_GRADIENT
-	double norm_A = 0.0; // A spd : row norm <=> col norm , ||A|| = max || A_col i || forall i
-	int i;
-	for(i=0; i<A->n; i++)
-		norm_A = fmax(norm_A, sqrt(norm( A->r[i+1] - A->r[i], A->v + A->r[i] )));
-		//norm_A += sqrt(norm( A->r[i+1] - A->r[i], A->v + A->r[i] ));
-	
-	err_data.helper_4 = norm_A * sqrt(norm_b);
+	#if CKPT
+	checkpoint_data ckpt_data = (checkpoint_data) {
+		#if CKPT == CKPT_IN_MEMORY
+		.save_x = save_it, .save_g = save_g, .save_p = save_p, .save_Ap = save_Ap,
+		#endif
+		.instructions = SAVE_CHECKPOINT, .save_err_sq = &save_err_sq, .save_alpha = &save_alpha
+	};
+	mp.ckpt_data = &ckpt_data;
 	#endif
 
-	
 	setup_resilience(A, 6, &mp);
 	start_measure();
 
@@ -163,7 +135,6 @@ void solve_cg( const Matrix *A, const double *b, double *iterate, double converg
 	{
 		if( --do_update_gradient > 0 )
 		{
-			update_iterate(iterate, wait_for_iterate, old_p, &alpha);
 
 			update_gradient(gradient, Ap, &alpha, wait_for_iterate);
 
@@ -176,6 +147,7 @@ void solve_cg( const Matrix *A, const double *b, double *iterate, double converg
 
 			compute_beta(&err_sq, &old_err_sq, &beta);
 
+			update_iterate(iterate, wait_for_iterate, old_p, &alpha);
 			#if DUE == DUE_ASYNC
 			recover_rectify_xk(n, &mp, iterate, wait_for_iterate);
 			#endif
@@ -187,35 +159,13 @@ void solve_cg( const Matrix *A, const double *b, double *iterate, double converg
 
 			recompute_gradient_mvm(A, iterate, wait_for_iterate, wait_for_mvm, Aiterate);
 
-			#if SDC == SDC_GRADIENT
-			do_check_sdc -= RECOMPUTE_GRADIENT_FREQ;
-			#if DUE == DUE_ROLLBACK
-			if(failures)
-			{
-				do_update_gradient = do_checkpoint = do_check_sdc = 0;
-				force_rollback(&err_data, iterate, gradient, old_p, Ap);
-			}
-			else
-			#endif
-			if( r > 0 && do_check_sdc == 0 )
-			{
-				do_checkpoint -= CHECK_SDC_FREQ;
-
-				update_gradient(gradient, Ap, &alpha, wait_for_iterate);
-
-				check_sdc_recompute_grad(do_checkpoint == 0, &err_data, b, iterate, gradient, old_p, Ap, wait_for_mvm, Aiterate, &old_err_sq, error_thres);
-			}
-			else
-				recompute_gradient_update(gradient, wait_for_mvm, Aiterate, b);
-			#else
 			recompute_gradient_update(gradient, wait_for_mvm, Aiterate, b);
-			#endif
 
 			norm_task(gradient, &err_sq);
 
 			#if CKPT
 			if( r == 0 )
-				force_checkpoint(&err_data, iterate, gradient, old_p, Ap);
+				force_checkpoint(&ckpt_data, iterate, gradient, old_p, Ap);
 			#endif
 
 			#if DUE == DUE_ASYNC || DUE == DUE_IN_PATH
@@ -233,23 +183,6 @@ void solve_cg( const Matrix *A, const double *b, double *iterate, double converg
 
 		update_p(p, old_p, wait_for_p, gradient, &beta);
 
-		#if SDC == SDC_ORTHO
-		// should happen in between p and Ap, to check if the new p and old Ap are orthogonal
-		#if DUE == DUE_ROLLBACK
-		if(failures)
-		{
-			do_checkpoint = do_check_sdc = 0;
-			force_rollback(&err_data, iterate, gradient, p, Ap);
-		}
-		else
-		#endif
-		if( -- do_check_sdc == 0 )
-		{
-			do_checkpoint -= CHECK_SDC_FREQ ;
-			check_sdc_p_Ap_orthogonal(do_checkpoint == 0, &err_data, iterate, gradient, p, Ap, &err_sq, error_thres);
-		}
-		#endif
-
 		compute_Ap(A, p, wait_for_p, wait_for_mvm, Ap);
 
 		scalar_product_task(p, Ap, &normA_p_sq);
@@ -264,19 +197,11 @@ void solve_cg( const Matrix *A, const double *b, double *iterate, double converg
 		// but it should not wait for recovery to finish on recovery iterations
 		if( !do_update_gradient )
 		{
-			#if SDC == SDC_ALPHA
-			_Pragma( STRINGIFY(omp taskwait on(old_err_sq2, err_data.prev_error, *wait_for_iterate)) )
-			#else
-			_Pragma( STRINGIFY(omp taskwait on(old_err_sq2, *wait_for_iterate)) )
-			#endif
+			#pragma omp taskwait on(old_err_sq2, *wait_for_iterate)
 		}
 		else
 		{
-			#if SDC == SDC_ALPHA
-			_Pragma( STRINGIFY(omp taskwait on(old_err_sq2, err_data.prev_error)) )
-			#else
-			_Pragma( STRINGIFY(omp taskwait on(old_err_sq2)) )
-			#endif
+			#pragma omp taskwait on(old_err_sq2)
 		}
 
 		// swapping p's so we reduce pressure on the execution of the update iterate tasks
@@ -306,38 +231,20 @@ void solve_cg( const Matrix *A, const double *b, double *iterate, double converg
 			if( do_checkpoint <= 0 )
 				do_checkpoint = CHECKPOINT_FREQ;
 			#endif
-			#if SDC
-			if( do_check_sdc <= 0 )
-				do_check_sdc = CHECK_SDC_FREQ;
-			#endif
 		}
 
 		compute_alpha(&err_sq, &normA_p_sq, &old_err_sq, &old_err_sq2, &alpha);
 
 		// should happen after p, Ap are ready and before (post-alpha) iterate and gradient updates
 		// so just after (or just before) alpha basically
-		#if CKPT && SDC == SDC_NONE // NB. this implies DUE_ROLLBACK
+		#if CKPT // NB. this implies DUE_ROLLBACK
 		if(failures)
 		{
 			do_checkpoint = 0;
-			force_rollback(&err_data, iterate, gradient, old_p, Ap);
+			force_rollback(&ckpt_data, iterate, gradient, old_p, Ap);
 		}
 		else if( --do_checkpoint == 0 )
-			due_checkpoint(&err_data, iterate, gradient, old_p, Ap);
-		#elif SDC == SDC_ALPHA
-		#if DUE == DUE_ROLLBACK // ALPHA + ROLLBACK
-		if(failures)
-		{
-			do_checkpoint = do_check_sdc = 0;
-			force_rollback(&err_data, iterate, gradient, old_p, Ap);
-		}
-		else 
-		#endif
-		if( -- do_check_sdc == 0 )
-		{
-			do_checkpoint -= CHECK_SDC_FREQ;
-			check_sdc_alpha_invariant(do_checkpoint == 0, &err_data, b, iterate, gradient, old_p, Ap, &old_err_sq, &alpha, error_thres);
-		}
+			due_checkpoint(&ckpt_data, iterate, gradient, old_p, Ap);
 		#endif
 	}
 
