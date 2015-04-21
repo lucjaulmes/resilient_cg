@@ -32,7 +32,10 @@ void compute_beta(const double *err_sq, const double *old_err_sq, double *beta)
 	#if DUE
 	int state = aggregate_skips();
 	if(state & (MASK_GRADIENT | MASK_NORM_G | MASK_RECOVERY))
+	{
+		clear_failed(MASK_GRADIENT | MASK_NORM_G | MASK_RECOVERY);
 		fprintf(stderr, "ERROR SUBSISTED PAST RECOVERY restart needed. At beta, g:%d, ||g||:%d\n", (state & MASK_GRADIENT) > 0, (state & MASK_NORM_G) > 0);
+	}
 	#endif
 
 	log_err(SHOW_TASKINFO, "Computing beta finished : err_sq = %e ; old_err_sq = %e ; beta = %e \n", *err_sq, *old_err_sq, *beta);
@@ -55,7 +58,10 @@ void compute_alpha(double *err_sq, double *normA_p_sq, double *old_err_sq, doubl
 	}
 	#else
 	if(state & (MASK_ITERATE | MASK_P | MASK_OLD_P | MASK_A_P | MASK_NORM_A_P | MASK_RECOVERY))
+	{
+		clear_failed(MASK_ITERATE | MASK_P | MASK_OLD_P | MASK_A_P | MASK_NORM_A_P | MASK_RECOVERY);
 		fprintf(stderr, "ERROR SUBSISTED PAST RECOVERY restart needed. At alpha, x:%d, p:%d, p':%d, Ap:%d, <p,Ap>:%d\n", (state & MASK_ITERATE) > 0, (state & MASK_P) > 0, (state & MASK_OLD_P) > 0, (state & MASK_A_P) > 0, (state & MASK_NORM_A_P) > 0);
+	}
 	#endif
 	#endif
 
