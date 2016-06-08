@@ -50,7 +50,7 @@ void recover_direct(const Matrix *A, const int sgn, const double *u, const doubl
 	// so s is +/- 1, we get w = v + sgn (A u)
 	const int fbs = get_failblock_size();
 	int i, lost = lost_block << get_log2_failblock_size();
-	
+
 	if(lost > A->n)
 	{
 		fprintf(stderr, "Cannot interpolate since block starts at %d but matrix has size %d.\n"
@@ -70,7 +70,7 @@ void recover_direct(const Matrix *A, const int sgn, const double *u, const doubl
 	local.r = & (A->r[lost]);
 
 	mult(&local, u, &(w[lost]));
-	
+
 	if(v != NULL && sgn < 0)
 	{
 		for(i=lost; i<lost+local.n; i++)
@@ -115,7 +115,7 @@ void cluster_neighbour_failures(const Matrix *A, const double *b, double *x, int
 		else if(strategy == MULTFAULTS_UNCORRELATED)
 			prepare_x_uncorrelated(x, b, A->n, lost_blocks, nb_lost);
 
-		else 
+		else
 			prepare_x_decorrelated(x, A->n, lost_blocks, nb_lost);
 	}
 	else // nb_lost > 1 && strategy == MULTFAULTS_GLOBAL
@@ -156,7 +156,7 @@ void do_interpolation(const Matrix *A, const double *b, const double *g, double 
 {
 	const int log2fbs = get_log2_failblock_size(), fbs = get_failblock_size();
 	int i, total_lost = nb_lost << log2fbs, lost[nb_lost];
-	
+
 	// change from block number to first row in block number
 	for(i=0; i<nb_lost; i++)
 		lost[i] = lost_blocks[i] << log2fbs;
@@ -170,7 +170,7 @@ void do_interpolation(const Matrix *A, const double *b, const double *g, double 
 
 	if(lost[nb_lost -1] + fbs > A->n)
 		total_lost -= (lost[nb_lost -1] + fbs - A->n);
-	
+
 	Matrix recup;
 	double *rhs = (double*)aligned_calloc(sizeof(double) << log2fbs, total_lost * sizeof(double));
 
@@ -188,7 +188,7 @@ void do_interpolation(const Matrix *A, const double *b, const double *g, double 
 	// get the submatrix for those lines
 	get_submatrix(A, lost, nb_lost, lost, nb_lost, fbs, &recup);
 
-	// fill in the rhs with the part we need 
+	// fill in the rhs with the part we need
 	get_rhs(nb_lost, lost, nb_lost, lost, fbs, A, b, g, x, rhs);
 
 	// from csparse
@@ -240,7 +240,7 @@ void get_rhs(const int n, const int *rows, const int m, const int *except_cols, 
 		for(ii=rows[i]; ii < rows[i] + bs && ii<A->n; ii++, k++)
 		{
 			// for each lost line ii, start with b_ii
-			// and remove contributions A_ii,j * x_j 
+			// and remove contributions A_ii,j * x_j
 			// from all rows j that are not lost
 			for(j=A->r[ ii ], jj=0; j<A->r[ ii+1 ]; j++)
 			{

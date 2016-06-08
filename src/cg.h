@@ -4,7 +4,7 @@
 #include "global.h"
 #include "matrix.h"
 
-typedef struct checkpoint_data 
+typedef struct checkpoint_data
 {
 	int instructions;
 	#if CKPT == CKPT_IN_MEMORY
@@ -57,7 +57,7 @@ typedef struct magic_pointers
 
 void solve_cg(const Matrix *A, const double *b, double *iterate, double convergence_thres);
 
-// all the algorithmical steps of CG that will be subdivided into tasks : 
+// all the algorithmical steps of CG that will be subdivided into tasks :
 void update_gradient(double *gradient, double *Ap, double *alpha, char *wait_for_iterate);
 void recompute_gradient_mvm(const Matrix *A, double *iterate, char *wait_for_iterate, char *wait_for_mvm, double *Aiterate);
 void recompute_gradient_update(double *gradient, char *wait_for_mvm, double *Aiterate, const double *b);

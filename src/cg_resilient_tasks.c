@@ -93,7 +93,7 @@ void update_gradient(double *gradient, double *Ap, double *alpha, char *wait_for
 			{
 				if(should_skip_block(page, MASK_GRADIENT | MASK_A_P))
 					continue;
-			
+
 				for(k=j; k<j+fbs; k++)
 					gradient[k] -= (*alpha) * Ap[k];
 
@@ -136,7 +136,7 @@ void recompute_gradient_mvm(const Matrix *A, double *iterate, char *wait_for_ite
 				for(l=j; l<j+fbs && l < e; l++)
 				{
 					Aiterate[l] = 0;
-					
+
 					for(k=A->r[l]; k < A->r[l+1] ; k++)
 						Aiterate[l] += A->v[k] * iterate[ A->c[k] ];
 				}
@@ -251,11 +251,11 @@ void compute_Ap(const Matrix *A, double *p, char *wait_for_p UNUSED, char *wait_
 				for(l=j; l<j+fbs && l < e; l++)
 				{
 					Ap[l] = 0;
-					
+
 					for(k=A->r[l]; k < A->r[l+1] ; k++)
 						Ap[l] += A->v[k] * p[ A->c[k] ];
 				}
-				
+
 				if(skips != count_neighbour_faults( page, mask ))
 					mark_to_skip(page, FAIL_A_P);
 			}

@@ -5,8 +5,8 @@
 // original copyright notice follows :
 //
 
-/* page-collect.c -- collect a snapshot each of of the /proc/pid/maps files, 
- *      with each VM region interleaved with a list of physical addresses 
+/* page-collect.c -- collect a snapshot each of of the /proc/pid/maps files,
+ *      with each VM region interleaved with a list of physical addresses
  *      which make up the virtual region.
  * Copyright C2009 by EQware Engineering, Inc.
  *
@@ -22,7 +22,7 @@
  *    GNU General Public License for more details.
  *
  *    You should have received a copy of the GNU General Public License
- *    along with PageMapTools.  If not, see http://www.gnu.org/licenses. 
+ *    along with PageMapTools.  If not, see http://www.gnu.org/licenses.
  */
 #define _LARGEFILE64_SOURCE
 
@@ -48,7 +48,7 @@ void mempage_file(char *m_name)
 {
 	int pid = getpid();
 	sprintf(m_name, "%s/%d/", PROC_DIR_NAME, pid);
-	
+
     struct stat buf;
 
     int n = stat(m_name, &buf);
@@ -62,7 +62,7 @@ void mempage_file(char *m_name)
 	}
 }
 
-// get virtual memory ranges : for each range i put the start and end adresses in start[i],end[i] 
+// get virtual memory ranges : for each range i put the start and end adresses in start[i],end[i]
 // and the number of pages in the ranges k=0..i (i included) in range_end[i]
 int retrieve_vm_ranges(intptr_t *start, intptr_t *end, int *range_end, int *total_pages, intptr_t *free_pass, int nb_free)
 {
@@ -100,7 +100,7 @@ int retrieve_vm_ranges(intptr_t *start, intptr_t *end, int *range_end, int *tota
 	//		}
 	//}
 
-	// get lines of map file 
+	// get lines of map file
 	while(fgets(line, LINELEN, m) != NULL)
 	{
 		unsigned long s, e, inode;
@@ -108,7 +108,7 @@ int retrieve_vm_ranges(intptr_t *start, intptr_t *end, int *range_end, int *tota
 		int range_vulnerable;
 
 		// each line starts with a range of virtual adresses. Ignore offset in mapped file, get the rest.
-		int dev_maj, dev_min, n = sscanf(line, "%lX-%lX %c%c%c%c %*X %d:%d %lX", 
+		int dev_maj, dev_min, n = sscanf(line, "%lX-%lX %c%c%c%c %*X %d:%d %lX",
 				&s, &e, &read, &write, &exec, &shared, &dev_maj, &dev_min, &inode);
 
 		if (n != 9)
@@ -129,7 +129,7 @@ int retrieve_vm_ranges(intptr_t *start, intptr_t *end, int *range_end, int *tota
 			// NB. to help identify, they are r--p, which should be rather rare
 			// Also, they have been allocated with boundary alignment on pages, so checking vma_start is enough
 			if(read == 'r' && write == '-' && exec == '-' && shared == 'p')
-			{	
+			{
 				for(i=0; i<nb_free; i++)
 					if(free_pass[i] == (intptr_t)s)
 					{

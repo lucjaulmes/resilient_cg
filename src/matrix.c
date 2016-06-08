@@ -59,7 +59,7 @@ int find_in_matrix(const int row, const int col, const Matrix *A)
 {
 	if(row > A->n || col > A->m)
 		return -1;
-	
+
 	int low = A->r[row], upp = A->r[row+1]-1, mid;
 
 	if(A->c[low] == col)
@@ -125,7 +125,7 @@ void read_matrix(const int n, const int m, const int nnz, const int symmetric, M
 
 	A->nnz = pos;
 	A->r[A->n] = pos;
-	
+
 	if(symmetric)
 	{
 		// now let's fill in the subdiagonal part
@@ -193,7 +193,7 @@ void get_submatrix(const Matrix *A , const int *rows, const int nr, const int *c
 		for(ii=rows[i]; ii < rows[i] + bs && ii < A->n && k < B->n ; ii++, k++)
 		{
 			B->r[k] = p;
-			
+
 			// now j iterates over each element in A, and jj over each block of columns
 			// if j is found to be in a block [ cols[jj], cols[jj] + bs ], we compute the corresponding column in B and copy the value
 			for(j=A->r[ii], jj = 0; j < A->r[ii+1]; j++)
@@ -203,7 +203,7 @@ void get_submatrix(const Matrix *A , const int *rows, const int nr, const int *c
 				if(ii > A->c[j])
 					continue;
 				*/
-			
+
 				while(jj < nc && A->c[j] >= cols[jj] + bs)
 					jj++;
 
@@ -226,7 +226,7 @@ void get_submatrix(const Matrix *A , const int *rows, const int nr, const int *c
 				}
 			}
 		}
-	
+
 	B->r[k] = p;
 	B->nnz = p;
 }
