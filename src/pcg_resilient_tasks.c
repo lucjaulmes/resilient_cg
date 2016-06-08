@@ -11,7 +11,7 @@ void apply_preconditioner(const double *g, double *z, Precond *M, char **wait_fo
 					firstprivate(i, s, e) label(precondition) priority(12) no_copy_deps
 		{
 			enter_task(VECT_Z);
-			
+
 			int j, page;
 			double *x = malloc( fbs * sizeof(double) );
 
@@ -25,7 +25,7 @@ void apply_preconditioner(const double *g, double *z, Precond *M, char **wait_fo
 			{
 				if( should_skip_block(page, MASK_GRADIENT) )
 					continue;
-			
+
 				if( j + fbs > e )
 					fbs = e - j;
 
@@ -36,7 +36,7 @@ void apply_preconditioner(const double *g, double *z, Precond *M, char **wait_fo
 
 				check_block(page, MASK_GRADIENT);
 			}
-			
+
 			free(x);
 
 			// remove preconditioning :
@@ -44,7 +44,7 @@ void apply_preconditioner(const double *g, double *z, Precond *M, char **wait_fo
 			log_err(SHOW_TASKINFO, "Preconditioning block %d [%d,%d] finished\n", i, s>>log2fbs, (e>>log2fbs)-1);
 			exit_task();
 		}
-	}	
+	}
 }
 
 void scalar_product_task(const double *v, const double *u, double* r, const int task_name)
@@ -141,7 +141,7 @@ void update_gradient(double *gradient, double *Ap, double *alpha, char *wait_for
 			{
 				if( should_skip_block(page, MASK_GRADIENT | MASK_A_P) )
 					continue;
-			
+
 				for(k=j; k<j+fbs; k++)
 					gradient[k] -= (*alpha) * Ap[k];
 
@@ -184,7 +184,7 @@ void recompute_gradient(double *gradient, const Matrix *A, double *iterate, char
 				for(l=j; l<j+fbs && l < e; l++)
 				{
 					Aiterate[l] = 0;
-					
+
 					for(k=A->r[l]; k < A->r[l+1] ; k++)
 						Aiterate[l] += A->v[k] * iterate[ A->c[k] ];
 				}
@@ -289,11 +289,11 @@ void compute_Ap(const Matrix *A, double *p, char *wait_for_p UNUSED, char *wait_
 				for(l=j; l<j+fbs && l < e; l++)
 				{
 					Ap[l] = 0;
-					
+
 					for(k=A->r[l]; k < A->r[l+1] ; k++)
 						Ap[l] += A->v[k] * p[ A->c[k] ];
 				}
-				
+
 				if( skips != count_neighbour_faults( page, mask ) )
 					mark_to_skip( page, FAIL_A_P );
 			}

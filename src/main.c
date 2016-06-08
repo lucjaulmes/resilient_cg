@@ -17,7 +17,7 @@
 
 #ifdef BACKTRACE
 	#include "backtrace.h"
-#else 
+#else
 	#define register_sigsegv_handler()
 #endif
 
@@ -96,7 +96,7 @@ void usage(char* arg0)
 }
 
 // we return how many parameters we consumed, -1 for error
-int read_param(int argsleft, char* argv[], double *lambda, int *runs, int *threads UNUSED, int *blocks, long *fail_size, int *fault_strat, 
+int read_param(int argsleft, char* argv[], double *lambda, int *runs, int *threads UNUSED, int *blocks, long *fail_size, int *fault_strat,
 			int *nerr, unsigned int *seed, double *cv_thres, char **checkpoint_path UNUSED, char **checkpoint_prefix UNUSED)
 {
 	if( strcmp(argv[0], "-r") == 0 )
@@ -262,7 +262,7 @@ int read_param(int argsleft, char* argv[], double *lambda, int *runs, int *threa
 
 		struct stat file_infos;
 		stat(argv[1], &file_infos);
-	
+
 		mode_t required_flags = S_IFDIR | S_IROTH | S_IWOTH;
 		if( (file_infos.st_mode & required_flags) == required_flags )
 			return -1;
@@ -283,7 +283,7 @@ int read_param(int argsleft, char* argv[], double *lambda, int *runs, int *threa
 		return 2;
 	}
 	#endif
-	else 
+	else
 		return 0; // no option regognized, consumed 0 parameters
 }
 
@@ -303,7 +303,7 @@ FILE* get_infos_matrix(char *filename, int *n, int *m, int *nnz, int *symmetric)
 		printf("Could not process Matrix Market banner of file \"%s\".\n", filename);
 
 	else if (mm_is_complex(matcode))
-		printf("Sorry, this application does not support Matrix Market type of file \"%s\" : [%s]\n", 
+		printf("Sorry, this application does not support Matrix Market type of file \"%s\" : [%s]\n",
 			filename, mm_typecode_to_str(matcode));
 
 	else if( !mm_is_array(matcode) && (mm_read_mtx_crd_size(input_file, m, n, nnz) != 0 || *m != *n) )
@@ -429,7 +429,7 @@ int main(int argc, char* argv[])
 
 			// if using fancy ways of measuring (e.g. extrae events)
 			setup_measure();
-		
+
 			// a few vectors for rhs of equation, solution and verification
 			double *b, *x, *s;
 			b = (double*)aligned_calloc(fail_size, n * sizeof(double));

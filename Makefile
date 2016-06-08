@@ -1,5 +1,5 @@
 ####################################################################################################
-#### this Makefile allows to build target by giving the flavour options in the top directory 
+#### this Makefile allows to build target by giving the flavour options in the top directory
 #### e.g. make DUE=none CKPT=disk CKPT_FREQ=40
 ####################################################################################################
 # options to build differently behavioured same targets
@@ -36,7 +36,7 @@ DIR=$(DUE)
 
 ifeq ($C,0)
 DIR+=$(CKPT)
-else 
+else
 DIR+=$(CKPT)$(CKPT_FREQ)
 FLAVOUR+= -DCHECKPOINT_FREQ=$(CKPT_FREQ)
 endif

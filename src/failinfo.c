@@ -14,9 +14,9 @@
 #include "pcg.h"
 #include "backtrace.h"
 
-const char * const mask_names[] = { "0 ", 
-	"X ", "Ax", "G ", "P4", "P5", "Ap", "Z ", "8 ", 
-	"Sx", "10", "Sg", "Sp", "13", "Tp", "15", "16", 
+const char * const mask_names[] = { "0 ",
+	"X ", "Ax", "G ", "P4", "P5", "Ap", "Z ", "8 ",
+	"Sx", "10", "Sg", "Sp", "13", "Tp", "15", "16",
 	"Ng", "Np", "Ro", "RC", "21", "22", "23", "24",
 	"25", "26", "27", "28", "29", "Fg", "Fp" };
 
@@ -29,7 +29,7 @@ analyze_err errinfo;
 // N.B this is still __thread and not _Thread_local until mcc supports it : https://pm.bsc.es/projects/mcxx/ticket/404
 __thread sig_atomic_t out_vect = 0, exception_happened = 0;
 
-// from x a uniform distribution between 0 and 1, the weibull distribution 
+// from x a uniform distribution between 0 and 1, the weibull distribution
 // is given by lambda * ( -ln( 1 - x ) )^(1/k)
 double weibull(const double lambda, const double k, const double x)
 {
@@ -79,7 +79,7 @@ void setup_resilience(const Matrix *A UNUSED, const int nb, magic_pointers *mp)
 	errinfo.neighbours->v = NULL;
 
 	compute_neighbourhoods(A, errinfo.failblock_size, errinfo.neighbours);
-	
+
 	// now for storing infos about errors
 	errinfo.skipped_blocks = (int*)calloc( errinfo.nb_failblocks, sizeof(int) );
 	#endif
@@ -95,7 +95,7 @@ void setup_resilience(const Matrix *A UNUSED, const int nb, magic_pointers *mp)
 	#define X(constant, name) errinfo.data[constant-1] = mp->name;
 	ASSOC_CONST_MP
 	#undef X
-	
+
 	errinfo.in_recovery_errors = 0;
 	errinfo.errors = 0;
 	errinfo.skips = 0;
@@ -115,7 +115,7 @@ void setup_resilience(const Matrix *A UNUSED, const int nb, magic_pointers *mp)
 
 	// start semaphore locked : released in release_error_injection
 	sem_init(&sim_err.start_sim, 0, 0);
-	
+
 	// if simulating faults, create thread to do so
 	if( sim_err.lambda != 0 )
 		pthread_create(&sim_err.th, NULL, &simulate_failures, (void*)&sim_err);
@@ -178,7 +178,7 @@ void resilience_sighandler(int signum, siginfo_t *info, void *context UNUSED)
 
 		if( vect < 0 )
 		{
-			fprintf(stderr, "Error happened in memory that is not recoverable data : %p\n", page); 
+			fprintf(stderr, "Error happened in memory that is not recoverable data : %p\n", page);
 			crit_err_hdlr(signum, info, context);
 			return;
 		}
@@ -201,7 +201,7 @@ void resilience_sighandler(int signum, siginfo_t *info, void *context UNUSED)
 		mmap(page, sizeof(double) << get_log2_failblock_size(), PROT_READ|PROT_WRITE, MAP_FIXED|MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
 
 
-		log_err(SHOW_DBGINFO, "Error has just been  signaled  on page %3d of vector %s (%d)\n", block, vect_name(vect), vect); 
+		log_err(SHOW_DBGINFO, "Error has just been  signaled  on page %3d of vector %s (%d)\n", block, vect_name(vect), vect);
 	}
 	else
 	{
@@ -271,7 +271,7 @@ void* simulate_failures(void* ptr)
 	}
 	else
 		log_err(SHOW_FAILINFO, "Error is going to be simulated with exponential distribution (e^(-x/lambda))/lambda microseconds, lambda [~mtbe] = %e\n", sim_err->lambda);
-	
+
 
 	// Now wait for everything to be nicely started & first gradient to exist etc.
 	sem_wait(&sim_err->start_sim);
@@ -308,7 +308,7 @@ void* simulate_failures(void* ptr)
 		// TODO switch between kinds of fault injections ?
 		cause_mpr(sim_err);
 		//flip_a_bit(sim_err->info);
-	}	
+	}
 
 	return NULL;
 }
@@ -367,7 +367,7 @@ int get_data_blockptr(const void *vect, int *block)
 			return i+1;
 		}
 	}
-	
+
 	return -1;
 }
 
@@ -377,7 +377,7 @@ int get_data_vectptr(const double *vect)
 	for(i=0; i<errinfo.nb_data; i++)
 		if( errinfo.data[i] == vect )
 			return i+1;
-	
+
 	return -1;
 }
 
@@ -491,7 +491,7 @@ int aggregate_skips()
 	int i, r = 0;
 	for(i=0; i<errinfo.nb_failblocks; i++)
 		r |= errinfo.skipped_blocks[i];
-	
+
 	return r;
 }
 
@@ -504,7 +504,7 @@ int has_skipped_blocks(const int mask)
 			r++;
 			break;
 		}
-	
+
 	return r;
 }
 
@@ -565,7 +565,7 @@ int get_all_failed_blocks(const int mask, int **lost_blocks)
 	int total_skips = errinfo.skips;
 	if( ! total_skips )
 		return 0;
-	
+
 	*lost_blocks = (int*) calloc( total_skips, sizeof(int) );
 
 	int i, j = 0;
@@ -644,7 +644,7 @@ void get_failed_neighbourset(const int *all_lost, const int nb_lost, const int s
 	// okay now we should really sort the set...
 	// should be mostly a small list, partly sorted already
 	// so kiss and go for an insertion sort
-	int insert; 
+	int insert;
 	for (i = 1; i < *num; i++)
 	{
 		insert = set[i];

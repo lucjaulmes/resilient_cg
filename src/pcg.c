@@ -84,15 +84,15 @@ void factorize_jacobiblock(const int block, const Matrix *A, css **S, csn **N)
 
 	*S = cs_schol (&submatrix, 0) ; /* ordering and symbolic analysis */
 	*N = cs_chol (&submatrix, *S) ; /* numeric Cholesky factorization */
-	
+
 	deallocate_matrix(&sm);
 }
 
 void make_blockedjacobi_preconditioner(Precond *M, const Matrix *A, char **wait_for_precond UNUSED)
 {
 	int i, j, n = A->n, fbs = get_failblock_size(), log2fbs = get_log2_failblock_size();
-	
-	if( get_block_end(0) >> log2fbs > nb_blocks ) 
+
+	if( get_block_end(0) >> log2fbs > nb_blocks )
 		// biggish blocks, need to make them smaller for more load balance - however needs to be a partition of the parallel blocks
 		for(i=0; i < nb_blocks; i ++ )
 		{
@@ -205,7 +205,7 @@ void solve_pcg(const Matrix *A, const double *b, double *iterate, double converg
 	double save_rho, save_alpha;
 	int do_checkpoint = 0;
 	#endif
-	
+
 	Precond *M;
 	allocate_preconditioner(&M, get_nb_failblocks(), wait_for_precond);
 
@@ -239,7 +239,7 @@ void solve_pcg(const Matrix *A, const double *b, double *iterate, double converg
 	};
 	mp.ckpt_data = &ckpt_data;
 	#endif
-	
+
 
 	setup_resilience(A, 7, &mp);
 	start_measure();
@@ -325,7 +325,7 @@ void solve_pcg(const Matrix *A, const double *b, double *iterate, double converg
 		// now output-dependencies is not conflicting with the next iteration but the one after
 		{
 			swap(&p, &old_p);
-			
+
 			failures = check_errors_signaled();
 
 			if( r > 0 )
@@ -373,10 +373,10 @@ void solve_pcg(const Matrix *A, const double *b, double *iterate, double converg
 		#endif
 	}
 
-	#pragma omp taskwait 
+	#pragma omp taskwait
 	// end of the math, showing infos
 	stop_measure();
-	
+
 	failures = check_errors_signaled();
 	log_convergence(r-1, old_err_sq, failures);
 

@@ -35,7 +35,7 @@ extrae_value_t log_conv_vals [4] ;
 #ifdef GETTIMEOFDAY
 #include <sys/time.h>
 struct timeval start_time, stop_time;
-#endif 
+#endif
 
 #ifndef _OMPSS
 int nanos_omp_get_thread_num () { return 0; }
@@ -130,7 +130,7 @@ void start_measure()
 
 	#ifdef GETTIMEOFDAY
 	gettimeofday( &start_time, NULL );
-	#endif 
+	#endif
 
 	#ifdef EXTRAE_EVENTS
 	Extrae_event(extrae_measure_event, extrae_measure_start);
@@ -146,7 +146,7 @@ void stop_measure()
 	#ifdef GETTIMEOFDAY
 	gettimeofday( &stop_time, NULL );
 	printf("gettimeofday_Usecs:%e\n", (1e6 * (stop_time.tv_sec - start_time.tv_sec)) + stop_time.tv_usec - start_time.tv_usec);
-	#endif 
+	#endif
 
 	#if VERBOSE >= SHOW_DBGINFO
 	log_out("Ended measures\n");

@@ -31,7 +31,7 @@
 
 #define MASK_RECOVERY  (1 << RECOVERY)
 
-// the two next ones mean (in conjugation with the previous corresponding item) that 
+// the two next ones mean (in conjugation with the previous corresponding item) that
 // if g (resp. Ap) is marked failed with this extra bit, it has been skipped, but is not
 // contaminated with errors
 #define FAIL_GRADIENT  ((1 << 30) | MASK_GRADIENT)
@@ -47,14 +47,14 @@ static inline const char * vect_name(const int vect)
 {
 	return mask_names[vect];
 }
-#if VERBOSE 
+#if VERBOSE
 static inline const char * single_mask(const int mask)
 {
 	switch( mask ) // with ffs ~= sizeof(mask) - clz should give this without branching
 	{
 		case FAIL_GRADIENT : return mask_names[    12     ];
 		case FAIL_A_P      : return mask_names[    13     ];
-		default            : 
+		default            :
 			if( ffs(mask)-1 < 32 )
 				return mask_names[ffs(mask)-1];
 			else

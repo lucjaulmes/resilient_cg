@@ -23,20 +23,20 @@ void apply_preconditioner(const double *g, double *z, Precond *M, char **wait_fo
 			{
 				if( j + fbs > e )
 					fbs = e - j;
-			
+
 				cs_ipvec(fbs, M->S[page]->Pinv, &g[j], x) ;	// x = P*g
 				cs_lsolve(M->N[page]->L, x) ;		// x = L\x
 				cs_ltsolve(M->N[page]->L, x) ;		// x = L'\x
 				cs_pvec(fbs, M->S[page]->Pinv, x, &z[j]) ;	// z = P'*x
 			}
-			
+
 			free(x);
 
 			// remove preconditioning :
 			//for(i=s; i<e; i++) z[i] = g[i];
 			log_err(SHOW_TASKINFO, "Preconditioning block %d [%d,%d] finished\n", i, s>>log2fbs, (e>>log2fbs)-1);
 		}
-	}	
+	}
 }
 
 void scalar_product_task(const double *v, const double *u, double* r, const int task_name UNUSED)
@@ -117,7 +117,7 @@ void recompute_gradient(double *gradient, const Matrix *A, double *iterate, char
 			for(l=s; l<e; l++)
 			{
 				Aiterate[l] = 0;
-				
+
 				for(k=A->r[l]; k < A->r[l+1] ; k++)
 					Aiterate[l] += A->v[k] * iterate[ A->c[k] ];
 			}
@@ -174,7 +174,7 @@ void compute_Ap(const Matrix *A, double *p, char *wait_for_p UNUSED, char *wait_
 				for(k=A->r[l]; k < A->r[l+1] ; k++)
 					Ap[l] += A->v[k] * p[ A->c[k] ];
 			}
-				
+
 			log_err(SHOW_TASKINFO, "A * p[%d] part %d finished = %e\n", get_data_vectptr(p), i, norm(e-s, &(Ap[s])));
 		}
 	}

@@ -5,14 +5,14 @@
 #include "matrix.h"
 #include "csparse.h"
 
-typedef struct Precond 
+typedef struct Precond
 {
 	css **S;
 	csn **N;
 } Precond;
 
 // structure used to compactly convey the data for abft
-typedef struct checkpoint_data 
+typedef struct checkpoint_data
 {
 	int instructions;
 	#if CKPT == CKPT_IN_MEMORY
@@ -76,7 +76,7 @@ void deallocate_preconditioner(Precond *M, char **wait_for_precond);
 void factorize_jacobiblock(const int block, const Matrix *A, css **S, csn **N);
 void apply_preconditioner(const double *g, double *z, Precond *M, char **wait_for_precond);
 
-// all the algorithmical steps of CG that will be subdivided into tasks : 
+// all the algorithmical steps of CG that will be subdivided into tasks :
 void update_gradient(double *gradient, double *Ap, double *alpha, char *wait_for_iterate);
 void recompute_gradient(double *gradient, const Matrix *A, double *iterate, char *wait_for_iterate , char *wait_for_mvm , double *Aiterate, const double *b);
 void update_p(double *p, double *old_p, char *wait_for_p, double *gradient, double *beta);
