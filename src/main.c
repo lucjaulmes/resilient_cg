@@ -4,7 +4,7 @@
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
-#include <float.h>
+#include <sys/time.h>
 
 #include "global.h"
 
@@ -454,8 +454,10 @@ int main(int argc, char* argv[])
 			// interesting stuff is here
 			for(j=0;j<runs;j++)
 			{
-				// seed = 0 -> random : time for randomness, +j to get different seeds even if solving < 1s
-				unsigned int real_seed = seed == 0 ? time(NULL) + j : seed;
+				struct timeval t;
+				gettimeofday(&t, NULL);
+				// seed = 0 -> random : time for randomness, +tv_usec for disambiguation if run <1s or "simultaneous" batch starts
+				unsigned int real_seed = seed == 0 ? time(NULL) + t.tv_usec : seed;
 				if( runs > 1 )
 					printf("run:%d seed:%u\n", j, real_seed);
 

@@ -103,7 +103,7 @@ void checkpoint_vectors(checkpoint_data *ckpt_data, int *behaviour, double *iter
 			if(*behaviour == SAVE_CHECKPOINT)
 			{
 				ckpt_fd = open(path, O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
-				log_err(SHOW_FAILINFO, "Open file %s to checkpoint : %d\n", path, ckpt_fd);
+				log_err(SHOW_TASKINFO, "Open file %s to checkpoint : %d\n", path, ckpt_fd);
 
 				if(ckpt_fd < 0)
 				{
@@ -115,13 +115,13 @@ void checkpoint_vectors(checkpoint_data *ckpt_data, int *behaviour, double *iter
 				write(ckpt_fd,  iterate+s,  (e-s) * sizeof(double));
 				write(ckpt_fd,  p+s,        (e-s) * sizeof(double));
 
-				//fdatasync(ckpt_fd);
+				fdatasync(ckpt_fd);
 				close(ckpt_fd);
 			}
 			else if(*behaviour != DO_NOTHING)
 			{
 				ckpt_fd = open(path, O_RDONLY);
-				log_err(SHOW_FAILINFO, "Open file %s to rollback : %d\n", path, ckpt_fd);
+				log_err(SHOW_TASKINFO, "Open file %s to rollback : %d\n", path, ckpt_fd);
 
 				if(ckpt_fd < 0)
 				{

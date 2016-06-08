@@ -19,6 +19,7 @@ WITH_PRAGMAS = $(notdir $(shell grep -l "pragma omp" $(FULLPATH_SRC)))
 NO_PRAGMAS = $(filter-out $(WITH_PRAGMAS), $(SRC))
 HEADERS = $(notdir $(wildcard Makefile*) $(wildcard *.h) $(foreach DIR,$(subst :, ,$(VPATH)), $(wildcard $(DIR)/Makefile*) $(wildcard $(DIR)/*.h)))
 
+# No more 'info' and 'note' messages...
 SILENCE = (grep -v -e info: -e note: || true)
 
 OBJECTS = $(SRC:.c=.o)
@@ -26,16 +27,18 @@ CSPARSE_LIB = .objs/csparse.o
 G_C_OBJS = $(CSPARSE_LIB) $(addprefix .objs/plainconv/, $(SRC:.c=.o))
 G_S_OBJS = $(CSPARSE_LIB) $(addprefix .objs/plainspeedup/, $(SRC:.c=.o))
 G_D_OBJS = $(CSPARSE_LIB) $(addprefix .objs/plaindebug/, $(SRC:.c=.o))
+G_I_OBJS = $(CSPARSE_LIB) $(addprefix .objs/plaininstr/, $(SRC:.c=.o))
 M_C_OBJS = $(CSPARSE_LIB) $(addprefix .objs/ompssconv/, $(NO_PRAGMAS:.c=.o) $(addprefix mcc_, $(WITH_PRAGMAS:.c=.o)))
 M_S_OBJS = $(CSPARSE_LIB) $(addprefix .objs/ompssspeedup/, $(NO_PRAGMAS:.c=.o) $(addprefix mcc_, $(WITH_PRAGMAS:.c=.o)))
 M_D_OBJS = $(CSPARSE_LIB) $(addprefix .objs/ompssdebug/, $(NO_PRAGMAS:.c=.o) $(addprefix mcc_, $(WITH_PRAGMAS:.c=.o)))
+M_I_OBJS = $(CSPARSE_LIB) $(addprefix .objs/ompssinstr/, $(NO_PRAGMAS:.c=.o) $(addprefix mcc_, $(WITH_PRAGMAS:.c=.o)))
 
 DOTFILE = $(shell ls -t *.dot 2> /dev/null | head -n 1)
 
 # lib paths
-NANOS_HOME=/usr/local
-PAPI_HOME=/usr
-EXTRAE_HOME=/usr/local
+NANOS_HOME=$(shell which nanox | sed -r 's@/bin(64)?/nanox$$@@')
+PAPI_HOME=$(shell which papi_avail | sed -r 's@/bin(64)?/papi_avail$$@@')
+#EXTRAE_HOME needs to be defined
 
 # generic compiler flags, we'll later be adding specifics
 # CFLAGS for all compilers G_CFLAGS for just GCC, M_CFLAGS for mercurium
@@ -84,18 +87,23 @@ ompss% : LDFLAGS += --ompss
 ompssdebug : LDFLAGS += -L$(NANOS_HOME)/lib64/instrumentation --instrumentation
 ompssconv : LDFLAGS += -L$(NANOS_HOME)/lib64/performance
 ompssspeedup : LDFLAGS += -L$(NANOS_HOME)/lib64/performance
+ompssinstr : LDFLAGS += -L$(NANOS_HOME)/lib64/instrumentation --instrumentation
 # output dirs, instrumentation flags
-ompssdebug : M_CFLAGS += --output-dir=.objs/ompssdebug --instrumentation
-ompssconv : M_CFLAGS += --output-dir=.objs/ompssconv
 ompssspeedup : M_CFLAGS += --output-dir=.objs/ompssspeedup
+ompssconv : M_CFLAGS += --output-dir=.objs/ompssconv
+ompssdebug : M_CFLAGS += --output-dir=.objs/ompssdebug --instrumentation
+ompssinstr : M_CFLAGS += --output-dir=.objs/ompssinstr --instrumentation
 
 # adding options defined above, and setting verbosity :
 # -DPERFORMANCE is going to make the program shut up,
-# -DVERBOSE=x make it talk, x a bitmask (see debug.h for values)
+# -DVERBOSE=x make it talk, x from 1 to 4 (see debug.h for values)
 
 #both debug builds
-%debug : CFLAGS += -rdynamic -O2 -DPERFORMANCE $(USE_TIMEOFDAY)
+%debug : CFLAGS += -rdynamic -O2 -DVERBOSE=2 $(USE_TIMEOFDAY)
 %debug : LDFLAGS +=
+#both instr builds
+%instr : CFLAGS += -rdynamic -O2 -DPERFORMANCE $(USE_EXTRAE)
+%instr : LDFLAGS += $(LNK_EXTRAE)
 #both conv builds
 %conv : CFLAGS += -O2 -DPERFORMANCE $(USE_EXTRAE)
 %conv : LDFLAGS += $(LNK_EXTRAE)
@@ -112,19 +120,22 @@ default:ompssall
 #all : debug conv speedup
 all: conv speedup debug
 
-plainall : plaindebug plainconv plainspeedup
-ompssall : ompssdebug ompssconv ompssspeedup
+plainall : plaindebug plainconv plainspeedup plaininstr
+ompssall : ompssdebug ompssconv ompssspeedup ompssinstr
 
 conv : plainconv ompssconv
 speedup : plainspeedup ompssspeedup
 debug : plaindebug ompssdebug
+instr : plaininstr ompssinstr
 
 plaindebug : dirs cg_seq_cg
 plainconv : dirs cg_seq_conv
 plainspeedup : dirs cg_seq_speedup
+plaininstr : dirs cg_seq_instr
 ompssdebug : dirs cg
 ompssconv : dirs cg_conv
 ompssspeedup : dirs cg_speedup
+ompssinstr : dirs cg_instr
 
 #actual target commands
 .objs/plaindebug/%.o : %.c $(HEADERS)
@@ -134,6 +145,9 @@ ompssspeedup : dirs cg_speedup
 	$(CC) $(FLAVOUR) $(CFLAGS) $(G_CFLAGS) $< -c -o $@
 
 .objs/plainspeedup/%.o : %.c $(HEADERS)
+	$(CC) $(FLAVOUR) $(CFLAGS) $(G_CFLAGS) $< -c -o $@
+
+.objs/plaininstr/%.o : %.c $(HEADERS)
 	$(CC) $(FLAVOUR) $(CFLAGS) $(G_CFLAGS) $< -c -o $@
 
 
@@ -147,6 +161,9 @@ ompssspeedup : dirs cg_speedup
 .objs/ompssspeedup/%.o : %.c $(HEADERS)
 	$(CC) $(FLAVOUR) $(CFLAGS) $(G_CFLAGS) $< -c -o $@
 
+.objs/ompssinstr/%.o : %.c $(HEADERS)
+	$(CC) $(FLAVOUR) $(CFLAGS) $(G_CFLAGS) $< -c -o $@
+
 
 
 .objs/ompssdebug/mcc_%.o : %.c $(HEADERS)
@@ -156,6 +173,9 @@ ompssspeedup : dirs cg_speedup
 	$(MCC) $(FLAVOUR) $(CFLAGS) $(M_CFLAGS) $< -c -o $@ 2>&1 | $(SILENCE)
 
 .objs/ompssspeedup/mcc_%.o : %.c $(HEADERS)
+	$(MCC) $(FLAVOUR) $(CFLAGS) $(M_CFLAGS) $< -c -o $@ 2>&1 | $(SILENCE)
+
+.objs/ompssinstr/mcc_%.o : %.c $(HEADERS)
 	$(MCC) $(FLAVOUR) $(CFLAGS) $(M_CFLAGS) $< -c -o $@ 2>&1 | $(SILENCE)
 
 
@@ -169,6 +189,9 @@ cg_seq_conv : $(G_C_OBJS)
 cg_seq_speedup : $(G_S_OBJS)
 	$(CC) $^ $(LDFLAGS) -o $@
 
+cg_seq_instr : $(G_I_OBJS)
+	$(CC) $^ $(LDFLAGS) -o $@
+
 
 cg : $(M_D_OBJS)
 	$(MCC) $^ $(LDFLAGS) -o $@
@@ -177,6 +200,9 @@ cg_conv : $(M_C_OBJS)
 	$(MCC) $^ $(LDFLAGS) -o $@
 
 cg_speedup : $(M_S_OBJS)
+	$(MCC) $^ $(LDFLAGS) -o $@
+
+cg_instr : $(M_I_OBJS)
 	$(MCC) $^ $(LDFLAGS) -o $@
 
 
@@ -188,10 +214,10 @@ $(CSPARSE_LIB) : csparse.c csparse.h
 .PHONY : graph dirs clean print actual all conv speedup debug plainconv plainspeedup plaindebug ompssconv ompssspeedup ompssdebug
 
 dirs :
-	@mkdir -p .objs/ompssdebug .objs/ompssconv .objs/ompssspeedup .objs/plaindebug .objs/plainconv .objs/plainspeedup
+	@mkdir -p .objs/ompssdebug .objs/ompssconv .objs/ompssspeedup .objs/ompssinstr .objs/plaindebug .objs/plainconv .objs/plainspeedup .objs/plaininstr
 
 clean :
-	@rm -rfv cg cg_seq_cg cg_conv cg_seq_conv cg_speedup cg_seq_speedup *.o .objs/*/*.o .objs/*.o graph.dot
+	@rm -rfv cg cg_seq_cg cg_conv cg_seq_conv cg_speedup cg_seq_speedup cg_instr cg_seq_instr *.o .objs/*/*.o .objs/*.o graph.dot
 
 # add this so that we silently take into account modifications to src/cg_*.c
 CG=$(filter %cg.c, $(FULLPATH_SRC))

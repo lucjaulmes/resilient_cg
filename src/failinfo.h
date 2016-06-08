@@ -108,7 +108,7 @@ typedef struct error_sim_data
 {
 	// simulation infos, parameters, etc.
 	double lambda;
-	int nerr;
+	int nerr, inj;
 	pthread_t th;
 	sem_t start_sim;
 
@@ -160,6 +160,11 @@ static inline int get_nb_failed_blocks()
 static inline int is_skipped_block(const int block, const int mask)
 {
 	return errinfo.skipped_blocks[block] & mask;
+}
+
+static inline int get_inject_count()
+{
+	return sim_err.inj;
 }
 
 #if CKPT

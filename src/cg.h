@@ -68,7 +68,7 @@ void compute_Ap(const Matrix *A, double *p, char *wait_for_p, char *wait_for_mvm
 void scalar_product_task(const double *p, const double *Ap, double* r);
 void norm_task(const double *v, double* r);
 
-void compute_beta(const double *err_sq, const double *old_err_sq, double *beta);
+void compute_beta(const double *err_sq, const double *old_err_sq, double *beta, int recomputed);
 void compute_alpha(double *err_sq, double *normA_p_sq, double *old_err_sq, double *old_err_sq2, double *alpha);
 
 void force_rollback(checkpoint_data *ckpt_data, double *iterate, double *p);

@@ -1,6 +1,6 @@
 ####################################################################################################
 #### this Makefile allows to build target by giving the flavour options in the top directory
-#### e.g. make DUE=none CKPT=disk
+#### e.g. make DUE=rollback CKPT=disk
 ####################################################################################################
 # options to build differently behavioured same targets
 
@@ -8,7 +8,7 @@
 DUE_OPTS:=none async path rollback lossy
 CKPT_OPTS:=none disk mem
 
-# engough to number all our options
+# enough to number all our options
 numbers:=$(shell seq 0 4)
 
 # lousy defaults
@@ -39,10 +39,10 @@ space=$(empty) $(empty)
 # Finally defining directories and targets
 DESTDIR:=$(subst $(space),_,$(DIR))
 
-.PHONY : default clean all ompssall plainall debug ompssdebug plaindebug conv ompssconv plainconv speedup ompssspeedup plainspeedup
+.PHONY : default clean all ompssall plainall debug ompssdebug plaindebug conv ompssconv plainconv speedup ompssspeedup plainspeedup instr ompssinstr plaininstr
 default:ompssall
 
-all ompssall plainall debug ompssdebug plaindebug conv ompssconv plainconv speedup ompssspeedup plainspeedup: $(DESTDIR)
+all ompssall plainall debug ompssdebug plaindebug conv ompssconv plainconv speedup ompssspeedup plainspeedup instr ompssinstr plaininstr: $(DESTDIR)
 	cd $(DESTDIR) && make -f ../Makefile.sub "FLAVOUR=$(FLAVOUR)" VPATH=.:..:../src $(@)
 
 clean:

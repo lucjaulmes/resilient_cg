@@ -18,7 +18,7 @@
 const char * const mask_names[] = { "0 ",
 	"X ", "Ax", "G ", "P4", "P5", "Ap", "7 ", "8 ",
 	"Sx", "10", "Sg", "Sp", "13", "Tp", "15", "16",
-	"Ng", "Np", "19", "RC", "21", "22", "23", "24",
+	"Ng", "Np", "19", "RC", "CP", "22", "23", "24",
 	"25", "26", "27", "28", "29", "Fg", "Fp" };
 
 #include "failinfo.h"
@@ -103,6 +103,7 @@ void setup_resilience(const Matrix *A UNUSED, const int nb, magic_pointers *mp)
 	errinfo.in_recovery_errors = 0;
 	errinfo.errors = 0;
 	errinfo.skips = 0;
+	sim_err.inj = 0;
 
 	// finally set the handler for signals that will simulate (SIGSEGV) or report real errors (SIGBUS)
 	struct sigaction sigact;
@@ -140,6 +141,12 @@ void unset_resilience()
 
 	sem_destroy(&sim_err.start_sim);
 
+	// undo all potentially undetected but already injected errors in memory from previous runs
+	int i;
+	const intptr_t vect_size = errinfo.nb_failblocks * (sizeof(double) << get_log2_failblock_size());
+	for(i=0; i<errinfo.nb_data; i++)
+		mprotect(errinfo.data[i], vect_size, PROT_READ | PROT_WRITE);
+
 	// now stop handling errors
 	struct sigaction sigact;
 	sigset_t empty;
@@ -160,7 +167,7 @@ void unset_resilience()
 	free(errinfo.data);
 }
 
-void resilience_sighandler(int signum, siginfo_t *info, void* context)
+void resilience_sighandler(int signum, siginfo_t *info, void *context UNUSED)
 {
 	if( (signum == SIGBUS /* && (info->si_code == BUS_MCEER_AR || info->si_code == BUS_MCEER_A0 )*/) ||
 		(signum == SIGSEGV && info->si_code == SEGV_ACCERR) )
@@ -182,6 +189,7 @@ void resilience_sighandler(int signum, siginfo_t *info, void* context)
 
 	#if DUE
 		// mark vector of error and (pseudo-?)vector of output with error
+		// TODO shouldn't it be this ? mark_to_skip(block, COMPLETE_WITH_FAIL(((1 << out_vect) | (1 << vect))) );
 		mark_to_skip(block, (1 << out_vect) | (1 << vect) );
 	#endif
 
@@ -306,7 +314,6 @@ void* simulate_failures(void* ptr)
 		else
 			sleep_ns((long long)(exponential(sim_err->lambda, (double)rand()/(double)RAND_MAX) * 1e3));
 
-		// TODO switch between kinds of fault injections ?
 		cause_mpr(sim_err);
 		//flip_a_bit(sim_err->info);
 	}
@@ -331,6 +338,8 @@ void cause_mpr(error_sim_data *sim_err)
 
 	log_err(SHOW_DBGINFO, "Error is going to be triggered on page %3d of vector %s (%d) : %p\n", rand_page, vect_name(vect+1), vect+1, (void*)addr);
 
+	sim_err->inj++;
+
 	mprotect((void*)addr, sizeof(double) << sim_err->info->log2fbs, PROT_NONE);
 	//madvise((void*)addr, sysconf(_SC_PAGESIZE), MADV_HWPOISON);
 }
@@ -349,8 +358,7 @@ void flip_a_bit(analyze_err *info)
 
 	(*victim) ^= (long long)(1 << flip_bit);
 
-	// notify globally
-	__sync_fetch_and_add(&errinfo.errors, 1);
+	sim_err.inj++;
 
 	log_err(SHOW_DBGINFO,"Flipped bit %2d of double %5d (page %2d) in vect %2s :\t% .14e -> % .14e\tdiff = %e\n",
 			flip_bit, flip_pos, flip_pos/info->failblock_size, mask_names[vect+1],
@@ -393,8 +401,6 @@ int check_recovery_errors()
 {
 	int r = (int)errinfo.in_recovery_errors;
 	errinfo.in_recovery_errors = 0;
-	if(r)
-		fprintf(stderr, "ERROR DURING RECOVERY restart needed\n"); // this sufficiently bad to always show ?
 	return r;
 }
 
@@ -695,6 +701,5 @@ void compute_neighbourhoods(const Matrix *mat, const int bs, Matrix *neighbours)
 
 	neighbours->r[neighbours->n] = neighbours->nnz = pos;
 }
-
 
 

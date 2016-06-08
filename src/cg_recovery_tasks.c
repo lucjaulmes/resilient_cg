@@ -44,7 +44,7 @@ void recover_rectify_xk(const int n UNUSED, magic_pointers *mp, double *x, char 
 	if( failed_recovery )
 	{
 		// ouch.
-		fprintf(stderr, "Impossible xk recovery, forced restart !\n");
+		fprintf(stderr, "Impossible xk recovery\n");
 	}
 
 	exit_task();
@@ -86,7 +86,7 @@ void recover_rectify_g(const int n UNUSED, magic_pointers *mp, const double *p, 
 
 	if( failed_recovery )
 	{
-		fprintf(stderr, "Impossible g recovery, forced restart !\n");
+		fprintf(stderr, "Impossible g recovery\n");
 		exit_task();
 		return;
 	}
@@ -175,7 +175,7 @@ void recover_rectify_x_g(const int n UNUSED, magic_pointers *mp, double *x, doub
 	if( failed_recovery )
 	{
 		// ouch.
-		fprintf(stderr, "Impossible g & x recovery, forced restart !\n");
+		fprintf(stderr, "Impossible g & x recovery\n");
 		exit_task();
 		return;
 	}
@@ -256,7 +256,7 @@ void recover_rectify_p_Ap(const int n UNUSED, magic_pointers *mp, double *p, dou
 	if( failed_recovery )
 	{
 		// ouch.
-		fprintf(stderr, "Impossible p & Ap recovery, forced restart !\n");
+		fprintf(stderr, "Impossible p & Ap recovery\n");
 		exit_task();
 		return;
 	}
