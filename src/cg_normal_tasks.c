@@ -78,7 +78,7 @@ void recompute_gradient_mvm(const Matrix *A, double *iterate, char *wait_for_ite
 			for(l=s; l<e; l++)
 			{
 				Aiterate[l] = 0;
-				
+
 				for(k=A->r[l]; k < A->r[l+1] ; k++)
 					Aiterate[l] += A->v[k] * iterate[ A->c[k] ];
 			}
@@ -140,7 +140,7 @@ void compute_Ap(const Matrix *A, double *p, char *wait_for_p UNUSED, char *wait_
 			for(l=s; l<e; l++)
 			{
 				Ap[l] = 0;
-				
+
 				for(k=A->r[l]; k < A->r[l+1] ; k++)
 					Ap[l] += A->v[k] * p[ A->c[k] ];
 			}

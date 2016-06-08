@@ -1,5 +1,5 @@
 ####################################################################################################
-#### this Makefile allows to build target by giving the flavour options in the top directory 
+#### this Makefile allows to build target by giving the flavour options in the top directory
 #### e.g. make DUE=none CKPT=disk
 ####################################################################################################
 # options to build differently behavioured same targets

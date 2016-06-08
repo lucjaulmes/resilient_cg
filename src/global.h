@@ -51,7 +51,7 @@
 
 #define STRINGIFY(a) #a
 
-#if ! _ISOC11_SOURCE 
+#if ! _ISOC11_SOURCE
 //#warning ISOC11_SOURCE not defined ! Replacing aligned_alloc from glibc >= 2.12 with memalign
 #include <malloc.h>
 #define aligned_alloc memalign

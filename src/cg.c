@@ -206,7 +206,7 @@ void solve_cg(const Matrix *A, const double *b, double *iterate, double converge
 		// now output-dependencies are not conflicting with the next iteration but the one after
 		{
 			swap(&p, &old_p);
-			
+
 			failures = check_errors_signaled();
 
 			if( r > 0 )
@@ -250,10 +250,10 @@ void solve_cg(const Matrix *A, const double *b, double *iterate, double converge
 		#endif
 	}
 
-	#pragma omp taskwait 
+	#pragma omp taskwait
 	// end of the math, showing infos
 	stop_measure();
-	
+
 	failures = check_errors_signaled();
 	log_convergence(r-1, old_err_sq2, failures);
 

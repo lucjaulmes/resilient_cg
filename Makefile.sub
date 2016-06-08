@@ -8,7 +8,7 @@ endif
 
 # files : anything without pragmas will be compiler with gcc for cleanliness
 #SRC = mmio.c matrix.c counters.c failinfo.c recover.c cg.c main.c backtrace.c
-#WITH_PRAGMAS = counters.c failinfo.c recover.c cg.c 
+#WITH_PRAGMAS = counters.c failinfo.c recover.c cg.c
 #NO_PRAGMAS = mmio.c matrix.c main.c backtrace.c
 #HEADERS = backtrace.h cg.h counters.h csparse.h debug.h failinfo.h global.h matrix.h mmio.h recover.h Makefile.sub
 
@@ -58,9 +58,9 @@ USE_PAPI = -I$(PAPI_HOME)/include -DPAPICOUNTERS
 LNK_PAPI = -L$(PAPI_HOME)/lib -lpapi
 # - or use extrae to measure performance, by defining custom extrae events
 # to make it easy, we have to link one of the following libraries :
-#	libnanostrace	to use with nanos, thus ompss 
+#	libnanostrace	to use with nanos, thus ompss
 #	libseqtrace		sequential app
-USE_EXTRAE = -I$(EXTRAE_HOME)/include -I$(NANOS_HOME)/include/nanox -DEXTRAE_EVENTS 
+USE_EXTRAE = -I$(EXTRAE_HOME)/include -I$(NANOS_HOME)/include/nanox -DEXTRAE_EVENTS
 LNK_EXTRAE = -L$(EXTRAE_HOME)/lib64 -L$(EXTRAE_HOME)/lib
 plain% : LNK_EXTRAE += -lseqtrace
 ompss% : LNK_EXTRAE += -lnanostrace
@@ -76,8 +76,8 @@ plain% : LDFLAGS += -pthread
 # only ompss versions : add ompss flags and define
 ompss% : CFLAGS += -D_OMPSS
 ompss% : G_CFLAGS += -I$(NANOS_HOME)/include/nanox
-ompss% : M_CFLAGS += --ompss 
-ompss% : LDFLAGS += --ompss 
+ompss% : M_CFLAGS += --ompss
+ompss% : LDFLAGS += --ompss
 
 # mercurium specifics
 # versions of libraries, instrumentation flags
@@ -89,8 +89,8 @@ ompssdebug : M_CFLAGS += --output-dir=.objs/ompssdebug --instrumentation
 ompssconv : M_CFLAGS += --output-dir=.objs/ompssconv
 ompssspeedup : M_CFLAGS += --output-dir=.objs/ompssspeedup
 
-# adding options defined above, and setting verbosity :  
-# -DPERFORMANCE is going to make the program shut up, 
+# adding options defined above, and setting verbosity :
+# -DPERFORMANCE is going to make the program shut up,
 # -DVERBOSE=x make it talk, x a bitmask (see debug.h for values)
 
 #both debug builds
@@ -108,7 +108,7 @@ ompssspeedup : M_CFLAGS += --output-dir=.objs/ompssspeedup
 
 #target hiercarchies
 default:ompssall
-	
+
 #all : debug conv speedup
 all: conv speedup debug
 
@@ -185,12 +185,12 @@ $(CSPARSE_LIB) : csparse.c csparse.h
 	$(CC) -O3 $< -c -o $@
 
 #other things
-.PHONY : graph dirs clean print actual all conv speedup debug plainconv plainspeedup plaindebug ompssconv ompssspeedup ompssdebug 
+.PHONY : graph dirs clean print actual all conv speedup debug plainconv plainspeedup plaindebug ompssconv ompssspeedup ompssdebug
 
 dirs :
 	@mkdir -p .objs/ompssdebug .objs/ompssconv .objs/ompssspeedup .objs/plaindebug .objs/plainconv .objs/plainspeedup
 
-clean : 
+clean :
 	@rm -rfv cg cg_seq_cg cg_conv cg_seq_conv cg_speedup cg_seq_speedup *.o .objs/*/*.o .objs/*.o graph.dot
 
 # add this so that we silently take into account modifications to src/cg_*.c

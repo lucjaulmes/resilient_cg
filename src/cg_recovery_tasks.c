@@ -2,7 +2,7 @@
 void hard_reset(magic_pointers *mp)
 {
 	// This method can be used as a fallback when DUE techniques don't work.
-	// Primary use is to implement other techniques (against which to compare) 
+	// Primary use is to implement other techniques (against which to compare)
 	#if CKPT
 	force_rollback(mp->A->n, mp->ckpt_data, mp->x, mp->g, mp->old_p, mp->Ap);
 	#else
@@ -37,10 +37,10 @@ void recover_rectify_xk(const int n UNUSED, magic_pointers *mp, double *x, char 
 	enter_task(RECOVERY);
 
 	log_err(SHOW_FAILINFO, "Recovery task for x (faults:%d) started\n", has_skipped_blocks(MASK_ITERATE));
-	
+
 	if( has_skipped_blocks(MASK_ITERATE) )
 		failed_recovery += abs(recover_full_xk(mp, x, REMOVE_FAULTS));
-	
+
 	if( failed_recovery )
 	{
 		// ouch.
@@ -74,10 +74,10 @@ void recover_rectify_g(const int n UNUSED, magic_pointers *mp, const double *p, 
 
 	log_err(SHOW_FAILINFO, "Recovery task for g (faults:%d), ||g|| (faults:%d) depends on Ap (faults:%d) started\n",
 			(error_types & MASK_GRADIENT) > 0, (error_types & MASK_NORM_G) > 0, (error_types & MASK_A_P) > 0);
-	
+
 	if( error_types & MASK_A_P )
 		failed_recovery += abs(recover_full_Ap(mp, Ap, p, REMOVE_FAULTS));
-	
+
 	if( error_types & MASK_GRADIENT )
 	{
 		failed_recovery += abs(recover_full_g_recompute(mp, gradient, KEEP_FAULTS));
@@ -167,7 +167,7 @@ void recover_rectify_x_g(const int n UNUSED, magic_pointers *mp, double *x, doub
 
 	if( error_types & MASK_GRADIENT )
 		failed_recovery += abs(recover_full_g_recompute(mp, gradient, REMOVE_FAULTS));
-	
+
 	// just to clean the 'skipped mvm' items -- they were all corrected by re-updating p
 	clear_failed(MASK_A_ITERATE);
 	clear_mvm();
