@@ -55,7 +55,7 @@ void factorize_jacobiblock( const int n, const int block, const Matrix *A, css *
 
 	*S = cs_schol (&submatrix, 0) ; /* ordering and symbolic analysis */
 	*N = cs_chol (&submatrix, *S) ; /* numeric Cholesky factorization */
-	
+
 	deallocate_matrix(&sm);
 }
 
@@ -129,7 +129,7 @@ void solve_pcg( const int n, const Matrix *A, const double *b, double *iterate, 
 
 		// update gradient to solution (a.k.a. error) : b - A * it
 		// every now and then, recompute properly to remove rounding errors
-		// NB. do this on first iteration where alpha Ap and gradient aren't defined 
+		// NB. do this on first iteration where alpha Ap and gradient aren't defined
 		if( update_gradient-- )
 			daxpy(n, -alpha, Ap, gradient, gradient);
 		else
@@ -192,7 +192,7 @@ void solve_pcg( const int n, const Matrix *A, const double *b, double *iterate, 
 		{
 			total_failures += failures;
 
-			// do the recovery here 
+			// do the recovery here
 			// recover by interpolation since our submatrix is always spd
 
 			// this recover implies a full restart

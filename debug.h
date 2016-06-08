@@ -59,11 +59,11 @@ static inline void print_csparse_mat(cs *M)
 	*/
 	if(M->nz < 0 ) { int i,j = 0; printf("\tp = ");
 		for(i=0; i < M->nzmax && j <= M->m; i++) if(M->p[j] == i) {printf("%-8d ", j); j++;} else printf("         "); printf("\n\ti = ");
-		for(i=0; i < M->p[M->m]; i++) printf("%-8d ", M->i[i]); printf("\n\tx = "); 
-		for(i=0; i < M->p[M->m]; i++) printf("%1.2e ", M->x[i]); printf("\n"); 
+		for(i=0; i < M->p[M->m]; i++) printf("%-8d ", M->i[i]); printf("\n\tx = ");
+		for(i=0; i < M->p[M->m]; i++) printf("%1.2e ", M->x[i]); printf("\n");
 	} else { int i; printf("\tp = ");
-		for(i=0; i < M->p[M->nz]; i++) printf("%-8d ", M->p[i]); printf("\n\ti = "); 
-		for(i=0; i < M->p[M->nz]; i++) printf("%-8d ", M->i[i]); printf("\n\tx = "); 
+		for(i=0; i < M->p[M->nz]; i++) printf("%-8d ", M->p[i]); printf("\n\ti = ");
+		for(i=0; i < M->p[M->nz]; i++) printf("%-8d ", M->i[i]); printf("\n\tx = ");
 		for(i=0; i < M->p[M->nz]; i++) printf("%1.2e ", M->x[i]); printf("\n"); }
 }
 

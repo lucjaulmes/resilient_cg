@@ -4,7 +4,7 @@
 #include "matrix.h"
 #include "csparse.h"
 
-typedef struct Precond 
+typedef struct Precond
 {
 	css **S;
 	csn **N;

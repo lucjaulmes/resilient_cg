@@ -32,7 +32,7 @@ void solve_qr(const DenseMatrix *A, const double* rhs, double *x)
 		for(k=0; k<j; k++)
 		{
 			r.v[k][j] = scalar_product(A->n, tq.v[j], tq.v[k]);
-			
+
 			for(i=0; i<A->m; i++)
 				tq.v[j][i] -= r.v[k][j] * tq.v[k][i];
 		}
@@ -131,7 +131,7 @@ void get_tq_householder(const DenseMatrix *A, DenseMatrix *transQ)
 			matrix_minor(k, A, &z);
 		else
 			matrix_minor(k, &z1, &z);
-		
+
 		// x <- z_,k + a * e_k
 		for(i=0; i<A->n; i++)
 			x[i] = z.v[i][k]; // TODO bad : get column should be black-boxed so we don't know the structure of matrix
@@ -150,7 +150,7 @@ void get_tq_householder(const DenseMatrix *A, DenseMatrix *transQ)
 			x[i] /= a;
 
 		// get h the householder transformation
-		// m = I - e e^T 
+		// m = I - e e^T
 		householder(&h, x);
 
 		mult_dense_matrix(&h, tq, tq2);
@@ -214,7 +214,7 @@ void solve_qr_house(const DenseMatrix *A, const double* rhs, double *x)
 void solve_lu(const DenseMatrix *A, const double* rhs, double *x)
 {
 	DenseMatrix lu;
-	// Assume A->n == A->m 
+	// Assume A->n == A->m
 	allocate_dense_matrix(A->n, A->n, &lu);
 
 	int i, j, k, p;
@@ -234,7 +234,7 @@ void solve_lu(const DenseMatrix *A, const double* rhs, double *x)
 		for(j=k+1; j<A->n; ++j)
 		{
 			double sum=0;
-			
+
 			for(p=0; p<k; ++p)
 				sum += lu.v[k][p] * lu.v[p][j];
 

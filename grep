@@ -2,7 +2,7 @@
 Next fault on block 4 in 9.633659e+01 usecs
 Recovery error change : 4.935490e-01 -> 4.588454e-01
 error was on block(s)  4 (29;8)
-Replacements done were : 
+Replacements done were :
 29 : 1.038931e-01 -> 3.083613e-01
 30 : -5.004869e-01 -> -5.260940e-01
 31 : -2.509890e-01 -> -1.451517e-01
@@ -15,7 +15,7 @@ Replacements done were :
 Next fault on block 3 in 9.633659e+01 usecs
 Recovery error change : 8.530337e-01 -> 7.314388e-01
 error was on block(s)  3 (21;8)
-Replacements done were : 
+Replacements done were :
 21 : -4.130679e-01 -> -1.154203e+00
 22 : 2.899385e-02 -> -7.472449e-02
 23 : -2.764863e-01 -> -8.971420e-01
@@ -28,7 +28,7 @@ Replacements done were :
 Next fault on block 4 in 9.633659e+01 usecs
 Recovery error change : 5.898770e-01 -> 5.451859e-01
 error was on block(s)  4 (29;8)
-Replacements done were : 
+Replacements done were :
 29 : 4.403779e-01 -> 1.241031e-01
 30 : -3.608823e-01 -> -4.171130e-01
 31 : 6.765244e-02 -> -8.855388e-02
@@ -41,7 +41,7 @@ Replacements done were :
 Next fault on block 4 in 9.633659e+01 usecs
 Recovery error change : 8.065200e-01 -> 7.038987e-01
 error was on block(s)  4 (29;8)
-Replacements done were : 
+Replacements done were :
 29 : 2.146807e-01 -> 2.230219e-01
 30 : -4.497113e-02 -> -6.090813e-01
 31 : 1.514931e-01 -> -2.372516e-01
@@ -54,7 +54,7 @@ Replacements done were :
 Next fault on block 3 in 9.633659e+01 usecs
 Recovery error change : 7.882646e-01 -> 6.276851e-01
 error was on block(s)  3 (21;8)
-Replacements done were : 
+Replacements done were :
 21 : 9.256782e-03 -> -9.196819e-01
 22 : 1.222724e-01 -> -1.470099e-02
 23 : 1.008023e-01 -> -6.690608e-01
@@ -67,7 +67,7 @@ Replacements done were :
 Next fault on block 3 in 9.633659e+01 usecs
 Recovery error change : 8.805978e-01 -> 7.576201e-01
 error was on block(s)  3 (21;8)
-Replacements done were : 
+Replacements done were :
 21 : 3.991329e-02 -> -9.052998e-01
 22 : 2.383260e-02 -> 2.287892e-01
 23 : 3.057605e-02 -> -5.788086e-01
@@ -82,7 +82,7 @@ Next fault on block 0 in 7.112531e+00 usecs
 Next fault on block 0 in 7.112531e+00 usecs
 Recovery error change : 8.565865e-01 -> 8.362759e-01
 error was on block(s)  0 (0;5) 2 (13;8)
-Replacements done were : 
+Replacements done were :
 0 : -6.124326e-01 -> -4.001075e-01
 1 : -4.464386e-01 -> -4.148479e-01
 2 : 2.052511e-01 -> 3.640917e-01
@@ -92,7 +92,7 @@ Replacements done were :
 Next fault on block 0 in 4.663981e+02 usecs
 Recovery error change : 7.934117e-01 -> 6.485473e-01
 error was on block(s)  0 (0;5)
-Replacements done were : 
+Replacements done were :
 0 : -5.204473e-02 -> -6.680376e-01
 1 : -2.979794e-02 -> -5.386204e-01
 2 : 6.342655e-03 -> 3.970597e-01
@@ -102,7 +102,7 @@ Replacements done were :
 Next fault on block 2 in 4.663981e+02 usecs
 Recovery error change : 8.110697e-01 -> 6.302662e-01
 error was on block(s)  2 (13;8)
-Replacements done were : 
+Replacements done were :
 13 : -1.045323e+00 -> -1.221214e+00
 14 : -1.187704e+00 -> -1.163968e+00
 15 : -5.448550e-01 -> -6.215815e-01
@@ -115,7 +115,7 @@ Replacements done were :
 Next fault on block 2 in 4.663981e+02 usecs
 Recovery error change : 7.426765e-01 -> 5.574368e-01
 error was on block(s)  2 (13;8)
-Replacements done were : 
+Replacements done were :
 13 : -3.600204e-02 -> -7.206641e-01
 14 : -2.027264e-01 -> -8.261773e-01
 15 : -5.807814e-02 -> -2.890593e-01
@@ -128,7 +128,7 @@ Replacements done were :
 Next fault on block 4 in 4.663981e+02 usecs
 Recovery error change : 7.998522e-01 -> 7.101759e-01
 error was on block(s)  4 (29;8)
-Replacements done were : 
+Replacements done were :
 29 : 8.398401e-01 -> 4.763109e-01
 30 : 2.291976e-01 -> -1.061804e-01
 31 : 7.489250e-01 -> 1.613477e-01
@@ -141,7 +141,7 @@ Replacements done were :
 Next fault on block 3 in 4.663981e+02 usecs
 Recovery error change : 6.847507e-01 -> 6.525045e-01
 error was on block(s)  3 (21;8)
-Replacements done were : 
+Replacements done were :
 21 : -5.218794e-01 -> -9.204056e-01
 22 : 3.577031e-02 -> -9.402955e-02
 23 : -3.573887e-01 -> -6.498404e-01
@@ -154,7 +154,7 @@ Replacements done were :
 Next fault on block 1 in 4.663981e+02 usecs
 Recovery error change : 7.830776e-01 -> 7.751113e-01
 error was on block(s)  1 (5;8)
-Replacements done were : 
+Replacements done were :
 5 : -3.009793e-01 -> -4.996755e-01
 6 : 1.282030e-01 -> 1.689655e-01
 7 : -2.127804e-01 -> -1.776501e-01
@@ -167,7 +167,7 @@ Replacements done were :
 Next fault on block 1 in 4.663981e+02 usecs
 Recovery error change : 6.881446e-01 -> 5.450146e-01
 error was on block(s)  1 (5;8)
-Replacements done were : 
+Replacements done were :
 5 : 7.280512e-02 -> -3.985180e-01
 6 : 2.982404e-01 -> 3.778102e-01
 7 : 1.950748e-01 -> -8.644717e-02
@@ -180,7 +180,7 @@ Replacements done were :
 Next fault on block 0 in 5.973424e+01 usecs
 Recovery error change : 9.521782e-01 -> 8.172068e-01
 error was on block(s)  0 (0;5)
-Replacements done were : 
+Replacements done were :
 0 : 1.171057e-01 -> -4.987800e-01
 1 : 7.118446e-02 -> -4.506891e-01
 2 : 1.129977e-02 -> 3.892550e-01
@@ -190,7 +190,7 @@ Replacements done were :
 Next fault on block 0 in 1.031289e+02 usecs
 Recovery error change : 5.350690e-01 -> 3.558570e-01
 error was on block(s)  0 (0;5)
-Replacements done were : 
+Replacements done were :
 0 : 6.930052e-02 -> -4.297348e-01
 1 : 6.375454e-02 -> -4.124427e-01
 2 : 6.705689e-02 -> 4.519018e-01
@@ -200,7 +200,7 @@ Replacements done were :
 Next fault on block 1 in 1.031289e+02 usecs
 Recovery error change : 9.111528e-01 -> 8.163297e-01
 error was on block(s)  1 (5;8)
-Replacements done were : 
+Replacements done were :
 5 : -5.776490e-02 -> -4.518007e-01
 6 : -5.365090e-03 -> 1.019855e-01
 7 : -2.329357e-02 -> -3.076688e-01
@@ -215,7 +215,7 @@ Next fault on block 1 in 1.031289e+02 usecs
 Next fault on block 1 in 1.031289e+02 usecs
 Recovery error change : 6.733895e-01 -> 4.997133e-01
 error was on block(s)  1 (5;8) 2 (13;8)
-Replacements done were : 
+Replacements done were :
 5 : 9.617764e-03 -> -4.726785e-01
 6 : 1.172615e-01 -> 3.555143e-01
 7 : 8.895773e-02 -> -9.925761e-02
@@ -228,7 +228,7 @@ Replacements done were :
 Next fault on block 3 in 1.031289e+02 usecs
 Recovery error change : 8.794244e-01 -> 7.679901e-01
 error was on block(s)  3 (21;8)
-Replacements done were : 
+Replacements done were :
 21 : -2.641248e-01 -> -1.151956e+00
 22 : 8.090395e-02 -> 1.126984e-01
 23 : -9.540742e-02 -> -6.785026e-01
@@ -241,7 +241,7 @@ Replacements done were :
 Next fault on block 0 in 5.186455e+01 usecs
 Recovery error change : 6.104248e-01 -> 6.091057e-01
 error was on block(s)  0 (0;5)
-Replacements done were : 
+Replacements done were :
 0 : -5.220785e-01 -> -4.691867e-01
 1 : -4.951901e-01 -> -4.450104e-01
 2 : 3.958170e-01 -> 4.205992e-01
@@ -253,7 +253,7 @@ Next fault on block 0 in 8.642289e+01 usecs
 Next fault on block 0 in 8.642289e+01 usecs
 Recovery error change : 7.506016e-01 -> 6.355595e-01
 error was on block(s)  0 (0;5) 1 (5;8)
-Replacements done were : 
+Replacements done were :
 0 : 3.357734e-02 -> -4.620664e-01
 1 : 5.887428e-02 -> -4.204712e-01
 2 : 3.736706e-02 -> 4.203840e-01
@@ -263,7 +263,7 @@ Replacements done were :
 Next fault on block 0 in 7.877628e+01 usecs
 Recovery error change : 7.284094e-01 -> 6.090847e-01
 error was on block(s)  0 (0;5)
-Replacements done were : 
+Replacements done were :
 0 : 3.021038e-02 -> -4.674534e-01
 1 : 3.371428e-02 -> -4.433280e-01
 2 : 3.412015e-02 -> 4.189246e-01
@@ -273,7 +273,7 @@ Replacements done were :
 Next fault on block 0 in 2.911864e+02 usecs
 Recovery error change : 7.506579e-01 -> 6.354165e-01
 error was on block(s)  0 (0;5)
-Replacements done were : 
+Replacements done were :
 0 : 3.601504e-02 -> -4.617236e-01
 1 : 5.688368e-02 -> -4.202876e-01
 2 : 3.607272e-02 -> 4.211627e-01
@@ -285,7 +285,7 @@ Next fault on block 2 in 2.911864e+02 usecs
 Next fault on block 2 in 2.911864e+02 usecs
 Recovery error change : 7.283266e-01 -> 6.777043e-01
 error was on block(s)  2 (13;8) 3 (21;8)
-Replacements done were : 
+Replacements done were :
 13 : -9.405546e-01 -> -1.361176e+00
 14 : -1.165385e+00 -> -1.326122e+00
 15 : -5.201598e-01 -> -4.824750e-01
@@ -298,7 +298,7 @@ Replacements done were :
 Next fault on block 2 in 2.911864e+02 usecs
 Recovery error change : 7.479983e-01 -> 6.318503e-01
 error was on block(s)  2 (13;8)
-Replacements done were : 
+Replacements done were :
 13 : 6.693941e-02 -> -5.208517e-01
 14 : 1.088284e-02 -> -5.270976e-01
 15 : -5.551997e-02 -> -3.319275e-01
@@ -313,7 +313,7 @@ Next fault on block 2 in 2.911864e+02 usecs
 Next fault on block 2 in 2.911864e+02 usecs
 Recovery error change : 8.926766e-01 -> 6.827790e-01
 error was on block(s)  2 (13;8) 3 (21;8)
-Replacements done were : 
+Replacements done were :
 13 : -1.582831e-01 -> -9.907168e-01
 14 : -1.523488e-01 -> -8.864742e-01
 15 : 7.406933e-04 -> -3.310105e-01
@@ -326,7 +326,7 @@ Replacements done were :
 Next fault on block 3 in 2.911864e+02 usecs
 Recovery error change : 6.957951e-01 -> 6.595708e-01
 error was on block(s)  3 (21;8)
-Replacements done were : 
+Replacements done were :
 21 : -9.624980e-01 -> -1.307949e+00
 22 : -1.111252e-01 -> 1.126087e-01
 23 : -1.148628e+00 -> -1.172324e+00
@@ -339,7 +339,7 @@ Replacements done were :
 Next fault on block 2 in 2.911864e+02 usecs
 Recovery error change : 7.736383e-01 -> 7.662227e-01
 error was on block(s)  2 (13;8)
-Replacements done were : 
+Replacements done were :
 13 : -9.948296e-01 -> -1.065607e+00
 14 : -8.581860e-01 -> -8.806256e-01
 15 : -2.878727e-01 -> -3.120181e-01
@@ -352,7 +352,7 @@ Replacements done were :
 Next fault on block 3 in 2.911864e+02 usecs
 Recovery error change : 7.981374e-01 -> 7.911064e-01
 error was on block(s)  3 (21;8)
-Replacements done were : 
+Replacements done were :
 21 : -1.340011e+00 -> -1.503606e+00
 22 : 2.398381e-01 -> 1.801988e-01
 23 : -9.785189e-01 -> -1.120917e+00
@@ -365,7 +365,7 @@ Replacements done were :
 Next fault on block 4 in 2.911864e+02 usecs
 Recovery error change : 8.148601e-01 -> 7.511518e-01
 error was on block(s)  4 (29;8)
-Replacements done were : 
+Replacements done were :
 29 : 1.809997e-01 -> 8.239347e-02
 30 : -1.331090e-01 -> -5.741497e-01
 31 : 6.778843e-02 -> -1.624234e-01
@@ -380,7 +380,7 @@ Next fault on block 1 in 2.911864e+02 usecs
 Next fault on block 1 in 2.911864e+02 usecs
 Recovery error change : 8.604025e-01 -> 7.425856e-01
 error was on block(s)  1 (5;8) 3 (21;8)
-Replacements done were : 
+Replacements done were :
 5 : -8.001917e-03 -> -4.013168e-01
 6 : -1.146133e-02 -> 1.915522e-01
 7 : 3.858758e-02 -> -8.712926e-02
@@ -393,7 +393,7 @@ Replacements done were :
 Next fault on block 0 in 7.308092e+02 usecs
 Recovery error change : 8.385907e-01 -> 7.518148e-01
 error was on block(s)  0 (0;5)
-Replacements done were : 
+Replacements done were :
 0 : 1.998527e-02 -> -5.152228e-01
 1 : -1.226400e-02 -> -3.196518e-01
 2 : 1.098890e-01 -> 4.402528e-01
@@ -403,7 +403,7 @@ Replacements done were :
 Next fault on block 2 in 7.308092e+02 usecs
 Recovery error change : 8.393217e-01 -> 6.236412e-01
 error was on block(s)  2 (13;8)
-Replacements done were : 
+Replacements done were :
 13 : -1.796754e-02 -> -9.056179e-01
 14 : -4.188816e-01 -> -1.062747e+00
 15 : -3.682433e-01 -> -4.868191e-01
@@ -416,7 +416,7 @@ Replacements done were :
 Next fault on block 1 in 7.308092e+02 usecs
 Recovery error change : 8.936163e-01 -> 8.234843e-01
 error was on block(s)  1 (5;8)
-Replacements done were : 
+Replacements done were :
 5 : -3.382215e-02 -> -3.658291e-01
 6 : 2.715794e-01 -> 2.167303e-01
 7 : 1.203495e-01 -> -1.342911e-01
@@ -429,7 +429,7 @@ Replacements done were :
 Next fault on block 4 in 7.308092e+02 usecs
 Recovery error change : 7.401412e-01 -> 6.337588e-01
 error was on block(s)  4 (29;8)
-Replacements done were : 
+Replacements done were :
 29 : 7.361732e-01 -> 9.281028e-01
 30 : 3.343067e-01 -> -3.377669e-01
 31 : 5.038462e-01 -> 2.698370e-01
@@ -442,7 +442,7 @@ Replacements done were :
 Next fault on block 4 in 7.308092e+02 usecs
 Recovery error change : 9.422061e-01 -> 8.239040e-01
 error was on block(s)  4 (29;8)
-Replacements done were : 
+Replacements done were :
 29 : -7.723733e-02 -> -3.792447e-01
 30 : -4.295120e-02 -> -5.693734e-01
 31 : -2.829678e-02 -> -5.897832e-01
@@ -455,7 +455,7 @@ Replacements done were :
 Next fault on block 1 in 7.308092e+02 usecs
 Recovery error change : 7.206193e-01 -> 5.800388e-01
 error was on block(s)  1 (5;8)
-Replacements done were : 
+Replacements done were :
 5 : -1.120099e-01 -> -5.787997e-01
 6 : 3.683980e-01 -> 3.914042e-01
 7 : 2.567317e-01 -> -1.041933e-01
@@ -468,7 +468,7 @@ Replacements done were :
 Next fault on block 0 in 3.347733e+02 usecs
 Recovery error change : 9.183590e-01 -> 9.147717e-01
 error was on block(s)  0 (0;5)
-Replacements done were : 
+Replacements done were :
 0 : -5.582525e-01 -> -5.331750e-01
 1 : -3.312454e-01 -> -5.000692e-01
 2 : 3.567044e-01 -> 4.272039e-01
@@ -478,7 +478,7 @@ Replacements done were :
 Next fault on block 4 in 3.347733e+02 usecs
 Recovery error change : 6.057789e-01 -> 4.623758e-01
 error was on block(s)  4 (29;8)
-Replacements done were : 
+Replacements done were :
 29 : 1.225274e+00 -> 1.006712e+00
 30 : 3.489601e-01 -> -1.940344e-01
 31 : 1.046453e+00 -> 5.325155e-01
@@ -491,7 +491,7 @@ Replacements done were :
 Next fault on block 1 in 3.347733e+02 usecs
 Recovery error change : 1.008475e+00 -> 8.951631e-01
 error was on block(s)  1 (5;8)
-Replacements done were : 
+Replacements done were :
 5 : 1.496372e-01 -> -3.616684e-01
 6 : 6.956673e-02 -> 1.939827e-01
 7 : 1.248654e-01 -> -1.703242e-01
@@ -504,7 +504,7 @@ Replacements done were :
 Next fault on block 1 in 3.347733e+02 usecs
 Recovery error change : 7.982164e-01 -> 6.554261e-01
 error was on block(s)  1 (5;8)
-Replacements done were : 
+Replacements done were :
 5 : -5.808491e-02 -> -5.461613e-01
 6 : 5.462433e-02 -> 2.386422e-01
 7 : 7.206685e-03 -> -2.678157e-01
@@ -517,7 +517,7 @@ Replacements done were :
 Next fault on block 2 in 3.347733e+02 usecs
 Recovery error change : 8.571523e-01 -> 6.236617e-01
 error was on block(s)  2 (13;8)
-Replacements done were : 
+Replacements done were :
 13 : -7.276280e-01 -> -1.139082e+00
 14 : -9.356730e-01 -> -1.352069e+00
 15 : -4.756908e-01 -> -6.552185e-01
@@ -530,7 +530,7 @@ Replacements done were :
 Next fault on block 2 in 3.347733e+02 usecs
 Recovery error change : 7.739166e-01 -> 5.949013e-01
 error was on block(s)  2 (13;8)
-Replacements done were : 
+Replacements done were :
 13 : -1.586393e-01 -> -8.212615e-01
 14 : -7.549248e-02 -> -6.622812e-01
 15 : -2.794481e-02 -> -2.653684e-01
@@ -547,7 +547,7 @@ Next fault on block 0 in 9.812786e+01 usecs
 Next fault on block 0 in 9.812786e+01 usecs
 Recovery error change : 8.903690e-01 -> 8.890089e-01
 error was on block(s)  0 (0;5) 2 (13;8) 3 (21;8)
-Replacements done were : 
+Replacements done were :
 0 : -6.527911e-01 -> -5.604660e-01
 1 : -4.697424e-01 -> -5.208002e-01
 2 : 3.856763e-01 -> 4.190525e-01
@@ -557,14 +557,14 @@ Replacements done were :
 Next fault on block 0 in 3.012004e+02 usecs
 Recovery error change : 4.734925e-01 -> 2.152112e-01
 error was on block(s)  0 (0;5)
-Replacements done were : 
+Replacements done were :
 0 : 1.310170e-01 -> -4.195603e-01
 1 : 1.566833e-01 -> -3.542139e-01
 2 : 7.244939e-02 -> 4.206759e-01
 3 : 1.512459e-01 -> -1.198244e-01
 4 : 2.319952e-01 -> 6.757530e-04
 
-solution : 
+solution :
 
 (  -1.24e-02	-3.25e-02	3.38e-02	-1.05e-02	1.05e-03	7.24e-02	1.18e-01	1.31e-01	-6.44e-02	-4.59e-02	3.12e-02	-2.75e-03	-9.75e-02	-2.00e-02	-1.43e-01	-9.06e-02	-4.71e-02	-1.76e-01	-1.22e-01	-2.21e-01	-2.11e-01	7.03e-03	-2.19e-02	7.42e-02	4.47e-01	4.40e-01	3.20e-01	7.40e-01	1.45e-01	1.09e-01	-7.16e-02	3.36e-02	4.32e-01	8.75e-01	1.64e-01	-1.18e+00	-7.64e-01	)
 euclidian distance to solution ||Ax-b||^2 = 2.852446e+00 , ||Ax-b||/||b|| = 9.677314e-01

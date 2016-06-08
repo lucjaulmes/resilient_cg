@@ -17,7 +17,7 @@ void get_rhs_sparse_with_grad(const int n, const int *rows, const int m, const i
 	#define get_rhs(n, rows, m, cols, bs, A, b, x, rhs) get_rhs_dense(n, rows, m, cols, bs, (DenseMatrix*)A, b, x, rhs)
 #else
 	#define get_rhs(n, rows, m, cols, bs, A, b, x, rhs) get_rhs_sparse(n, rows, m, cols, bs, (SparseMatrix*)A, b, x, rhs)
-#endif 
+#endif
 
 void do_interpolation( const double *rhs, double *x, const int total_lost, css *S, csn *N );
 void do_single_interpolation( const Matrix *A, const double *b, const double *g, double *x, const int lost_block, css *S, csn *N );

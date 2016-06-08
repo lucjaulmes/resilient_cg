@@ -75,13 +75,13 @@ static int cs_wclear (int mark, int lemax, int *w, int n)
 }
 
 /* keep off-diagonal entries; drop diagonal entries */
-static int cs_diag (int i, int j, double aij, void *other) 
-{ 
-	return (i != j); 
+static int cs_diag (int i, int j, double aij, void *other)
+{
+	return (i != j);
 }
 
 /* p = amd(A+A') if symmetric is true, or amd(A'A) otherwise */
-int *cs_amd ( const cs *A, int order )  
+int *cs_amd ( const cs *A, int order )
 	/*
 	   Purpose:
 
@@ -96,9 +96,9 @@ int *cs_amd ( const cs *A, int order )
 	   Parameters:
 
 	   Input, int ORDER:
-	   -1:natural, 
-	   0:Cholesky,  
-	   1:LU, 
+	   -1:natural,
+	   0:Cholesky,
+	   1:LU,
 	   2:QR
 	 */
 {
@@ -738,7 +738,7 @@ static void cs_matched (int m, const int *wi, const int *jmatch, int *P, int *Q,
 
 
 static void cs_unmatched (int m, const int *wi, int *P, int *rr, int set)
-	/* 
+	/*
 	   Purpose:
 
 	   CS_UNMATCHED collects unmatched rows into the permutation vector P.
@@ -1358,7 +1358,7 @@ cs *cs_multiply (const cs *A, const cs *B)
 		if (nz + m > C->nzmax && !cs_sprealloc (C, 2*(C->nzmax)+m))
 		{
 			return (cs_done (C, w, x, 0)) ;		/* out of memory */
-		} 
+		}
 		Ci = C->i ; Cx = C->x ;		/* C may have been reallocated */
 		Cp [j] = nz ;			/* column j of C starts here */
 		for (p = Bp [j] ; p < Bp [j+1] ; p++)

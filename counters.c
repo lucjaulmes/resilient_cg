@@ -32,7 +32,7 @@ long long papi_cycles_start, papi_usec_start;
 #ifdef GETTIMEOFDAY
 #include <sys/time.h>
 struct timeval start_time, stop_time;
-#endif 
+#endif
 
 
 void unset_measure()
@@ -78,11 +78,11 @@ void start_measure()
 	#ifdef PAPICOUNTERS
 	papi_cycles_start = PAPI_get_real_cyc();
 	papi_usec_start = PAPI_get_real_usec();
-	#endif 
+	#endif
 
 	#ifdef GETTIMEOFDAY
 	gettimeofday( &start_time, NULL );
-	#endif 
+	#endif
 }
 
 void stop_measure()
@@ -96,11 +96,11 @@ void stop_measure()
 	long long papi_usec_end = PAPI_get_real_usec(), papi_cycles_end = PAPI_get_real_cyc();
 	printf("Cycles:%lld\n", papi_cycles_end - papi_cycles_start);
 	printf("Usecs:%lld\n", papi_usec_end - papi_usec_start);
-	#endif 
+	#endif
 
 	#ifdef GETTIMEOFDAY
 	gettimeofday( &stop_time, NULL );
 	printf("gettimeofday_Usecs:%e\n", (1e6 * (stop_time.tv_sec - start_time.tv_sec)) + stop_time.tv_usec - start_time.tv_usec);
-	#endif 
+	#endif
 }
 

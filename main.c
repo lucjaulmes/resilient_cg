@@ -15,7 +15,7 @@
 
 #ifdef BACKTRACE
 	#include "backtrace.h"
-#else 
+#else
 	#define register_sigsegv_handler()
 #endif
 
@@ -47,17 +47,17 @@ void usage(char* arg0)
 void name_strategy(const char n, char* name)
 {
 	if( n == NOFAULT )
-		strcpy(name, "no_fault");	
+		strcpy(name, "no_fault");
 	else if( n == SINGLEFAULT )
-		strcpy(name, "single_fault");	
+		strcpy(name, "single_fault");
 	else if( n == MULTFAULTS_GLOBAL )
-		strcpy(name, "multiple_faults_global_recovery");	
+		strcpy(name, "multiple_faults_global_recovery");
 	else if( n == MULTFAULTS_UNCORRELATED )
-		strcpy(name, "multiple_faults_uncorrelated_recovery");	
+		strcpy(name, "multiple_faults_uncorrelated_recovery");
 	else if( n == MULTFAULTS_DECORRELATED )
-		strcpy(name, "multiple_faults_decorrelated_recovery");	
+		strcpy(name, "multiple_faults_decorrelated_recovery");
 	else
-		strcpy(name, "unknown_fault_strategy_expect_crashes");	
+		strcpy(name, "unknown_fault_strategy_expect_crashes");
 }
 
 int read_param(int argsleft, char* argv[], double *lambda, int *restart, int *runs, int *fail_size)
@@ -214,7 +214,7 @@ FILE* get_infos_matrix(char *filename, int *n, int *m, int *nnz, int *symmetric)
 		printf("Could not process Matrix Market banner of file %s.\n", filename);
 
 	else if (mm_is_complex(matcode))
-		printf("Sorry, this application does not support Matrix Market type of file %s : [%s]\n", 
+		printf("Sorry, this application does not support Matrix Market type of file %s : [%s]\n",
 			filename, mm_typecode_to_str(matcode));
 
 	else if( !mm_is_array(matcode) && (mm_read_mtx_crd_size(input_file, m, n, nnz) != 0 || *m != *n) )
@@ -241,7 +241,7 @@ int main(int argc, char* argv[])
 {
 	setbuf(stdout, NULL);
 
-	// if we want to autmatically print bactraces, regsiter handler 
+	// if we want to autmatically print bactraces, regsiter handler
 	register_sigsegv_handler();
 
 	if(argc < 2)
@@ -287,7 +287,7 @@ int main(int argc, char* argv[])
 				//compute_neighbourhoods_sparse(&dA, fail_size);
 				printf("matrix_format:SPARSE ");
 
-			#endif 
+			#endif
 
 			fclose(input_file);
 

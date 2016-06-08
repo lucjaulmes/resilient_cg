@@ -116,9 +116,9 @@ void recover_xk( const Matrix *A, const double *b, const double *g, double *x, P
 
 					// get in set the block lost[id] and all its neighbours
 					get_failed_neighbourset(lost[id], set, &m);
-					
+
 					printf("global strategy found that neighbourhood of failed blocks for block %d is of size %d\n", lost[id], m);
-					
+
 					// how are going to do this for several things at once ?
 					if( m > 1 )
 						do_multiple_interpolation(A, b, g, x, m, set, M->S, M->N);
@@ -155,14 +155,14 @@ void do_interpolation( const double *rhs, double *x, const int total_lost, css *
 void do_single_interpolation( const Matrix *A, const double *b, const double *g, double *x, const int lost_block, css *S, csn *N )
 {
 	int fbs = get_failblock_size(), total_lost = fbs, lost = lost_block * fbs;
-	
+
 	// change from block numver to first row in block number
 	if( lost + fbs > A->n )
 		total_lost -= (lost + fbs - A->n);
 
 	double *rhs = (double*)calloc( total_lost, sizeof(double) );
 
-	// fill in the rhs with the part we need 
+	// fill in the rhs with the part we need
 	if( g == NULL )
 		get_rhs(1, &lost, 1, &lost, total_lost, A, b, x, rhs);
 	else
@@ -213,7 +213,7 @@ void do_multiple_interpolation( const Matrix *A, const double *b, const double *
 		get_rhs(nb_lost, lost, nb_lost, lost, fbs, A, b, x, rhs);
 	else
 		get_rhs_sparse_with_grad(nb_lost, lost, nb_lost, lost, fbs, A, b, g, x, rhs);
-	
+
 	double thres = DBL_EPSILON * total_lost;
 
 	// we'll be using a blocked jacobi
@@ -261,7 +261,7 @@ void get_rhs_dense(const int n, const int *rows, const int m, const int *except_
 		for(ii=rows[i]; ii < rows[i] + bs && ii<A->n; ii++, k++)
 		{
 			// for each lost line i, start with b_i
-			// and remove contributions A_ij * x_j 
+			// and remove contributions A_ij * x_j
 			// from all rows j that are not lost
 			rhs[k] = b[ ii ];
 
@@ -293,7 +293,7 @@ void get_rhs_sparse(const int n, const int *rows, const int m, const int *except
 		for(ii=rows[i]; ii < rows[i] + bs && ii<A->n; ii++, k++)
 		{
 			// for each lost line ii, start with b_ii
-			// and remove contributions A_ii,j * x_j 
+			// and remove contributions A_ii,j * x_j
 			// from all rows j that are not lost
 			rhs[k] = b[ ii ];
 
@@ -326,7 +326,7 @@ void get_rhs_sparse_with_grad(const int n, const int *rows, const int m, const i
 		for(ii=rows[i]; ii < rows[i] + bs && ii<A->n; ii++, k++)
 		{
 			// for each lost line ii, start with b_ii
-			// and remove contributions A_ii,j * x_j 
+			// and remove contributions A_ii,j * x_j
 			// from all rows j that are not lost
 			rhs[k] = b[ ii ] - g[ ii ];
 
