@@ -37,10 +37,9 @@ Each different configuration will be compiled in a subdirectory, with 6 targets
 
 The default make target will be a non-resilient textbook Conjugate Gradient.
 You may then choose resilience strategies for Detected Uncorrected Errors (DUE),
-e.g. a memory page failure, and a detector for Silent Data Corruption (SDC).
 
 Options are :
-DUE: none async path rollback lossy
+DUE: none async path lossy rollback
 
 If using the rollback DUE strategy, you will need to choose a (not "none") checkpointing
 method as well.
@@ -49,13 +48,14 @@ CKPT: none disk mem
 The name of each configuration's directory is then DUE_CKPT
 Some valid examples :
 
-    configuration :                                            directory :
+    configuration               directory          name in paper
 
-    DUE=none                                                  none_none
-    DUE=async                                                 async_none
-    DUE=path                                                  path_none
-    DUE=rollback CKPT=disk                                    rollblack_disk
-    DUE=rollback CKPT=mem                                     rollblack_mem
+    DUE=none                    none_none          baseline, trivial
+    DUE=async                   async_none         AFEIR  (recover asynchronously)
+    DUE=path                    path_none          FEIR   (recover in critical path)
+    DUE=lossy                   lossy_none         Lossy
+    DUE=rollback CKPT=disk      rollblack_disk     ckpt
+    DUE=rollback CKPT=mem       rollblack_mem      N/A
 
 ######################################
 #              RUNNING               #
@@ -65,20 +65,20 @@ You have to supply a file containing a spd matrix in Matrix Market format.
 All other parameters are optional and described below. Some are only available for
 some flavours of the resilient CG.
 
-Usage: ./async_alpha100_disk200/cg [options] <matrix-market-filename> [, ...]
+Usage: ./$directory/cg [options] <matrix-market-filename> [, ...]
 Possible options are :
  ===  fault injection  ===
   -nf               Disabling faults simulation (default).
   -l     lambda     Inject errors with lambda meaning MTBE in usec.
   -nerr  N duration Inject N errors over a period of duration in usec.
                     Note : the options -nf, -l and -nerr are mutually exclusive.
-  -mfs   strategy   Select an alternate strategy for multiple faults (cf Agullo2013).
-                    'strategy' must be one of : global, uncorrelated, decorrelated.
+  -mfs   strategy   Select an alternate (cf Agullo2013) strategy for multiple faults.
+                    'strategy' must be one of global, uncorrelated, decorrelated.
                     Note : has no effect without errors. global is default.
  === run configuration ===
   -th    threads    Manually define number of threads.
   -nb    blocks     Defines the number of blocks in which to divide operations ;
-                    their size will depdend on the matrix' size.
+                    their size will depend on the matrix' size.
   -r     runs       number of times to run a matrix solving.
   -cv    thres      Run until the error verifies ||b-Ax|| < thres * ||b|| (default 1e-10).
   -maxit N          Run no more than N iterations (default no limit).
