@@ -60,7 +60,7 @@ void set_blocks_sparse(Matrix *A, int *nb_blocks, const int fail_size)
 
 	set_block_end( *nb_blocks -1, A->n );
 }
- 
+
 int MAXIT = 0;
 
 void usage(char* arg0)
@@ -86,17 +86,20 @@ void usage(char* arg0)
 			" === resilience method === \n"
 			"  -ps    size       Defines page size (used on failure, in bytes, defaults to 4K).\n"
 			"                    Must be a multiple of the system page size (and a power of 2).\n"
+	#if CKPT
+			"  -ckpt  N          Checkpointing frequency (expressed in iterations).\n"
+	#endif
 	#if CKPT == CKPT_TO_DISK
-			"  -disk  /path/dir  Path to a directory on local disk for checkpointing (default $TMPDIR).\n"
-			"  -ckpt             Prefix of the name of checkpoint files.\n"
+			"  -path  /path/dir  Path to a directory on local disk for checkpointing (default $TMPDIR).\n"
+			"  -prefix           Prefix of the name of checkpoint files.\n"
 	#endif
 			"All options apply to every following input file. You may re-specify them for each file.\n\n", arg0);
 	exit(1);
 }
 
 // we return how many parameters we consumed, -1 for error
-int read_param(int argsleft, char* argv[], double *lambda, int *runs, int *threads UNUSED, int *blocks, long *fail_size, int *fault_strat, 
-			int *nerr, unsigned int *seed, double *cv_thres, char **checkpoint_path UNUSED, char **checkpoint_prefix UNUSED)
+int read_param(int argsleft, char* argv[], double *lambda, int *runs, int *threads UNUSED, int *blocks, long *fail_size, int *fault_strat,
+			int *nerr, unsigned int *seed, double *cv_thres, int *checkpoint_freq UNUSED, char **checkpoint_path UNUSED, char **checkpoint_prefix UNUSED)
 {
 	if( strcmp(argv[0], "-r") == 0 )
 	{
@@ -252,8 +255,22 @@ int read_param(int argsleft, char* argv[], double *lambda, int *runs, int *threa
 
 		return 3;
 	}
+	#if CKPT
+	else if( strcmp(argv[0], "-ckpt") == 0 )
+	{
+		// we want at least the integer and a matrix market file after
+		if( argsleft <= 2 )
+			return -1;
+
+		*checkpoint_freq = (int) strtol(argv[1], NULL, 10);
+		if( *checkpoint_freq <= 0 )
+			return -1;
+
+		return 2;
+	}
+	#endif
 	#if CKPT == CKPT_TO_DISK
-	else if( strcmp(argv[0], "-disk") == 0 )
+	else if( strcmp(argv[0], "-path") == 0 )
 	{
 		// we want at least the integer and a matrix market file after
 		if( argsleft <= 2 )
@@ -261,7 +278,7 @@ int read_param(int argsleft, char* argv[], double *lambda, int *runs, int *threa
 
 		struct stat file_infos;
 		stat(argv[1], &file_infos);
-	
+
 		mode_t required_flags = S_IFDIR | S_IROTH | S_IWOTH;
 		if( (file_infos.st_mode & required_flags) == required_flags )
 			return -1;
@@ -270,7 +287,7 @@ int read_param(int argsleft, char* argv[], double *lambda, int *runs, int *threa
 
 		return 2;
 	}
-	else if( strcmp(argv[0], "-ckpt") == 0 )
+	else if( strcmp(argv[0], "-prefix") == 0 )
 	{
 		// we want at least the integer and a matrix market file after
 		if( argsleft <= 2 )
@@ -282,7 +299,7 @@ int read_param(int argsleft, char* argv[], double *lambda, int *runs, int *threa
 		return 2;
 	}
 	#endif
-	else 
+	else
 		return 0; // no option regognized, consumed 0 parameters
 }
 
@@ -302,7 +319,7 @@ FILE* get_infos_matrix(char *filename, int *n, int *m, int *nnz, int *symmetric)
 		printf("Could not process Matrix Market banner of file \"%s\".\n", filename);
 
 	else if (mm_is_complex(matcode))
-		printf("Sorry, this application does not support Matrix Market type of file \"%s\" : [%s]\n", 
+		printf("Sorry, this application does not support Matrix Market type of file \"%s\" : [%s]\n",
 			filename, mm_typecode_to_str(matcode));
 
 	else if( !mm_is_array(matcode) && (mm_read_mtx_crd_size(input_file, m, n, nnz) != 0 || *m != *n) )
@@ -346,11 +363,11 @@ int main(int argc, char* argv[])
 	int nb_threads = nb_blocks = 1;
 	#endif
 
-	int fault_strat = MULTFAULTS_GLOBAL, nerr = 0;
+	int fault_strat = MULTFAULTS_GLOBAL, nerr = 0, checkpoint_freq = RECOMPUTE_GRADIENT_FREQ;
 	long fail_size;
 	double lambda = 0, cv_thres = 1e-10;
 	#if CKPT == CKPT_TO_DISK
-	char *checkpoint_path = getenv("TMPDIR"), *checkpoint_prefix = "", ckpt[50];
+	char *checkpoint_path = getenv("TMPDIR"), *checkpoint_prefix = "";
 	#else
 	char *checkpoint_path = NULL, *checkpoint_prefix = NULL;
 	#endif
@@ -361,9 +378,9 @@ int main(int argc, char* argv[])
 	unsigned int seed = 1591613054 ;// time(NULL);
 
 	// Iterate over parameters (usually open files)
-	for(f=1; f<argc; f += nb_read )
+	for(f=1; f<argc; f += nb_read)
 	{
-		nb_read = read_param(argc - f, &argv[f], &lambda, &runs, &nb_threads, &nb_blocks, &fail_size, &fault_strat, &nerr, &seed, &cv_thres, &checkpoint_path, &checkpoint_prefix);
+		nb_read = read_param(argc - f, &argv[f], &lambda, &runs, &nb_threads, &nb_blocks, &fail_size, &fault_strat, &nerr, &seed, &cv_thres, &checkpoint_freq, &checkpoint_path, &checkpoint_prefix);
 
 		// error happened
 		if( nb_read < 0 )
@@ -405,12 +422,13 @@ int main(int argc, char* argv[])
 				sprintf(strchr(header, '\n'), " lambda:%e\n", lambda);
 
 			#if CKPT
-			const char * const ckpt_names[] = {"none", "in_memory", "to_disk"};
-			sprintf(strchr(header, '\n'), " ckpt:%s ckpt_freq:%d\n", ckpt_names[CKPT], CHECKPOINT_FREQ);
+			const char * const ckpt_names[] = {"none", "to_disk", "in_memory"};
+			sprintf(strchr(header, '\n'), " ckpt:%s ckpt_freq:%d\n", ckpt_names[CKPT], checkpoint_freq);
 			#endif
 
 			// set some parameters that we don't want to pass through solve_cg
 			#if CKPT == CKPT_TO_DISK
+			char ckpt[50];
 			sprintf(ckpt, "%s/%s", checkpoint_path, checkpoint_prefix);
 			sprintf(strchr(header, '\n'), " ckpt_path:%s\n", ckpt);
 			#else
@@ -422,11 +440,11 @@ int main(int argc, char* argv[])
 			print_matrix(stderr, &matrix);
 			#endif
 
-			populate_global(matrix.n, fail_size, fault_strat, nerr, lambda, ckpt);
+			populate_global(matrix.n, fail_size, fault_strat, nerr, lambda, checkpoint_freq, ckpt);
 
 			// if using fancy ways of measuring (e.g. extrae events)
 			setup_measure();
-		
+
 			// a few vectors for rhs of equation, solution and verification
 			double *b, *x, *s;
 			b = (double*)aligned_calloc(fail_size, n * sizeof(double));

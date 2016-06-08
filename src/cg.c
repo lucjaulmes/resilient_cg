@@ -34,7 +34,7 @@ void compute_beta(const double *err_sq, const double *old_err_sq, double *beta)
 	if( state & (MASK_GRADIENT | MASK_NORM_G | MASK_RECOVERY) )
 	{
 		clear_failed(MASK_GRADIENT | MASK_NORM_G | MASK_RECOVERY);
-		fprintf(stderr, "ERROR SUBSISTED PAST RECOVERY restart needed. At beta, g:%d, ||g||:%d\n", (state & MASK_GRADIENT) > 0, (state & MASK_NORM_G) > 0);
+		log_err(SHOW_DBGINFO, "ERROR SUBSISTED PAST RECOVERY restart needed. At beta, g:%d, ||g||:%d\n", (state & MASK_GRADIENT) > 0, (state & MASK_NORM_G) > 0);
 	}
 	#endif
 
@@ -60,7 +60,7 @@ void compute_alpha(double *err_sq, double *normA_p_sq, double *old_err_sq, doubl
 	if( state & (MASK_ITERATE | MASK_P | MASK_OLD_P | MASK_A_P | MASK_NORM_A_P | MASK_RECOVERY) )
 	{
 		clear_failed(MASK_ITERATE | MASK_P | MASK_OLD_P | MASK_A_P | MASK_NORM_A_P | MASK_RECOVERY);
-		fprintf(stderr, "ERROR SUBSISTED PAST RECOVERY restart needed. At alpha, x:%d, p:%d, p':%d, Ap:%d, <p,Ap>:%d\n", (state & MASK_ITERATE) > 0, (state & MASK_P) > 0, (state & MASK_OLD_P) > 0, (state & MASK_A_P) > 0, (state & MASK_NORM_A_P) > 0);
+		log_err(SHOW_DBGINFO, "ERROR SUBSISTED PAST RECOVERY restart needed. At alpha, x:%d, p:%d, p':%d, Ap:%d, <p,Ap>:%d\n", (state & MASK_ITERATE) > 0, (state & MASK_P) > 0, (state & MASK_OLD_P) > 0, (state & MASK_A_P) > 0, (state & MASK_NORM_A_P) > 0);
 	}
 	#endif
 	#endif
@@ -89,7 +89,7 @@ void solve_cg(const Matrix *A, const double *b, double *iterate, double converge
 	double *p, *old_p, *Ap, normA_p_sq, *gradient, *Aiterate, err_sq = 0.0, old_err_sq = INFINITY, old_err_sq2 = DBL_MAX, alpha = 0.0, beta = 0.0;
 	char *wait_for_p = alloc_deptoken(), *wait_for_iterate = alloc_deptoken(), *wait_for_mvm = alloc_deptoken();
 	#if CKPT == CKPT_IN_MEMORY
-	double *save_it, *save_g, *save_p, *save_Ap, save_err_sq, save_alpha;
+	double *save_it, *save_p, save_err_sq, save_alpha;
 	int do_checkpoint = 0;
 	#elif CKPT == CKPT_TO_DISK
 	double save_err_sq, save_alpha;
@@ -104,9 +104,7 @@ void solve_cg(const Matrix *A, const double *b, double *iterate, double converge
 
 	#if CKPT == CKPT_IN_MEMORY
 	save_it  = (double*)aligned_calloc(sizeof(double) << get_log2_failblock_size(), n * sizeof(double));
-	save_g   = (double*)aligned_calloc(sizeof(double) << get_log2_failblock_size(), n * sizeof(double));
 	save_p   = (double*)aligned_calloc(sizeof(double) << get_log2_failblock_size(), n * sizeof(double));
-	save_Ap  = (double*)aligned_calloc(sizeof(double) << get_log2_failblock_size(), n * sizeof(double));
 	#endif
 
 	// some parameters pre-computed, and show some informations
@@ -115,11 +113,11 @@ void solve_cg(const Matrix *A, const double *b, double *iterate, double converge
 	log_out("Error shown is ||Ax-b||^2, you should plot ||Ax-b||/||b||. (||b||^2 = %e)\n", norm_b);
 
 	mp = (magic_pointers){.A = A, .b = b, .x = iterate, .p = p, .old_p = old_p, .g = gradient, .Ap = Ap, .Ax = Aiterate,
-							.alpha = &alpha, .beta = &beta, .err_sq = &err_sq, .old_err_sq = &old_err_sq, .normA_p_sq = &normA_p_sq};
+		.alpha = &alpha, .beta = &beta, .err_sq = &err_sq, .old_err_sq = &old_err_sq, .old_err_sq2 = &old_err_sq2, .normA_p_sq = &normA_p_sq};
 	#if CKPT
 	checkpoint_data ckpt_data = (checkpoint_data) {
 		#if CKPT == CKPT_IN_MEMORY
-		.save_x = save_it, .save_g = save_g, .save_p = save_p, .save_Ap = save_Ap,
+		.save_x = save_it, .save_p = save_p,
 		#endif
 		.instructions = SAVE_CHECKPOINT, .save_err_sq = &save_err_sq, .save_alpha = &save_alpha
 	};
@@ -165,7 +163,7 @@ void solve_cg(const Matrix *A, const double *b, double *iterate, double converge
 
 			#if CKPT
 			if( r == 0 )
-				force_checkpoint(&ckpt_data, iterate, gradient, old_p, Ap);
+				force_checkpoint(&ckpt_data, iterate, old_p);
 			#endif
 
 			#if DUE == DUE_ASYNC || DUE == DUE_IN_PATH
@@ -205,7 +203,7 @@ void solve_cg(const Matrix *A, const double *b, double *iterate, double converge
 		}
 
 		// swapping p's so we reduce pressure on the execution of the update iterate tasks
-		// now output-dependencies is not conflicting with the next iteration but the one after
+		// now output-dependencies are not conflicting with the next iteration but the one after
 		{
 			swap(&p, &old_p);
 			
@@ -229,22 +227,26 @@ void solve_cg(const Matrix *A, const double *b, double *iterate, double converge
 			#endif
 			#if CKPT
 			if( do_checkpoint <= 0 )
-				do_checkpoint = CHECKPOINT_FREQ;
+				do_checkpoint = get_ckpt_freq();
 			#endif
 		}
 
 		compute_alpha(&err_sq, &normA_p_sq, &old_err_sq, &old_err_sq2, &alpha);
 
-		// should happen after p, Ap are ready and before (post-alpha) iterate and gradient updates
-		// so just after (or just before) alpha basically
 		#if CKPT // NB. this implies DUE_ROLLBACK
+		// should happen after p, Ap are ready and before (post-alpha) iterate and gradient updates
+		// so just after alpha basically
 		if(failures)
 		{
 			do_checkpoint = 0;
-			force_rollback(&ckpt_data, iterate, gradient, old_p, Ap);
+			do_update_gradient = 0;
+			force_rollback(&ckpt_data, iterate, old_p);
 		}
 		else if( --do_checkpoint == 0 )
-			due_checkpoint(&ckpt_data, iterate, gradient, old_p, Ap);
+		{
+			do_update_gradient = 0;
+			due_checkpoint(&ckpt_data, iterate, old_p);
+		}
 		#endif
 	}
 
@@ -271,9 +273,7 @@ void solve_cg(const Matrix *A, const double *b, double *iterate, double converge
 
 	#if CKPT == CKPT_IN_MEMORY
 	free(save_it);
-	free(save_g);
 	free(save_p);
-	free(save_Ap);
 	#endif
 }
 

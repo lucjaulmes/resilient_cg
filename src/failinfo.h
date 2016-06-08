@@ -7,7 +7,7 @@
 #include <signal.h>    // siginfo_t
 #include <string.h>    // ffs
 #include "global.h"
-#include "cg.h"        // magic_pointers, ASSOC_CONST_MP , VECT_xxx and MASK_xxx
+#include "cg.h"        // magic_pointers, ASSOC_CONST_MP , VECT_xxx
 #include "matrix.h"    // Matrix
 
 #define BASESIZE 16
@@ -89,6 +89,9 @@ typedef struct analyze_err
 	int nb_failblocks, failblock_size, log2fbs, fault_strat;
 	Matrix *neighbours;
 
+	#if CKPT
+	int ckpt_freq;
+	#endif
 	#if CKPT == CKPT_TO_DISK
 	const char *ckpt;
 	#endif
@@ -159,6 +162,13 @@ static inline int is_skipped_block(const int block, const int mask)
 	return errinfo.skipped_blocks[block] & mask;
 }
 
+#if CKPT
+static inline int get_ckpt_freq()
+{
+	return errinfo.ckpt_freq;
+}
+#endif
+
 int aggregate_skips();
 int has_skipped_blocks(const int mask);
 int is_skipped_not_failed_block(const int block, const int mask);
@@ -210,12 +220,13 @@ void resilience_sighandler(int signum, siginfo_t *info, void *context);
 void silent_deallocating_sighandler(int signum, siginfo_t *info, void *context);
 
 // cause an error
+void sleep_ns(long long ns);
 void flip_a_bit(analyze_err *info);
 void cause_mpr(error_sim_data *sim_err);
 void* simulate_failures(void *ptr);
 
 // setup methods, called before anything happens
-void populate_global(const int n, const int fail_size_bytes, const int fault_strat, const int max_err, const double lambda, const char *checkpoint_path);
+void populate_global(const int n, const int fail_size_bytes, const int fault_strat, const int max_err, const double lambda, const int checkpoint_freq, const char *checkpoint_path);
 void setup_resilience(const Matrix *A, const int nb, magic_pointers *mp);
 void start_error_injection();
 void unset_resilience();

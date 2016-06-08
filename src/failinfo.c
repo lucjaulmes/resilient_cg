@@ -8,15 +8,16 @@
 #include <unistd.h>
 #include <sys/mman.h>
 #include <pthread.h>
+#include <limits.h>
 
 #include "global.h"
 #include "debug.h"
 #include "cg.h"
 #include "backtrace.h"
 
-const char * const mask_names[] = { "0 ", 
-	"X ", "Ax", "G ", "P4", "P5", "Ap", "7 ", "8 ", 
-	"Sx", "10", "Sg", "Sp", "13", "Tp", "15", "16", 
+const char * const mask_names[] = { "0 ",
+	"X ", "Ax", "G ", "P4", "P5", "Ap", "7 ", "8 ",
+	"Sx", "10", "Sg", "Sp", "13", "Tp", "15", "16",
 	"Ng", "Np", "19", "RC", "21", "22", "23", "24",
 	"25", "26", "27", "28", "29", "Fg", "Fp" };
 
@@ -29,7 +30,7 @@ analyze_err errinfo;
 // N.B this is still __thread and not _Thread_local until mcc supports it : https://pm.bsc.es/projects/mcxx/ticket/404
 __thread sig_atomic_t out_vect = 0, exception_happened = 0;
 
-// from x a uniform distribution between 0 and 1, the weibull distribution 
+// from x a uniform distribution between 0 and 1, the weibull distribution
 // is given by lambda * ( -ln( 1 - x ) )^(1/k)
 double weibull(const double lambda, const double k, const double x)
 {
@@ -52,10 +53,13 @@ double exponential(const double lambda, const double x)
 	return y;
 }
 
-void populate_global(const int n, const int fail_size_bytes, const int fault_strat, const int nerr, const double lambda, const char *checkpoint_path UNUSED)
+void populate_global(const int n, const int fail_size_bytes, const int fault_strat, const int nerr, const double lambda, const int checkpoint_freq UNUSED, const char *checkpoint_path UNUSED)
 {
 	const int fail_size = fail_size_bytes / sizeof(double);
 	errinfo = (analyze_err){ .failblock_size = fail_size, .log2fbs = ffs(fail_size)-1, .nb_failblocks = (n + fail_size -1) / fail_size, .fault_strat = fault_strat,
+		#if CKPT
+		.ckpt_freq = checkpoint_freq,
+		#endif
 		#if CKPT == CKPT_TO_DISK
 		.ckpt = checkpoint_path
 		#endif
@@ -79,7 +83,7 @@ void setup_resilience(const Matrix *A UNUSED, const int nb, magic_pointers *mp)
 	errinfo.neighbours->v = NULL;
 
 	compute_neighbourhoods(A, errinfo.failblock_size, errinfo.neighbours);
-	
+
 	// now for storing infos about errors
 	errinfo.skipped_blocks = (int*)calloc( errinfo.nb_failblocks, sizeof(int) );
 	#endif
@@ -115,7 +119,7 @@ void setup_resilience(const Matrix *A UNUSED, const int nb, magic_pointers *mp)
 
 	// start semaphore locked : released in release_error_injection
 	sem_init(&sim_err.start_sim, 0, 0);
-	
+
 	// if simulating faults, create thread to do so
 	if( sim_err.lambda != 0 )
 		pthread_create(&sim_err.th, NULL, &simulate_failures, (void*)&sim_err);
@@ -156,7 +160,7 @@ void unset_resilience()
 	free(errinfo.data);
 }
 
-void resilience_sighandler(int signum, siginfo_t *info, void *context UNUSED)
+void resilience_sighandler(int signum, siginfo_t *info, void* context)
 {
 	if( (signum == SIGBUS /* && (info->si_code == BUS_MCEER_AR || info->si_code == BUS_MCEER_A0 )*/) ||
 		(signum == SIGSEGV && info->si_code == SEGV_ACCERR) )
@@ -171,7 +175,7 @@ void resilience_sighandler(int signum, siginfo_t *info, void *context UNUSED)
 
 		if( vect < 0 )
 		{
-			fprintf(stderr, "Error happened in memory that is not recoverable data : %p\n", page); 
+			fprintf(stderr, "Error happened in memory that is not recoverable data : %p\n", page);
 			crit_err_hdlr(signum, info, context);
 			return;
 		}
@@ -187,7 +191,7 @@ void resilience_sighandler(int signum, siginfo_t *info, void *context UNUSED)
 	#if DUE
 		// notify this thread
 		exception_happened++;
-		if( out_vect == RECOVERY )
+		if( out_vect == RECOVERY || out_vect == CHECKPOINT )
 			errinfo.in_recovery_errors++;
 	#endif
 
@@ -201,7 +205,7 @@ void resilience_sighandler(int signum, siginfo_t *info, void *context UNUSED)
 		mmap(page, sizeof(double) << get_log2_failblock_size(), PROT_READ|PROT_WRITE, MAP_FIXED|MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
 
 
-		log_err(SHOW_DBGINFO, "Error has just been  signaled  on page %3d of vector %s (%d)\n", block, vect_name(vect), vect); 
+		log_err(SHOW_DBGINFO, "Error has just been  signaled  on page %3d of vector %s (%d)\n", block, vect_name(vect), vect);
 	}
 	else
 	{
@@ -228,11 +232,28 @@ void silent_deallocating_sighandler(int signum, siginfo_t *info, void *context U
 	}
 }
 
+void sleep_ns(long long ns)
+{
+	struct timespec next_sim_fault, remainder, remainder2;
+
+	next_sim_fault.tv_sec = ns / (long long)(1e9); // secs to next fault
+	next_sim_fault.tv_nsec = ns % (long long)(1e9); // nanosecs to next fault
+
+	int r = nanosleep(&next_sim_fault, &remainder);
+	if( r != 0 )
+	{
+		perror("nanosleep interrupted ");
+		r = nanosleep(&remainder, &remainder2);
+
+		if( r != 0 )
+			fprintf(stderr, "Nanosleep skipped %d.%09d of %d.%09d sleeping time because of 2 successive interruptions\n",
+					(int)remainder2.tv_sec, (int)remainder2.tv_nsec, (int)next_sim_fault.tv_sec, (int)next_sim_fault.tv_nsec);
+	}
+}
+
 void* simulate_failures(void* ptr)
 {
 	error_sim_data *sim_err = (error_sim_data*)ptr;
-
-	struct timespec next_sim_fault, remainder, remainder2;
 
 	// default cancellability state + nanosleep is a cancellation point
 	//pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
@@ -241,7 +262,7 @@ void* simulate_failures(void* ptr)
 	int i, nerr = sim_err->nerr;
 	long long faults_nsec[nerr+1];
 
-	if( nerr )
+	if(nerr)
 	{
 		double total_time = 0, mtbe = sim_err->lambda / (double)nerr, faults_unscaled[nerr+1];
 
@@ -257,7 +278,7 @@ void* simulate_failures(void* ptr)
 
 		// now scale back total time interval to time given as parameter (in ns for sleep function)
 		const double factor = sim_err->lambda * 1e3 / total_time;
-		for(i=0; i<nerr; i++)
+		for(i=0; i<=nerr; i++)
 			faults_nsec[i] = (long long)(factor * faults_unscaled[i] + 0.5);
 
 		#if VERBOSE >= SHOW_FAILINFO
@@ -271,44 +292,32 @@ void* simulate_failures(void* ptr)
 	}
 	else
 		log_err(SHOW_FAILINFO, "Error is going to be simulated with exponential distribution (e^(-x/lambda))/lambda microseconds, lambda [~mtbe] = %e\n", sim_err->lambda);
-	
+
 
 	// Now wait for everything to be nicely started & first gradient to exist etc.
 	sem_wait(&sim_err->start_sim);
 	// Release immediately so thread can be cancelled without problems to destroy semaphore
 	sem_post(&sim_err->start_sim);
 
-	while(1)
+	for(i=0; nerr == 0 || i<nerr; i++)
 	{
-		long long next_fault_nsec;
-		if( nerr )
-		{
-			if( i > nerr )
-				break;
-			else
-				next_fault_nsec = faults_nsec[i++];
-		}
+		if(nerr)
+			sleep_ns(faults_nsec[i]);
 		else
-			next_fault_nsec = (long long)( exponential(sim_err->lambda, (double)rand()/(double)RAND_MAX) * 1e3);
-
-		next_sim_fault.tv_sec = next_fault_nsec / (long long)(1e9); // secs to next fault
-		next_sim_fault.tv_nsec = next_fault_nsec % (long long)(1e9); // nanosecs to next fault
-
-		int r = nanosleep(&next_sim_fault, &remainder);
-		if( r != 0 )
-		{
-			perror("nanosleep interrupted ");
-			r = nanosleep(&remainder, &remainder2);
-
-			if( r != 0 )
-				fprintf(stderr, "Nanosleep skipped %d.%09d of %d.%09d sleeping time because of 2 successive interruptions\n",
-						(int)remainder2.tv_sec, (int)remainder2.tv_nsec, (int)next_sim_fault.tv_sec, (int)next_sim_fault.tv_nsec);
-		}
+			sleep_ns((long long)(exponential(sim_err->lambda, (double)rand()/(double)RAND_MAX) * 1e3));
 
 		// TODO switch between kinds of fault injections ?
 		cause_mpr(sim_err);
 		//flip_a_bit(sim_err->info);
-	}	
+	}
+
+	if(nerr)
+	{
+		sleep_ns(faults_nsec[nerr]);
+		#if CKPT
+		sim_err->info->ckpt_freq = INT_MAX;
+		#endif
+	}
 
 	return NULL;
 }
@@ -365,7 +374,7 @@ int get_data_blockptr(const void *vect, int *block)
 			return i+1;
 		}
 	}
-	
+
 	return -1;
 }
 
@@ -375,7 +384,7 @@ int get_data_vectptr(const double *vect)
 	for(i=0; i<errinfo.nb_data; i++)
 		if( errinfo.data[i] == vect )
 			return i+1;
-	
+
 	return -1;
 }
 
@@ -489,7 +498,7 @@ int aggregate_skips()
 	int i, r = 0;
 	for(i=0; i<errinfo.nb_failblocks; i++)
 		r |= errinfo.skipped_blocks[i];
-	
+
 	return r;
 }
 
@@ -502,7 +511,7 @@ int has_skipped_blocks(const int mask)
 			r++;
 			break;
 		}
-	
+
 	return r;
 }
 
@@ -563,7 +572,7 @@ int get_all_failed_blocks(const int mask, int **lost_blocks)
 	int total_skips = errinfo.skips;
 	if( ! total_skips )
 		return 0;
-	
+
 	*lost_blocks = (int*) calloc( total_skips, sizeof(int) );
 
 	int i, j = 0;
@@ -642,7 +651,7 @@ void get_failed_neighbourset(const int *all_lost, const int nb_lost, const int s
 	// okay now we should really sort the set...
 	// should be mostly a small list, partly sorted already
 	// so kiss and go for an insertion sort
-	int insert; 
+	int insert;
 	for (i = 1; i < *num; i++)
 	{
 		insert = set[i];

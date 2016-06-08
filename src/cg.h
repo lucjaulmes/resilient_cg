@@ -8,7 +8,7 @@ typedef struct checkpoint_data
 {
 	int instructions;
 	#if CKPT == CKPT_IN_MEMORY
-	double *save_x, *save_g, *save_p, *save_Ap, *save_err_sq, *save_alpha;
+	double *save_x, *save_p, *save_err_sq, *save_alpha;
 	#elif CKPT == CKPT_TO_DISK
 	double *save_err_sq, *save_alpha;
 	const char *checkpoint_path;
@@ -21,7 +21,7 @@ typedef struct magic_pointers
 	const Matrix *A;
 	const double *b;
 	double *x, *p, *old_p, *g, *Ap, *Ax;
-	double *alpha, *beta, *err_sq, *old_err_sq, *normA_p_sq;
+	double *alpha, *beta, *err_sq, *old_err_sq, *old_err_sq2, *normA_p_sq;
 	#if CKPT
 	checkpoint_data *ckpt_data;
 	#endif
@@ -48,12 +48,12 @@ typedef struct magic_pointers
 #define SAVE_ITERATE   VECT_ITERATE   +8
 #define SAVE_GRADIENT  VECT_GRADIENT  +8
 #define SAVE_P         VECT_P         +8
-#define SAVE_A_P       VECT_A_P       +8
 
-// tasks needed, but these are for both reductions that we have 17-24
+// tasks needed: both reductions, recovery, etc. 17-24
 #define NORM_GRADIENT  17
 #define NORM_A_P       18
 #define RECOVERY       20
+#define CHECKPOINT     21
 
 void solve_cg(const Matrix *A, const double *b, double *iterate, double convergence_thres);
 
@@ -71,14 +71,10 @@ void norm_task(const double *v, double* r);
 void compute_beta(const double *err_sq, const double *old_err_sq, double *beta);
 void compute_alpha(double *err_sq, double *normA_p_sq, double *old_err_sq, double *old_err_sq2, double *alpha);
 
-void check_sdc_alpha_invariant(const int save, checkpoint_data *ckpt_data, const double *b, double *iterate, double *gradient, double *p, double *Ap, double *err_sq, double *alpha, const double threshold);
-void check_sdc_p_Ap_orthogonal(const int save, checkpoint_data *ckpt_data, double *iterate, double *gradient, double *p, double *Ap, double *err_sq, const double threshold);
-void check_sdc_recompute_grad(const int save, checkpoint_data *ckpt_data, const double *b, double *iterate, double *gradient, double *p, double *Ap, char *wait_for_mvm, double *Aiterate, double *err_sq, const double threshold);
-
-void force_rollback(checkpoint_data *ckpt_data, double *iterate, double *gradient, double *p, double *Ap);
-void force_checkpoint(checkpoint_data *ckpt_data, double *iterate, double *gradient, double *p, double *Ap);
-void due_checkpoint(checkpoint_data *ckpt_data, double *iterate, double *gradient, double *p, double *Ap);
-void checkpoint_vectors(checkpoint_data *ckpt_data, int *behaviour, double *iterate, double *gradient, double *p, double *Ap);
+void force_rollback(checkpoint_data *ckpt_data, double *iterate, double *p);
+void force_checkpoint(checkpoint_data *ckpt_data, double *iterate, double *p);
+void due_checkpoint(checkpoint_data *ckpt_data, double *iterate, double *p);
+void checkpoint_vectors(checkpoint_data *ckpt_data, int *behaviour, double *iterate, double *p);
 
 void recover_rectify_xk(const int n, magic_pointers *mp, double *x, char *wait_for_iterate);
 void recover_rectify_g(const int n, magic_pointers *mp, const double *p, double *Ap, double *gradient, double *err_sq, char *wait_for_iterate);

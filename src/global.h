@@ -38,10 +38,6 @@
 	#if DUE != DUE_ROLLBACK
 	#error checkpointing strategy defined but not used
 	#endif
-
-	#if CHECKPOINT_FREQ == 0
-	#error you have to define a checkpoint frequency
-	#endif
 #endif
 
 #ifdef UNUSED

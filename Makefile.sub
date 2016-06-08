@@ -85,9 +85,9 @@ ompssdebug : LDFLAGS += -L$(NANOS_HOME)/lib64/instrumentation --instrumentation
 ompssconv : LDFLAGS += -L$(NANOS_HOME)/lib64/performance
 ompssspeedup : LDFLAGS += -L$(NANOS_HOME)/lib64/performance
 # output dirs, instrumentation flags
-ompssspeedup : M_CFLAGS += --output-dir=.objs/ompssspeedup
-ompssconv : M_CFLAGS += --output-dir=.objs/ompssconv
 ompssdebug : M_CFLAGS += --output-dir=.objs/ompssdebug --instrumentation
+ompssconv : M_CFLAGS += --output-dir=.objs/ompssconv
+ompssspeedup : M_CFLAGS += --output-dir=.objs/ompssspeedup
 
 # adding options defined above, and setting verbosity :  
 # -DPERFORMANCE is going to make the program shut up, 

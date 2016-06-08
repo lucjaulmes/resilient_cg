@@ -1,6 +1,6 @@
 ####################################################################################################
 #### this Makefile allows to build target by giving the flavour options in the top directory 
-#### e.g. make DUE=none CKPT=disk CKPT_FREQ=40
+#### e.g. make DUE=none CKPT=disk
 ####################################################################################################
 # options to build differently behavioured same targets
 
@@ -14,9 +14,6 @@ numbers:=$(shell seq 0 4)
 # lousy defaults
 DUE =none
 CKPT=none
-
-# numbers, play no role if associated var (without _FREQ) is 'none'
-CKPT_FREQ=
 
 #check if variables in list of allowed values
 ifeq ($(filter $(DUE),$(DUE_OPTS)),)
@@ -32,14 +29,7 @@ C:=$(subst $(CKPT),,$(call pos, $(CKPT), $(CKPT_OPTS)))
 
 FLAVOUR = -DDUE=$D -DCKPT=$C
 
-DIR=$(DUE)
-
-ifeq ($C,0)
-DIR+=$(CKPT)
-else 
-DIR+=$(CKPT)$(CKPT_FREQ)
-FLAVOUR+= -DCHECKPOINT_FREQ=$(CKPT_FREQ)
-endif
+DIR=$(DUE)_$(CKPT)
 
 empty=
 space=$(empty) $(empty)

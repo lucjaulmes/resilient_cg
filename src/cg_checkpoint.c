@@ -6,7 +6,7 @@
 #include <errno.h>
 #endif
 
-void force_checkpoint(checkpoint_data *ckpt_data, double *iterate, double *gradient, double *p, double *Ap)
+void force_checkpoint(checkpoint_data *ckpt_data, double *iterate, double *p)
 {
 	int *behaviour = &(ckpt_data->instructions);
 	double *old_err_sq = mp.old_err_sq, *alpha = mp.alpha;
@@ -19,10 +19,10 @@ void force_checkpoint(checkpoint_data *ckpt_data, double *iterate, double *gradi
 		log_err(SHOW_DBGINFO, "FORCING TO SAVE CHECKPOINT\n");
 	}
 
-	checkpoint_vectors(ckpt_data, behaviour, iterate, gradient, p, Ap);
+	checkpoint_vectors(ckpt_data, behaviour, iterate, p);
 }
 
-void due_checkpoint(checkpoint_data *ckpt_data, double *iterate, double *gradient, double *p, double *Ap)
+void due_checkpoint(checkpoint_data *ckpt_data, double *iterate, double *p)
 {
 	int *behaviour = &(ckpt_data->instructions);
 	double *old_err_sq = mp.old_err_sq, *alpha = mp.alpha;
@@ -48,10 +48,10 @@ void due_checkpoint(checkpoint_data *ckpt_data, double *iterate, double *gradien
 		}
 	}
 
-	checkpoint_vectors(ckpt_data, behaviour, iterate, gradient, p, Ap);
+	checkpoint_vectors(ckpt_data, behaviour, iterate, p);
 }
 
-void force_rollback(checkpoint_data *ckpt_data, double *iterate, double *gradient, double *p, double *Ap)
+void force_rollback(checkpoint_data *ckpt_data, double *iterate, double *p)
 {
 	int *behaviour = &(ckpt_data->instructions);
 	double *old_err_sq = mp.old_err_sq, *alpha = mp.alpha;
@@ -64,37 +64,34 @@ void force_rollback(checkpoint_data *ckpt_data, double *iterate, double *gradien
 		log_err(SHOW_DBGINFO, "FORCED ROLLBACK\n");
 	}
 
-	checkpoint_vectors(ckpt_data, behaviour, iterate, gradient, p, Ap);
+	checkpoint_vectors(ckpt_data, behaviour, iterate, p);
 }
 
-void checkpoint_vectors(checkpoint_data *ckpt_data, int *behaviour, double *iterate, double *gradient, double *p, double *Ap UNUSED)
+void checkpoint_vectors(checkpoint_data *ckpt_data, int *behaviour, double *iterate, double *p)
 {
+	double *taskwait_for_me = mp.old_err_sq2;
 	int i;
 	for(i=0; i < nb_blocks; i ++)
 	{
 		int s = get_block_start(i), e = get_block_end(i);
 
-		#pragma omp task in(*behaviour) inout(iterate[s:e-1], gradient[s:e-1], p[s:e-1], Ap[s:e-1]) firstprivate(i, s, e) label(checkpoint_vectors) priority(100) no_copy_deps
+		#pragma omp task in(*behaviour) inout(iterate[s:e-1], p[s:e-1]) concurrent(*taskwait_for_me) firstprivate(i, s, e) label(checkpoint_vectors) priority(100) no_copy_deps
 		{
+			enter_task(CHECKPOINT);
+
 		#if CKPT == CKPT_IN_MEMORY
 			if(*behaviour == SAVE_CHECKPOINT)
 			{
 				memcpy(ckpt_data->save_x+s,  iterate+s,  (e-s) * sizeof(double));
-				memcpy(ckpt_data->save_g+s,  gradient+s, (e-s) * sizeof(double));
 				memcpy(ckpt_data->save_p+s,  p+s,        (e-s) * sizeof(double));
-				memcpy(ckpt_data->save_Ap+s, Ap+s,       (e-s) * sizeof(double));
 			}
 			else if(*behaviour != DO_NOTHING)
 			{
 				memcpy(iterate+s,  ckpt_data->save_x+s,  (e-s) * sizeof(double));
-				memcpy(gradient+s, ckpt_data->save_g+s,  (e-s) * sizeof(double));
 
 				if(*behaviour == RELOAD_CHECKPOINT)
-				{
 					// not restarting, just going back to last checkpoint
 					memcpy(p+s,    ckpt_data->save_p+s,  (e-s) * sizeof(double));
-					memcpy(Ap+s,   ckpt_data->save_Ap+s, (e-s) * sizeof(double));
-				}
 
 				clear_failed_blocks(~0, s, e);
 			}
@@ -116,11 +113,9 @@ void checkpoint_vectors(checkpoint_data *ckpt_data, int *behaviour, double *iter
 
 
 				write(ckpt_fd,  iterate+s,  (e-s) * sizeof(double));
-				write(ckpt_fd,  gradient+s, (e-s) * sizeof(double));
 				write(ckpt_fd,  p+s,        (e-s) * sizeof(double));
-				write(ckpt_fd, Ap+s,        (e-s) * sizeof(double));
 
-				fsync(ckpt_fd);
+				//fdatasync(ckpt_fd);
 				close(ckpt_fd);
 			}
 			else if(*behaviour != DO_NOTHING)
@@ -137,19 +132,17 @@ void checkpoint_vectors(checkpoint_data *ckpt_data, int *behaviour, double *iter
 				}
 
 				read(ckpt_fd,  iterate+s,  (e-s) * sizeof(double));
-				read(ckpt_fd, gradient+s,  (e-s) * sizeof(double));
 
 				if(*behaviour == RELOAD_CHECKPOINT)
-				{
 					// not restarting, just going back to last checkpoint
 					read(ckpt_fd,    p+s,  (e-s) * sizeof(double));
-					read(ckpt_fd,   Ap+s,  (e-s) * sizeof(double));
-				}
+
 				close(ckpt_fd);
 
 				clear_failed_blocks(~0, s, e);
 			}
 		#endif
+			exit_task();
 		}
 	}
 }

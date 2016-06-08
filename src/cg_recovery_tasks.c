@@ -73,7 +73,7 @@ void recover_rectify_g(const int n UNUSED, magic_pointers *mp, const double *p, 
 	error_types = aggregate_skips();
 
 	log_err(SHOW_FAILINFO, "Recovery task for g (faults:%d), ||g|| (faults:%d) depends on Ap (faults:%d) started\n",
-			(error_types & MASK_GRADIENT) > 0, (error_types & MASK_NORM_GRADIENT) > 0, (error_types & MASK_A_P) > 0);
+			(error_types & MASK_GRADIENT) > 0, (error_types & MASK_NORM_G) > 0, (error_types & MASK_A_P) > 0);
 	
 	if( error_types & MASK_A_P )
 		failed_recovery += abs(recover_full_Ap(mp, Ap, p, REMOVE_FAULTS));
