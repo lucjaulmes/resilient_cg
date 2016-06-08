@@ -34,18 +34,32 @@ M_D_OBJS = $(CSPARSE_LIB) $(addprefix .objs/ompssdebug/, $(NO_PRAGMAS:.c=.o) $(a
 DOTFILE = $(shell ls -t *.dot 2> /dev/null | head -n 1)
 
 # lib paths
-NANOS_HOME=/usr/local
-PAPI_HOME=/usr
+NANOS_HOME=$(shell which nanox | sed -r 's@/bin(64)?/nanox$$@@')
+PAPI_HOME=$(shell which papi_avail | sed -r 's@/bin(64)?/papi_avail$$@@')
+#EXTRAE_HOME should be in the environment as well
 
 # generic compiler flags, we'll later be adding specifics
 # CFLAGS for all compilers G_CFLAGS for just GCC, M_CFLAGS for mercurium
 #
-# some warning management to be done. Mercurium doesn't understand -pedantic and code transformation creates some veriables
+# Some warning management to be done. Mercurium doesn't understand -pedantic and code transformation creates some veriables
 # so pass all this info to native compiler (-Wn,flags)
-CFLAGS = -std=gnu11 -Wall -Wextra -fdiagnostics-show-option $(shell $(MPICC) -showme:compile)
+CFLAGS = -std=gnu11 -Wall -Wextra -fdiagnostics-show-option
 G_CFLAGS = -pedantic -Wno-unknown-pragmas
 M_CFLAGS = --Wn,-pedantic,-Wno-unused-parameter,-Wno-unused-variable,-Wno-strict-aliasing --keep-all-files
-LDFLAGS = -lm $(shell $(MPICC) -showme:link)
+LDFLAGS = -lm
+
+ifeq ($(MPI),MVAPICH2) # mvapich2 variants
+	CFLAGS+=$(shell $(MPICC) -compile_info | sed "s/^[a-z]*cc\>//;s/ -\([Ll]\|Wl,\|Xlinker \+\)[^ ]*//g")
+	LDFLAGS+=$(shell $(MPICC) -link_info | sed "s/^[a-z]*cc\>//;s/ -\([I]\|Wp,\)[^ ]*//g")
+else
+ifeq ($(MPI),impi) # impi variants
+	CFLAGS+=$(shell $(MPICC) -show | sed "s/^[a-z]*cc\>//;s/ -\([Ll]\|Wl,\|Xlinker \+\)[^ ]*//g")
+	LDFLAGS+=$(shell $(MPICC) -show | sed "s/^[a-z]*cc\>//;s/ -\([I]\|Wp,\)[^ ]*//g")
+else #openmpi/bullmpi/default variants
+	CFLAGS+=$(shell $(MPICC) -showme:compile)
+	LDFLAGS+=$(shell $(MPICC) -showme:link)
+endif
+endif
 
 #####################################################################################################
 #defining several options  here that you can add to the compiler flags
@@ -61,7 +75,7 @@ LNK_PAPI = -L$(PAPI_HOME)/lib -lpapi
 #	libnanostrace	to use with nanos, thus ompss
 #	libseqtrace		sequential app
 USE_EXTRAE = -I$(EXTRAE_HOME)/include -I$(NANOS_HOME)/include/nanox -DEXTRAE_EVENTS
-LNK_EXTRAE = -L$(EXTRAE_HOME)/lib64 -L$(EXTRAE_HOME)/lib -Wl,-rpath,$(EXTRAE_HOME)/lib
+LNK_EXTRAE = -L$(EXTRAE_HOME)/lib64 -L$(EXTRAE_HOME)/lib
 plain% : LNK_EXTRAE += -lmpitrace -lextrae-core
 ompss% : LNK_EXTRAE += -lnanosmpitrace -lextrae-core
 
@@ -94,13 +108,13 @@ ompssspeedup : M_CFLAGS += --output-dir=.objs/ompssspeedup
 # -DVERBOSE=x make it talk, x a bitmask (see debug.h for values)
 
 #both debug builds
-%debug : CFLAGS += -rdynamic -g -O0 -DVERBOSE=3 $(USE_TIMEOFDAY)
+%debug : CFLAGS += -rdynamic -g -O2 -DVERBOSE=1 $(USE_TIMEOFDAY)
 %debug : LDFLAGS +=
 #both conv builds
 %conv : CFLAGS += -O2 -DPERFORMANCE $(USE_EXTRAE)
 %conv : LDFLAGS += $(LNK_EXTRAE)
 #both speedup builds
-%speedup : CFLAGS += -g -O2 -DPERFORMANCE $(USE_TIMEOFDAY)
+%speedup : CFLAGS += -O2 -DPERFORMANCE $(USE_TIMEOFDAY)
 %speedup : LDFLAGS +=
 
 #####################################################################################################
