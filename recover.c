@@ -148,7 +148,7 @@ void do_leastsquares( const Matrix *A, const double *b, double *x, const int nb_
 
 	Matrix recup;
 	double *rhs = (double*)calloc( total_lost, sizeof(double) );
-	
+
 	#ifndef MATRIX_DENSE
 	int nnz = 0;
 	for(i=0; i<nb_lost; i++)
@@ -165,7 +165,7 @@ void do_leastsquares( const Matrix *A, const double *b, double *x, const int nb_
 	// get the submatrix for those lines
 	get_submatrix(A, neighbours, nb_neighbours, lost, nb_lost, fbs, &recup);
 
-	// fill in the rhs with the part we need 
+	// fill in the rhs with the part we need
 	get_rhs(nb_neighbours, neighbours, total_lost, lost, fbs, A, b, x, rhs);
 
 	#ifdef MATRIX_DENSE
@@ -219,7 +219,7 @@ void do_leastsquares( const Matrix *A, const double *b, double *x, const int nb_
 void do_interpolation_with_grad( const Matrix *A, const double *b, const double *g, double *x, const int nb_lost, const int *lost_blocks )
 {
 	int i, fbs = get_failblock_size(), total_lost = nb_lost * fbs, lost[nb_lost];
-	
+
 	// change from block numver to first row in block number
 	for(i=0; i<nb_lost; i++)
 		lost[i] = lost_blocks[i] * fbs;
@@ -246,7 +246,7 @@ void do_interpolation_with_grad( const Matrix *A, const double *b, const double 
 	// get the submatrix for those lines
 	get_submatrix(A, lost, nb_lost, lost, nb_lost, fbs, &recup);
 
-	// fill in the rhs with the part we need 
+	// fill in the rhs with the part we need
 	if( g == NULL )
 		get_rhs(nb_lost, lost, nb_lost, lost, fbs, A, b, x, rhs);
 	else
@@ -323,7 +323,7 @@ void get_rhs_dense(const int n, const int *rows, const int m, const int *except_
 		for(ii=rows[i]; ii < rows[i] + bs && ii<A->n; ii++, k++)
 		{
 			// for each lost line i, start with b_i
-			// and remove contributions A_ij * x_j 
+			// and remove contributions A_ij * x_j
 			// from all rows j that are not lost
 			rhs[k] = b[ ii ];
 
@@ -354,7 +354,7 @@ void get_rhs_sparse_with_grad(const int n, const int *rows, const int m, const i
 		for(ii=rows[i]; ii < rows[i] + bs && ii<A->n; ii++, k++)
 		{
 			// for each lost line ii, start with b_ii
-			// and remove contributions A_ii,j * x_j 
+			// and remove contributions A_ii,j * x_j
 			// from all rows j that are not lost
 			rhs[k] = b[ ii ] - g[ ii ];
 
@@ -387,7 +387,7 @@ void get_rhs_sparse(const int n, const int *rows, const int m, const int *except
 		for(ii=rows[i]; ii < rows[i] + bs && ii<A->n; ii++, k++)
 		{
 			// for each lost line ii, start with b_ii
-			// and remove contributions A_ii,j * x_j 
+			// and remove contributions A_ii,j * x_j
 			// from all rows j that are not lost
 			rhs[k] = b[ ii ];
 

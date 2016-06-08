@@ -18,7 +18,7 @@ int *failed_block, nb_failed_block = 0;
 char **neighbours, *neighbour_data;
 
 
-// from x a uniform distribution between 0 and 1, the weibull distribution 
+// from x a uniform distribution between 0 and 1, the weibull distribution
 // is given by ( -lambda * ln( 1 - x ) ) ^(1/k)
 double weibull(const double x)
 {
@@ -39,7 +39,7 @@ void setup(const int n, const int fbs, const double lambda_bis, const double k_b
 	k = k_bis;
 
 	int i;
-	
+
 
 	neighbours = calloc( nb_failblocks, sizeof(char*) );
 	neighbour_data = calloc( nb_failblocks * nb_failblocks, sizeof(char) );
@@ -58,7 +58,7 @@ void setup(const int n, const int fbs, const double lambda_bis, const double k_b
 
 		nextFault[0] = weibull( (double)rand()/RAND_MAX );
 		iterationDuration[0] = 0;
-		log_err(SHOW_FAILINFO, "Single fault initialized. Next fault in %e\n", nextFault[0]); 
+		log_err(SHOW_FAILINFO, "Single fault initialized. Next fault in %e\n", nextFault[0]);
 	}
 	else
 	{
@@ -71,7 +71,7 @@ void setup(const int n, const int fbs, const double lambda_bis, const double k_b
 			nextFault[i] = weibull( (double)rand()/RAND_MAX );
 			iterationDuration[i] = 0;
 		}
-		log_err(SHOW_FAILINFO, "Multiple faults initialized. e.g. next fault on block 0 in %e\n", nextFault[0]); 
+		log_err(SHOW_FAILINFO, "Multiple faults initialized. e.g. next fault on block 0 in %e\n", nextFault[0]);
 	}
 }
 
@@ -207,7 +207,7 @@ void get_failed_neighbourset(const int id, int *set, int *num)
 	// okay now we should really sort the set...
 	// should be mostly a small list, partly sorted already
 	// so kiss and go for an insertion sort
-	int insert; 
+	int insert;
 	for (i = 1; i < *num; i++)
 	{
 		insert = set[i];
@@ -223,7 +223,7 @@ void get_failed_neighbourset(const int id, int *set, int *num)
 void compute_neighbourhoods_dense(const DenseMatrix *mat, const int BS)
 {
 	int i, ii, j, jj, bi, bj;
- 
+
 	// iterate all lines, i points to the start of the block, ii to the line and bi to the number of the block
 	for(i=0, bi=0; i < mat->n; i += BS, bi++ )
 		for( ii = i; ii < i+BS && ii < mat->n ; ii ++ )

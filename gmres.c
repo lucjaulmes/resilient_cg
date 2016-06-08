@@ -89,7 +89,7 @@ void restart_gmres( const int n, const void *A, const double *b, double *x, doub
 
 	// instead of setting b as the initial step of the algorithm
 	// set b - A * x where x is the iterate
-	// this is the same with initial guess x = 0 but changes when 
+	// this is the same with initial guess x = 0 but changes when
 	// x contains a better guess
 
 	double norm0;
@@ -112,7 +112,7 @@ void restart_gmres( const int n, const void *A, const double *b, double *x, doub
 	for(r=1; *rank_converged < 0 && r < max_steps; r++)
 	{
 		start_iteration();
-		
+
 		// build next vector of q as Arnoldi iteration
 		// expand Krylov subspace through multiplying by A
 		mult((void*)A, q[r-1], q[r]);
@@ -230,7 +230,7 @@ void restart_gmres( const int n, const void *A, const double *b, double *x, doub
 	mult_dense_transposed(&mat_q, y, z);
 
 	daxpy(n, 1.0, z, x, x);
-	
+
 	#if defined VERBOSE && VERBOSE > FULL_VERBOSE
 		// Everything we could possibly want to debug. Remember that we use row-major representation
 		// so for ease of use let's transpose all the matrices.
@@ -299,7 +299,7 @@ void restart_gmres( const int n, const void *A, const double *b, double *x, doub
 		deallocate_dense_matrix(&O);
 		deallocate_dense_matrix(&P);
 		deallocate_dense_matrix(&H);
-		
+
 	#endif
 
 

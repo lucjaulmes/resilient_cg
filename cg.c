@@ -33,7 +33,7 @@ void solve_cg( const int n, const void *A, const double *b, double *iterate, dou
 		start_iteration();
 		// update gradient to solution (a.k.a. error) : b - A * it
 		// every now and then, recompute properly to remove rounding errors
-		// NB. do this on first iteration where alpha Ap and gradient aren't defined 
+		// NB. do this on first iteration where alpha Ap and gradient aren't defined
 		if( update_gradient-- || r == MAGIC_ITERATION )
 			daxpy(n, -alpha, Ap, gradient, gradient);
 		else

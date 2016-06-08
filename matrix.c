@@ -112,7 +112,7 @@ void reorder_sparse_mat( const int n, int *rows, int *cols, double *vals, int *r
 
 	// two Halves, one rounded Up and one rounded Down
 	int hu = (n+1)/2, hd=n/2;
-	
+
 	reorder_sparse_mat( hu, rows, cols, vals, rows_cp, cols_cp, vals_cp );
 	reorder_sparse_mat( hd, &rows[hu], &cols[hu], &vals[hu] , &rows_cp[hu], &cols_cp[hu], &vals_cp[hu] );
 
@@ -130,7 +130,7 @@ void reorder_sparse_mat( const int n, int *rows, int *cols, double *vals, int *r
 		cols_cp[k] = cols[k];
 		vals_cp[k] = vals[k];
 	}
-	
+
 	for(k=0; k<n && k<j; k++)
 	{
 		// if some i are left and row_i,col_i is before row_j,col_j or all j are finished
@@ -467,7 +467,7 @@ void submatrix_sparse( const SparseMatrix *A , const int *rows, const int nr, co
 	for(i=0, k=0; i<nr; i++)
 		for(ii=rows[i]; ii < rows[i] + bs && ii < A->n && k < B->n ; ii++, k++)
 		{
-			
+
 			// now j iterates over each element in A, and jj over each block of columns
 			// if j is found to be in a block [ cols[jj], cols[jj] + bs ], we compute the corresponding column in B and copy the value
 			for(j=A->r[ii], jj = 0; j < A->r[ii+1]; j++)
