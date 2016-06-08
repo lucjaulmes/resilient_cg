@@ -34,8 +34,8 @@ void crit_err_hdlr(int sig_num, siginfo_t * info, void * ucontext)
 	#error Unsupported architecture.
 	#endif
 
-	fprintf(stderr, "signal %d (%s), code is %d [SEGV_MAPERR=%d, SEGV_ACCERR=%d] and address is %p from %p\n", 
-			sig_num, strsignal(sig_num), info->si_code, SEGV_MAPERR, SEGV_ACCERR, info->si_addr, 
+	fprintf(stderr, "signal %d (%s), code is %d [SEGV_MAPERR=%d, SEGV_ACCERR=%d] and address is %p from %p\n",
+			sig_num, strsignal(sig_num), info->si_code, SEGV_MAPERR, SEGV_ACCERR, info->si_addr,
 			(void *)caller_address);
 
 	size = backtrace(array, 50);

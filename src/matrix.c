@@ -12,7 +12,7 @@
 void mult(const Matrix *A, const double *V, double *W)
 {
 	int i, j, n = A->n;
-	
+
 	if(n > mpi_zonesize[mpi_rank])
 		n = mpi_zonesize[mpi_rank];
 
@@ -174,27 +174,27 @@ void generate_Poisson3D(Matrix *A, const int p, const int stencil_points, const 
 	const int    stenc_c19[] =
 	{
 		       -p2-p,          -p2-1,  -p2+0, -p2+1,          -p2+p,
-		 -p-1,    -p,    -p+1,    -1,      0,     1,     p-1,     p,     p+1,   
+		 -p-1,    -p,    -p+1,    -1,      0,     1,     p-1,     p,     p+1,
 		        p2-p,           p2-1,   p2+0,  p2+1,           p2+p
 	};
 	const double stenc_v19[] =
 	{
 		     1+r,      1+r,    8*r-4,   1+r,      1+r,
-		2, 6-2*r, 2, 6-2*r, -32-16*r, 6-2*r, 2, 6-2*r, 2, 
+		2, 6-2*r, 2, 6-2*r, -32-16*r, 6-2*r, 2, 6-2*r, 2,
 		     1+r,      1+r,    8*r-4,   1+r,      1+r
 	};
 
 	const int    stenc_c27[] =
 	{
 		-p2-p-1, -p2-p, -p2-p+1, -p2-1,  -p2+0, -p2+1, -p2+p-1, -p2+p, -p2+p+1,
-		   -p-1,    -p,    -p+1,    -1,      0,     1,     p-1,     p,     p+1,   
+		   -p-1,    -p,    -p+1,    -1,      0,     1,     p-1,     p,     p+1,
 		 p2-p-1,  p2-p,  p2-p+1,  p2-1,   p2+0,  p2+1,  p2+p-1,  p2+p,  p2+p+1
 	};
 	const double stenc_v27[] =
 	{
 		   2+r,  8-10*r,    2+r,  8-10*r,   100*r-40,  8-10*r,    2+r,  8-10*r,    2+r,
 		20-2*r, 80-20*r, 20-2*r, 80-20*r, -400-200*r, 80-20*r, 20-2*r, 80-20*r, 20-2*r,
-		   2+r,  8-10*r,    2+r,  8-10*r,   100*r-40,  8-10*r,    2+r,  8-10*r,    2+r 
+		   2+r,  8-10*r,    2+r,  8-10*r,   100*r-40,  8-10*r,    2+r,  8-10*r,    2+r
 	};
 
 	if( stencil_points == 7 )
@@ -278,7 +278,7 @@ void get_submatrix(const Matrix *A , const int *rows, const int nr, const int *c
 		for(ii=rows[i]; ii < rows[i] + bs && ii < mpi_zonesize[mpi_rank] && k < B->n ; ii++, k++)
 		{
 			B->r[k] = p;
-			
+
 			// now j iterates over each element in A, and jj over each block of columns
 			// if j is found to be in a block [ cols[jj], cols[jj] + bs ], we compute the corresponding column in B and copy the value
 			for(j=A->r[ii], jj = 0; j < A->r[ii+1]; j++)
@@ -288,7 +288,7 @@ void get_submatrix(const Matrix *A , const int *rows, const int nr, const int *c
 				if(ii > A->c[j])
 					continue;
 				*/
-			
+
 				while(jj < nc && A->c[j] >= cols[jj] + bs)
 					jj++;
 
@@ -311,7 +311,7 @@ void get_submatrix(const Matrix *A , const int *rows, const int nr, const int *c
 				}
 			}
 		}
-	
+
 	B->r[k] = p;
 	B->nnz = p;
 }

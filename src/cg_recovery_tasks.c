@@ -51,7 +51,7 @@ void exchange_x_for_recovery(int check_need, int first_n, int last_n, int *need_
 	// NB ; the following seems reverse because of double communication pattern :
 	// we first send whether we need to recieve, and recieve whether we need to send
 	int *need_x_send = need_x, *need_x_recv = need_x+nn;
-	
+
 	// if we have failures, set 1 in every mpi_neighbour of a failed page, otherwise 0
 	if(check_need)
 	{
@@ -141,7 +141,7 @@ void recover_rectify_xk(const int n UNUSED, magic_pointers *mp, double *x, char 
 	int failed_recovery = 0;
 
 	enter_task(RECOVERY);
-	
+
 	int x_failed = has_skipped_blocks(MASK_ITERATE);
 
 	log_err(SHOW_FAILINFO, "Recovery task x for x (faults:%d) started\n", x_failed);
@@ -150,7 +150,7 @@ void recover_rectify_xk(const int n UNUSED, magic_pointers *mp, double *x, char 
 
 	if( x_failed )
 		failed_recovery += abs(recover_full_xk(mp, x, REMOVE_FAULTS));
-	
+
 	if( failed_recovery )
 	{
 		// ouch.
@@ -184,10 +184,10 @@ void recover_rectify_g(const int n UNUSED, magic_pointers *mp, const double *p, 
 
 	log_err(SHOW_FAILINFO, "Recovery task g for g (faults:%d), ||g|| (faults:%d) depends on Ap (faults:%d) started\n",
 			(error_types & MASK_GRADIENT) > 0, (error_types & MASK_GRADIENT) > 0, (error_types & MASK_A_P) > 0);
-	
+
 	if( error_types & MASK_A_P )
 		failed_recovery += abs(recover_full_Ap(mp, Ap, p, REMOVE_FAULTS));
-	
+
 	if( error_types & MASK_GRADIENT )
 	{
 		failed_recovery += abs(recover_full_g_from_p_diff(mp, mp->g, *(mp->beta), p, p==mp->p?mp->old_p:mp->p, KEEP_FAULTS));
@@ -276,7 +276,7 @@ void recover_rectify_x_g(const int n, magic_pointers *mp, double *x, double *gra
 
 	if( error_types & MASK_GRADIENT )
 		failed_recovery += abs(recover_full_g_recompute(mp, gradient, REMOVE_FAULTS));
-	
+
 	// just to clean the 'skipped mvm' items -- they were all corrected by re-updating p
 	clear_failed(MASK_A_ITERATE);
 	clear_mvm();
@@ -431,10 +431,10 @@ void recover_rectify_p_early(const int n UNUSED, magic_pointers *mp, double *p, 
 	// NB force to execute this task before update_it so that iterate is at a coherent state if needed for g recovery
 	if( error_types & MASK_GRADIENT )
 	{
-		// for each page of g failed, if corresponding pages of p are skipped, 
+		// for each page of g failed, if corresponding pages of p are skipped,
 		// we can get the old g from old p and old_old_p (at iteration -2, not overwritten)
 		failed_recovery += abs(recover_full_g_recompute(mp, mp->g, KEEP_FAULTS));
-		
+
 		failed_recovery += abs(recover_full_g_update(mp, mp->g, REMOVE_FAULTS));
 	}
 

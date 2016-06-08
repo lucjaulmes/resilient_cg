@@ -51,7 +51,7 @@ void recover_direct(const Matrix *A, const int sgn, const double *u, const doubl
 	// so s is +/- 1, we get w = v + sgn ( A u )
 	const int fbs = get_failblock_size();
 	int i, lost = lost_block << get_log2_failblock_size();
-	
+
 	if( lost > A->n )
 	{
 		fprintf(stderr, "Cannot interpolate since block starts at %d but matrix has size %d.\n"
@@ -69,7 +69,7 @@ void recover_direct(const Matrix *A, const int sgn, const double *u, const doubl
 	// u is given by its local pointer, the global one is needed for mvm
 	const double *u_glob = u - mpi_zonestart[mpi_rank];
 	mult(&local, u_glob, &(w[lost]) );
-	
+
 	if( v != NULL && sgn < 0 )
 	{
 		for(i=lost; i<lost+local.n; i++)
@@ -114,7 +114,7 @@ void cluster_neighbour_failures(const Matrix *A, const double *b, double *x, int
 		else if( strategy == MULTFAULTS_UNCORRELATED )
 			prepare_x_uncorrelated(x, b, A->n, lost_blocks, nb_lost);
 
-		else 
+		else
 			prepare_x_decorrelated(x, A->n, lost_blocks, nb_lost);
 	}
 	else // nb_lost > 1 && strategy == MULTFAULTS_GLOBAL
@@ -155,7 +155,7 @@ void do_interpolation(const Matrix *A, const double *b, const double *g, double 
 {
 	const int log2fbs = get_log2_failblock_size(), fbs = get_failblock_size();
 	int i, total_lost = nb_lost << log2fbs, lost_rows[nb_lost], lost_cols[nb_lost];
-	
+
 	// change from block number to first row in block number
 	for(i=0; i<nb_lost; i++)
 	{
@@ -185,7 +185,7 @@ void do_interpolation(const Matrix *A, const double *b, const double *g, double 
 	// get the submatrix for those lines
 	get_submatrix(A, lost_rows, nb_lost, lost_cols, nb_lost, fbs, &recup);
 
-	// fill in the rhs with the part we need 
+	// fill in the rhs with the part we need
 	// x is given by its local pointer, the global one is needed for rhs
 	double *x_glob = x - mpi_zonestart[mpi_rank];
 	get_rhs(nb_lost, lost_rows, nb_lost, lost_cols, fbs, A, b, g, x_glob, rhs);
@@ -265,7 +265,7 @@ void get_rhs(const int n, const int *rows, const int m, const int *except_cols, 
 //		for(ii=rows[i]; ii<rows[i]+bs; ii++, k++)
 //		{
 //			// for each lost line ii, start with b_ii
-//			// and remove contributions A_{ii,j} * x_j 
+//			// and remove contributions A_{ii,j} * x_j
 //			// from all rows j that are not lost
 //			jj=0;
 //			for(j=A->r[ii]; j<A->r[ii+1]; j++)
@@ -283,7 +283,7 @@ void get_rhs(const int n, const int *rows, const int m, const int *except_cols, 
 
 // remember definitions of recover_direct/inverse
 // recover_inverse(A,b,g,x,..) : recovering x using b - g = A * x (g may be NULL then b = A * x, e.g. use for Ap = A * p )
-// recover_direct(A,sgn,u,v,w,..) : w = v + sgn * ( A u ) 
+// recover_direct(A,sgn,u,v,w,..) : w = v + sgn * ( A u )
 
 // these functions return 0 if all is good -1 for impossible (so didn't try) and > 0 for number (at least) of blocks still failed
 

@@ -163,7 +163,7 @@ void solve_cg(const Matrix *A, const double *b, double *it_glob, double converge
 	double save_err_sq, save_alpha;
 	int do_checkpoint = 0;
 	#endif
-	
+
 	int first_mpix, last_mpix, count_mpix;
 	determine_mpi_neighbours(A, 0, mpi_zonesize[mpi_rank], mpi_rank, mpi_size, &first_mpix, &last_mpix);
 	count_mpix = last_mpix - first_mpix;
@@ -299,7 +299,7 @@ void solve_cg(const Matrix *A, const double *b, double *it_glob, double converge
 				start_error_injection();
 		}
 
-		// wait_for_p postpones communications 
+		// wait_for_p postpones communications
 		update_p(p, old_p, wait_for_p, start_rt_work, gradient, &beta);
 
 		#if DUE == DUE_ASYNC || DUE == DUE_IN_PATH
@@ -360,7 +360,7 @@ void solve_cg(const Matrix *A, const double *b, double *it_glob, double converge
 			swap(&p, &old_p);
 			swap(&p_glob, &old_p_glob);
 			p_req = (p_req == p1_req) ? p2_req : p1_req;
-			
+
 			failures = check_errors_signaled();
 
 			if( r > 0 )
@@ -422,10 +422,10 @@ void solve_cg(const Matrix *A, const double *b, double *it_glob, double converge
 		#endif
 	}
 
-	#pragma omp taskwait 
+	#pragma omp taskwait
 	// end of the math, showing infos
 	stop_measure();
-	
+
 	failures = check_errors_signaled();
 	total_failures += failures;
 	log_convergence(r-1, old_err_sq, failures);

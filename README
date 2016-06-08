@@ -50,7 +50,7 @@ The name of each configuration's directory is then DUE_CKPT(CKPT_FREQ)
 Some valid examples :
 
     configuration :                                            directory :
-    
+
     DUE=none                                                  none_none
     DUE=rollback CKPT=disk CKPT_FREQ=100                      rollblack_disk100
 
@@ -62,9 +62,9 @@ You have to supply a file containing a spd matrix in Matrix Market format.
 All other parameters are optional and described below. Some are only available for
 some flavours of the resilient CG.
 
-Usage: ./async_alpha100_disk200/cg [options] <matrix-market-filename> [, ...] 
-Possible options are : 
- ===  fault injection  === 
+Usage: ./async_alpha100_disk200/cg [options] <matrix-market-filename> [, ...]
+Possible options are :
+ ===  fault injection  ===
   -nf               Disabling faults simulation (default).
   -l     lambda     Inject errors with lambda meaning MTBE in usec.
   -nerr  N duration Inject N errors over a period of duration in usec.
@@ -72,7 +72,7 @@ Possible options are :
   -mfs   strategy   Select an alternate strategy for multiple faults (cf Agullo2013).
                     'strategy' must be one of : global, uncorrelated, decorrelated.
                     Note : has no effect without errors. global is default.
- === run configuration === 
+ === run configuration ===
   -th    threads    Manually define number of threads.
   -nb    blocks     Defines the number of blocks in which to divide operations ;
                     their size will depdend on the matrix' size.
@@ -80,7 +80,7 @@ Possible options are :
   -cv    thres      Run until the error verifies ||b-Ax|| < thres * ||b|| (default 1e-10).
   -maxit N          Run no more than N iterations (default no limit).
   -seed  s          Initialize seed of each run with s. If 0 use different (random) seeds.
- === resilience method === 
+ === resilience method ===
   -ps    size       Defines page size (used on failure, in bytes, defaults to 4K).
                     Must be a multiple of the system page size (and a power of 2).
   -disk  /path/dir  Path to a directory on local disk for checkpointing (default $TMPDIR).

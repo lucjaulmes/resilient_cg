@@ -16,7 +16,7 @@ void do_interpolation(const Matrix *A, const double *b, const double *g, double 
 // recovering x using b - g = A * x (g may be NULL then b = A * x, e.g. use for Ap = A * p )
 void recover_inverse(const Matrix *A, const double *b, const double *g, double *x, int *lost_blocks, const int nb_lost);
 
-// w = v + sgn * ( A u ) 
+// w = v + sgn * ( A u )
 void recover_direct(const Matrix *A, const int sgn, const double *u, const double *v, double *w, int lost_block);
 
 

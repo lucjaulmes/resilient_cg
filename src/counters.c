@@ -35,7 +35,7 @@ extrae_value_t log_conv_vals [4] ;
 #ifdef GETTIMEOFDAY
 #include <sys/time.h>
 struct timeval start_time, stop_time;
-#endif 
+#endif
 
 #ifndef _OMPSS
 int nanos_omp_get_thread_num () { return 0; }
@@ -133,7 +133,7 @@ void start_measure()
 {
 	#ifdef GETTIMEOFDAY
 	gettimeofday( &start_time, NULL );
-	#endif 
+	#endif
 
 	#ifdef EXTRAE_EVENTS
 	Extrae_event(extrae_measure_event, extrae_measure_start);
@@ -151,7 +151,7 @@ void stop_measure()
 	double max_time, time_here = (1e6 * (stop_time.tv_sec - start_time.tv_sec)) + stop_time.tv_usec - start_time.tv_usec;
 	MPI_Allreduce(&time_here, &max_time, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
 	log_out("gettimeofday_Usecs:%e\n", max_time);
-	#endif 
+	#endif
 
 	#ifdef EXTRAE_EVENTS
 	#ifdef _OMPSS

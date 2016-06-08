@@ -6,7 +6,7 @@
 #include "global.h"
 #include "matrix.h"
 
-typedef struct checkpoint_data 
+typedef struct checkpoint_data
 {
 	int instructions;
 	#if CKPT == CKPT_IN_MEMORY
@@ -65,7 +65,7 @@ void determine_mpi_neighbours(const Matrix *A, const int from_row, const int to_
 void setup_exchange_vect(const int mpi_rank, const int first, const int last, const int tag, double *v, MPI_Request v_req[]);
 void setup_exchange_flag(const int mpi_rank, const int first, const int last, const int tag, int *v, MPI_Request v_req[]);
 
-// all the algorithmical steps of CG that will be subdivided into tasks : 
+// all the algorithmical steps of CG that will be subdivided into tasks :
 void update_gradient(double *gradient, double *Ap, double *alpha, char *wait_for_iterate);
 void recompute_gradient_mvm(const Matrix *A, double *iterate, char *wait_for_iterate, char *wait_for_mvm, double *Aiterate);
 void recompute_gradient_update(double *gradient, char *wait_for_mvm, double *Aiterate, const double *b);

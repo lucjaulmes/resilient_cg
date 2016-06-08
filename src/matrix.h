@@ -10,7 +10,7 @@ typedef struct Matrix
 	double *v;
 } Matrix;
 
-typedef enum 
+typedef enum
 {
 	FROM_FILE = 0,
 	POISSON3D

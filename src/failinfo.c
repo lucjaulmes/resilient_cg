@@ -14,9 +14,9 @@
 #include "cg.h"
 #include "backtrace.h"
 
-const char * const mask_names[] = { "0 ", 
-	"X ", "Ax", "G ", "P4", "P5", "Ap", "7 ", "8 ", 
-	"Sx", "10", "Sg", "Sp", "13", "Tp", "15", "16", 
+const char * const mask_names[] = { "0 ",
+	"X ", "Ax", "G ", "P4", "P5", "Ap", "7 ", "8 ",
+	"Sx", "10", "Sg", "Sp", "13", "Tp", "15", "16",
 	"Ng", "Np", "RC", "Xx", "Xp", "22", "23", "24",
 	"25", "26", "27", "28", "29", "Fg", "Fp" };
 
@@ -29,7 +29,7 @@ analyze_err errinfo;
 // N.B this is still __thread and not _Thread_local until mcc supports it : https://pm.bsc.es/projects/mcxx/ticket/404
 __thread sig_atomic_t out_vect = 0, exception_happened = 0;
 
-// from x a uniform distribution between 0 and 1, the weibull distribution 
+// from x a uniform distribution between 0 and 1, the weibull distribution
 // is given by lambda * ( -ln( 1 - x ) )^(1/k)
 double weibull(const double lambda, const double k, const double x)
 {
@@ -90,7 +90,7 @@ void decide_err_time(error_sim_data *sim_err)
 			faults_rank[i] = rand() % mpi_size;
 		}
 	}
-	
+
 	// exchange faults sim information and only keep in faults_nsec_world the local faults
 	MPI_Bcast(faults_nsec_world, nerr, MPI_LONG_LONG_INT, 0, MPI_COMM_WORLD);
 	MPI_Bcast(faults_rank,       nerr, MPI_INT,           0, MPI_COMM_WORLD);
@@ -100,7 +100,7 @@ void decide_err_time(error_sim_data *sim_err)
 		if( faults_rank[i] == mpi_rank )
 			sim_err->nerr_run++;
 
-	
+
 	if( sim_err->nerr_run == 0 )
 	{
 		sim_err->faults_nsec = NULL; // double-tap
@@ -143,7 +143,7 @@ void setup_resilience(const Matrix *A UNUSED, const int nb, magic_pointers *mp)
 	errinfo.neighbours->v = NULL;
 
 	compute_neighbourhoods(A, errinfo.failblock_size, errinfo.neighbours);
-	
+
 	// now for storing infos about errors
 	errinfo.skipped_blocks = (int*)calloc(errinfo.nb_failblocks, sizeof(int));
 	#endif
@@ -183,7 +183,7 @@ void setup_resilience(const Matrix *A UNUSED, const int nb, magic_pointers *mp)
 
 	if( sim_err.nerr_world )
 		decide_err_time(&sim_err);
-	
+
 	// if simulating faults, create thread to do so
 	if(sim_err.lambda != 0 && (sim_err.nerr_world == 0 || sim_err.nerr_run > 0))
 		pthread_create(&sim_err.th, NULL, &simulate_failures, (void*)&sim_err);
@@ -222,7 +222,7 @@ int unset_resilience()
 	#define X(constant, name) mprotect(errinfo.data[constant-1], sizeof(double) * mpi_zonesize[mpi_rank], PROT_READ | PROT_WRITE);
 	ASSOC_CONST_MP
 	#undef X
-	
+
 	#if DUE
 	deallocate_matrix(errinfo.neighbours);
 	free(errinfo.neighbours);
@@ -249,7 +249,7 @@ void resilience_sighandler(int signum, siginfo_t *info, void *context UNUSED)
 
 		if( vect < 0 )
 		{
-			fprintf(stderr, "Error happened in memory that is not recoverable data : %p\n", page); 
+			fprintf(stderr, "Error happened in memory that is not recoverable data : %p\n", page);
 			crit_err_hdlr(signum, info, context);
 			return;
 		}
@@ -273,7 +273,7 @@ void resilience_sighandler(int signum, siginfo_t *info, void *context UNUSED)
 		mmap(page, sizeof(double) << get_log2_failblock_size(), PROT_READ|PROT_WRITE, MAP_FIXED|MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
 
 
-		log_err(SHOW_DBGINFO, "Error has just been  signaled  on page %3d of vector %s (%d)\n", block, vect_name(vect), vect); 
+		log_err(SHOW_DBGINFO, "Error has just been  signaled  on page %3d of vector %s (%d)\n", block, vect_name(vect), vect);
 	}
 	else
 	{
@@ -340,7 +340,7 @@ void* simulate_failures(void* ptr)
 		// TODO switch between kinds of fault injections ?
 		cause_mpr(sim_err);
 		//flip_a_bit(sim_err->info);
-	}	
+	}
 
 	return NULL;
 }
@@ -399,7 +399,7 @@ int get_data_blockptr(const void *vect, int *block)
 			return i+1;
 		}
 	}
-	
+
 	return -1;
 }
 
@@ -409,7 +409,7 @@ int get_data_vectptr(const double *vect)
 	for(i=0; i<errinfo.nb_data; i++)
 		if( errinfo.data[i] == vect )
 			return i+1;
-	
+
 	return -1;
 }
 
@@ -524,7 +524,7 @@ int aggregate_skips()
 	int i, r = 0;
 	for(i=0; i<errinfo.nb_failblocks; i++)
 		r |= errinfo.skipped_blocks[i];
-	
+
 	return r;
 }
 
@@ -537,7 +537,7 @@ int has_skipped_blocks(const int mask)
 			r++;
 			break;
 		}
-	
+
 	return r;
 }
 
@@ -598,7 +598,7 @@ int get_all_failed_blocks(const int mask, int **lost_blocks)
 	int total_skips = errinfo.skips;
 	if( ! total_skips )
 		return 0;
-	
+
 	*lost_blocks = (int*) calloc( total_skips, sizeof(int) );
 
 	int i, j = 0;
@@ -677,7 +677,7 @@ void get_failed_neighbourset(const int *all_lost, const int nb_lost, const int s
 	// okay now we should really sort the set...
 	// should be mostly a small list, partly sorted already
 	// so kiss and go for an insertion sort
-	int insert; 
+	int insert;
 	for (i = 1; i < *num; i++)
 	{
 		insert = set[i];
