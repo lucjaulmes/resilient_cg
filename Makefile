@@ -12,7 +12,7 @@ CKPT_OPTS:=none disk mem
 numbers:=$(shell seq 0 4)
 
 # lousy defaults
-DUE =none
+DUE=none
 CKPT=none
 
 #check if variables in list of allowed values
@@ -27,7 +27,7 @@ pos=$(filter $(addprefix $(1), $(numbers)), $(join $(2), $(numbers)))
 D:=$(subst $(DUE),,$(call pos, $(DUE), $(DUE_OPTS)))
 C:=$(subst $(CKPT),,$(call pos, $(CKPT), $(CKPT_OPTS)))
 
-FLAVOUR = -DDUE=$D -DCKPT=$C
+FLAVOUR=-DDUE=$D -DCKPT=$C
 
 DIR=$(DUE)_$(CKPT)
 

@@ -13,9 +13,9 @@ and to have installed
 Adjust variables if they don't comply to the following defaults :
 CC  = gcc-4.9                            # C11 compiler
 MCC = mcc                                # mercurium compiler
-NANOS_HOME = /apps/PM/ompss/15.06
-PAPI_HOME = /apps/PAPI/5.1.0
-EXTRAE_HOME = /apps/CEPBATOOLS/extrae/3.3.0/default/64
+NANOS_HOME = /apps/PM/ompss/2014-04-10
+PAPI_HOME = /apps/PAPI/5.0.1
+EXTRAE_HOME = /apps/CEPBATOOLS/extrae/latest/default/64
 
 e.g. :
 $ make NANOS_HOME=/usr/local
