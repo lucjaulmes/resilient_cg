@@ -28,26 +28,26 @@
 int nb_blocks;
 int *block_ends;
 
-void set_blocks_sparse(Matrix *A, int *nb_blocks, const int fail_size)
+void set_blocks_sparse(Matrix *A, int *nb_blocks, const int fail_size UNUSED)
 {
 	block_ends = (int*)malloc(*nb_blocks * sizeof(int));
 
 	// compute block repartition now we have the matrix, arrange for block limits to be on fail block limits
-	int i, pos = 0, next_stop = 0, ideal_bs = (A->nnz + *nb_blocks / 2) / *nb_blocks, inc_pos = fail_size / sizeof(double);
+	int i, pos = 0, next_stop = 0, ideal_bs = (A->nnz + *nb_blocks / 2) / *nb_blocks;
 	for(i=0; i<*nb_blocks-1; i++)
 	{
 		next_stop += ideal_bs;
 
-		while( pos + inc_pos <= A->n && A->r[pos + inc_pos] < next_stop )
-			pos += inc_pos;
+		while( pos + 1 < A->n && A->r[pos + 1] < next_stop )
+			pos ++;
 
-		if( pos + inc_pos <= A->n && A->r[pos + inc_pos] - next_stop < next_stop - A->r[pos] )
-			pos += inc_pos;
+		if( pos + 1 < A->n && A->r[pos + 1] - next_stop < next_stop - A->r[pos] )
+			pos ++;
 
 		if(pos >= A->n)
 		{
 			fprintf(stderr, "Error while making blocks : end of block %d/%d is %d, beyond size of matrix %d ;"
-							" nb_blocks reduced to %d. You could try reducing -ps\n", i+1, *nb_blocks, pos, A->n, i+1);
+					" nb_blocks reduced to %d. You could try reducing -ps\n", i+1, *nb_blocks, pos, A->n, i+1);
 			*nb_blocks=i+1;
 			break;
 		}
@@ -55,7 +55,7 @@ void set_blocks_sparse(Matrix *A, int *nb_blocks, const int fail_size)
 		set_block_end(i, pos);
 
 		// force to increment by at least 1
-		pos += inc_pos;
+		pos ++;
 	}
 
 	set_block_end( *nb_blocks -1, A->n );
@@ -72,7 +72,7 @@ void usage(char* arg0)
 			"  -l     lambda     Inject errors with lambda meaning MTBE in usec.\n"
 			"  -nerr  N duration Inject N errors over a period of duration in usec.\n"
 			"                    Note : the options -nf, -l and -nerr are mutually exclusive.\n"
-			"  -mfs   strategy   Select an alternate (cf Agullo2013) strategy for multiple faults.\n "
+			"  -mfs   strategy   Select an alternate strategy for multiple faults (cf Agullo2013).\n "
 			"                   'strategy' must be one of global, uncorrelated, decorrelated.\n"
 			"                    Note : has no effect without errors. global is default.\n"
 			" === run configuration === \n"
