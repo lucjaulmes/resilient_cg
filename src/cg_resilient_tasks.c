@@ -15,13 +15,20 @@ void scalar_product_task(const double *p, const double *Ap, double* r)
 
 			enter_task(NORM_A_P);
 
-			for(j=s, page = s >> get_log2_failblock_size(); j<e; j += (fbs - j & (fbs - 1)), page++)
+			for(j=s, page = s >> get_log2_failblock_size(); j<e; page++, j = k)
 			{
+				int next_j = (j | (fbs - 1)) + 1;
+				if (next_j > e)
+					next_j = e;
+
 				if( should_skip_block(page, mask) )
+				{
+					k = next_j;
 					continue;
+				}
 
 				page_r = 0.0;
-				for(k=j; k < e && k < j + fbs ; k++)
+				for(k=j; k < next_j; k++)
 					page_r += p[k] * Ap[k];
 
 				if( !check_block(page, mask) )
@@ -53,13 +60,20 @@ void norm_task(const double *v, double* r)
 
 			enter_task(NORM_GRADIENT);
 
-			for(j=s, page = s >> get_log2_failblock_size(); j<e; j += (fbs - j & (fbs - 1)), page++)
+			for(j=s, page = s >> get_log2_failblock_size(); j<e; page++, j = k)
 			{
+				int next_j = (j | (fbs - 1)) + 1;
+				if (next_j > e)
+					next_j = e;
+
 				if( should_skip_block(page, MASK_GRADIENT) )
+				{
+					k = next_j;
 					continue;
+				}
 
 				page_r = 0;
-				for(k=j; k < e && k < j + fbs ; k++)
+				for(k=j; k < next_j; k++)
 					page_r += v[k] * v[k];
 
 				if( !check_block(page, MASK_GRADIENT) )
@@ -89,12 +103,19 @@ void update_gradient(double *gradient, double *Ap, double *alpha, char *wait_for
 
 			enter_task(VECT_GRADIENT);
 
-			for(j=s, page = s >> get_log2_failblock_size(); j<e; j += (fbs - j & (fbs - 1)), page++)
+			for(j=s, page = s >> get_log2_failblock_size(); j<e; page++, j = k)
 			{
-				if( should_skip_block(page, MASK_GRADIENT | MASK_A_P) )
-					continue;
+				int next_j = (j | (fbs - 1)) + 1;
+				if (next_j > e)
+					next_j = e;
 
-				for(k=j;k < e && k<j+fbs; k++)
+				if( should_skip_block(page, MASK_GRADIENT | MASK_A_P) )
+				{
+					k = next_j;
+					continue;
+				}
+
+				for(k=j; k < next_j; k++)
 					gradient[k] -= (*alpha) * Ap[k];
 
 				check_block(page, MASK_GRADIENT | MASK_A_P);
@@ -121,19 +142,26 @@ void recompute_gradient_mvm(const Matrix *A, double *iterate, char *wait_for_ite
 
 			enter_task(VECT_A_ITERATE);
 
-			for(j=s; j<e; j += (fbs - j & (fbs - 1)), page++)
+			for(j=s, page = s >> get_log2_failblock_size(); j<e; page++, j = l)
 			{
+				int next_j = (j | (fbs - 1)) + 1;
+				if (next_j > e)
+					next_j = e;
+
 				if( is_skipped_block( page, MASK_A_ITERATE ) )
+				{
+					l = next_j;
 					continue;
+				}
 
 				skips = count_neighbour_faults( page, MASK_ITERATE );
 				if( skips )
 				{
 					mark_to_skip( page, MASK_A_ITERATE );
-					continue;
+					l = next_j;
 				}
 
-				for(l=j; l<j+fbs && l < e; l++)
+				for(l=j; l < next_j; l++)
 				{
 					Aiterate[l] = 0;
 
@@ -170,12 +198,19 @@ void recompute_gradient_update(double *gradient, char *wait_for_mvm UNUSED, doub
 
 			enter_task(VECT_GRADIENT);
 
-			for(j=s, page = s >> get_log2_failblock_size(); j<e; j += (fbs - j & (fbs - 1)), page++)
+			for(j=s, page = s >> get_log2_failblock_size(); j<e; page++, j = k)
 			{
-				if( should_skip_block(page, MASK_A_ITERATE) )
-					continue;
+				int next_j = (j | (fbs - 1)) + 1;
+				if (next_j > e)
+					next_j = e;
 
-				for (k=j; k < e && k< j + fbs; k++)
+				if( should_skip_block(page, MASK_A_ITERATE) )
+				{
+					k = next_j;
+					continue;
+				}
+
+				for(k=j; k < next_j; k++)
 					gradient[k] = b[k] - Aiterate[k] ;
 
 				check_block(page, MASK_A_ITERATE);
@@ -202,15 +237,20 @@ void update_p(double *p, double *old_p, char *wait_for_p UNUSED, double *gradien
 
 			enter_task_vect(p);
 
-			for(j=s, page = s >> get_log2_failblock_size(); j<e; j += (fbs - j & (fbs - 1)), page++)
+			for(j=s, page = s >> get_log2_failblock_size(); j<e; page++, j = k)
 			{
+				int next_j = (j | (fbs - 1)) + 1;
+				if (next_j > e)
+					next_j = e;
+
 				if( should_skip_block(page, mask) )
 				{
 					errcount ++;
+					k = next_j;
 					continue;
 				}
 
-				for (k=j; k < e && k< j + fbs; k++)
+				for(k=j; k < next_j; k++)
 					p[k] = (*beta) * old_p[k] + gradient[k];
 
 				errcount += check_block(page, mask);
@@ -241,13 +281,20 @@ void compute_Ap(const Matrix *A, double *p, char *wait_for_p UNUSED, char *wait_
 
 			enter_task(VECT_A_P);
 
-			for(j=s; j<e; j += (fbs - j & (fbs - 1)), page++)
+			for(j=s, page = s >> get_log2_failblock_size(); j<e; page++, j = l)
 			{
+				int next_j = (j | (fbs - 1)) + 1;
+				if (next_j > e)
+					next_j = e;
+
 				skips = count_neighbour_faults( page, mask );
 				if( skips )
+				{
 					mark_to_skip( page, MASK_A_P );
+					k = next_j;
+				}
 
-				for(l=j; l<j+fbs && l < e; l++)
+				for(l=j; l < next_j; l++)
 				{
 					Ap[l] = 0;
 
@@ -280,12 +327,19 @@ void update_iterate(double *iterate, char *wait_for_iterate UNUSED, double *p, d
 			const int fbs = get_failblock_size(), mask = (1 << get_data_vectptr(p));
 			int j, k, page;
 
-			for(j=s, page = s >> get_log2_failblock_size(); j<e; j += (fbs - j & (fbs - 1)), page++)
+			for(j=s, page = s >> get_log2_failblock_size(); j<e; page++, j = k)
 			{
-				if( should_skip_block(page, mask) )
-					continue;
+				int next_j = (j | (fbs - 1)) + 1;
+				if (next_j > e)
+					next_j = e;
 
-				for(k=j; k < e && k<j+fbs; k++)
+				if( should_skip_block(page, mask) )
+				{
+					k = next_j;
+					continue;
+				}
+
+				for(k=j; k < next_j; k++)
 					iterate[k] += (*alpha) * p[k];
 
 				check_block(page, mask);
