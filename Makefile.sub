@@ -118,7 +118,7 @@ ompssinstr : M_CFLAGS += --output-dir=.objs/ompssinstr --instrumentation
 default:ompssall
 
 #all : debug conv speedup
-all: conv speedup debug
+all: conv speedup debug instr
 
 plainall : plaindebug plainconv plainspeedup plaininstr
 ompssall : ompssdebug ompssconv ompssspeedup ompssinstr
@@ -128,7 +128,7 @@ speedup : plainspeedup ompssspeedup
 debug : plaindebug ompssdebug
 instr : plaininstr ompssinstr
 
-plaindebug : dirs cg_seq_cg
+plaindebug : dirs cg_seq
 plainconv : dirs cg_seq_conv
 plainspeedup : dirs cg_seq_speedup
 plaininstr : dirs cg_seq_instr
@@ -180,7 +180,7 @@ ompssinstr : dirs cg_instr
 
 
 
-cg_seq_cg : $(G_D_OBJS)
+cg_seq : $(G_D_OBJS)
 	$(CC) $^ $(CFLAGS) $(LDFLAGS) -o $@
 
 cg_seq_conv : $(G_C_OBJS)
@@ -217,7 +217,7 @@ dirs :
 	@mkdir -p .objs/ompssdebug .objs/ompssconv .objs/ompssspeedup .objs/ompssinstr .objs/plaindebug .objs/plainconv .objs/plainspeedup .objs/plaininstr
 
 clean :
-	@rm -rfv cg cg_seq_cg cg_conv cg_seq_conv cg_speedup cg_seq_speedup cg_instr cg_seq_instr *.o .objs/*/*.o .objs/*.o graph.dot
+	@rm -rfv cg cg_seq cg_conv cg_seq_conv cg_speedup cg_seq_speedup cg_instr cg_seq_instr *.o .objs/*/*.o .objs/*.o graph.dot
 
 # add this so that we silently take into account modifications to src/cg_*.c
 CG=$(filter %cg.c, $(FULLPATH_SRC))

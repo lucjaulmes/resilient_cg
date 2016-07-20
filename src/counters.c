@@ -155,7 +155,7 @@ void stop_measure()
 	#ifdef EXTRAE_EVENTS
 	#ifdef _OMPSS
 		int i;
-		#pragma omp for schedule(static,1)
+		#pragma omp for schedule(static,1) label(flush)
 		for(i=0;i<nanos_omp_get_num_threads();i++)
 			Extrae_flush();
 	#else
