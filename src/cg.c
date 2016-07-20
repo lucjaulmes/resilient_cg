@@ -12,6 +12,12 @@
 
 magic_pointers mp;
 
+// too much work to repeat this, especially ALL_BLOCKS(...)
+#define ALL_BLOCKS(__vector__) {__vector__[get_block_start(b):get_block_end(b)-1], b=0:nb_blocks-1}
+#define PRAGMA(__str__) _Pragma(#__str__)
+#define PRAGMA_TASK(__deps__, __lab__, __prio__) PRAGMA(omp task __deps__ label(__lab__) priority(__prio__) no_copy_deps)
+
+
 #if DUE && DUE != DUE_ROLLBACK
 #include "cg_resilient_tasks.c"
 #include "cg_recovery_tasks.c"
@@ -23,7 +29,7 @@ magic_pointers mp;
 #include "cg_checkpoint.c"
 #endif
 
-#pragma omp task in(*err_sq, *old_err_sq) out(*beta) label(compute_beta) priority(100) no_copy_deps
+PRAGMA_TASK(in(*err_sq, *old_err_sq) out(*beta), compute_beta, 50)
 void compute_beta(const double *err_sq, const double *old_err_sq, double *beta, int recomputed UNUSED)
 {
 	// on first iterations of a (re)start, old_err_sq should be INFINITY so that beta = 0
@@ -46,7 +52,7 @@ void compute_beta(const double *err_sq, const double *old_err_sq, double *beta, 
 	log_err(SHOW_TASKINFO, "Computing beta finished : err_sq = %e ; old_err_sq = %e ; beta = %e\n", *err_sq, *old_err_sq, *beta);
 }
 
-#pragma omp task inout(*normA_p_sq, *err_sq) out(*alpha, *old_err_sq, *old_err_sq2) label(compute_alpha) priority(100) no_copy_deps
+PRAGMA_TASK(inout(*normA_p_sq, *err_sq) out(*alpha, *old_err_sq, *old_err_sq2), compute_alpha, 50)
 void compute_alpha(double *err_sq, double *normA_p_sq, double *old_err_sq, double *old_err_sq2, double *alpha)
 {
 	*alpha = *err_sq / *normA_p_sq ;
@@ -134,6 +140,11 @@ void solve_cg(const Matrix *A, const double *b, double *iterate, double converge
 	mp.ckpt_data = &ckpt_data;
 	#endif
 
+	#ifdef _OMPSS
+	// make sure main WD (a.k.a task creation) has highest priority to start creating tasks ASAP
+	nanos_set_wd_priority(nanos_current_wd(), 100);
+	#endif
+
 	setup_resilience(A, 6, &mp);
 	start_measure();
 
@@ -195,6 +206,11 @@ void solve_cg(const Matrix *A, const double *b, double *iterate, double converge
 
 		scalar_product_task(p, Ap, &normA_p_sq);
 
+		#if DUE == DUE_IN_PATH
+		if( do_update_gradient > 0 )
+			recover_rectify_xk(n, &mp, iterate, (char*)&normA_p_sq);
+		#endif
+
 		#if DUE == DUE_ASYNC || DUE == DUE_IN_PATH
 		recover_rectify_p_Ap(n, &mp, p, old_p, Ap, &normA_p_sq, wait_for_mvm, wait_for_iterate);
 		#endif
@@ -203,14 +219,7 @@ void solve_cg(const Matrix *A, const double *b, double *iterate, double converge
 		// then waiting start : should be released halfway through the loop.
 		// We want this to be after alpha on normal iterations, after AxIt
 		// but it should not wait for recovery to finish on recovery iterations
-		if( !do_update_gradient )
-		{
-			#pragma omp taskwait on(old_err_sq2, *wait_for_iterate)
-		}
-		else
-		{
-			#pragma omp taskwait on(old_err_sq2)
-		}
+		#pragma omp taskwait on(old_err_sq2)
 
 		// swapping p's so we reduce pressure on the execution of the update iterate tasks
 		// now output-dependencies are not conflicting with the next iteration but the one after
@@ -231,10 +240,6 @@ void solve_cg(const Matrix *A, const double *b, double *iterate, double converge
 
 			if( do_update_gradient <= 0 )
 				do_update_gradient = RECOMPUTE_GRADIENT_FREQ;
-			#if DUE == DUE_IN_PATH
-			else
-				recover_rectify_xk(n, &mp, iterate, (char*)&normA_p_sq);
-			#endif
 			#if CKPT
 			if( do_checkpoint <= 0 )
 				do_checkpoint = get_ckpt_freq();
