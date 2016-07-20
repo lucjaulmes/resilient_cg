@@ -35,7 +35,7 @@ void compute_beta(const double *err_sq, const double *old_err_sq, double *beta, 
 	// on first iterations of a (re)start, old_err_sq should be INFINITY so that beta = 0
 	*beta = *err_sq / *old_err_sq;
 
-	#if DUE
+	#if DUE == DUE_ASYNC || DUE == DUE_IN_PATH
 	int state = aggregate_skips();
 	if( state & (MASK_GRADIENT | MASK_NORM_G | MASK_RECOVERY | (recomputed ? MASK_ITERATE : 0)) )
 	{
@@ -48,9 +48,7 @@ void compute_beta(const double *err_sq, const double *old_err_sq, double *beta, 
 		log_err(SHOW_DBGINFO, "ERROR SUBSISTED PAST RECOVERY restart needed. At beta, g:%d, ||g||:%d\n", (state & MASK_GRADIENT) > 0, (state & MASK_NORM_G) > 0);
 	}
 
-	#if DUE == DUE_ASYNC || DUE == DUE_IN_PATH
 	memset(mp.shared_page_reductions, 0, 2 * nb_blocks * sizeof(*mp.shared_page_reductions));
-	#endif
 	#endif
 
 	log_err(SHOW_TASKINFO, "Computing beta finished : err_sq = %e ; old_err_sq = %e ; beta = %e\n", *err_sq, *old_err_sq, *beta);
@@ -70,8 +68,11 @@ void compute_alpha(double *err_sq, double *normA_p_sq, double *old_err_sq, doubl
 	{
 		log_err(SHOW_FAILINFO, "There was an error, restarting (eventual lossy x interpolation)");
 		hard_reset(&mp);
+
+		// refresh to check if some happened during recovery
+		state = aggregate_skips() > 0 ? (aggregate_skips() | MASK_RECOVERY) : 0;
 	}
-	#else
+	#endif
 	if( state & (MASK_ITERATE | MASK_P | MASK_OLD_P | MASK_A_P | MASK_NORM_A_P | MASK_RECOVERY) )
 	{
 		if( state & MASK_RECOVERY )
@@ -82,7 +83,6 @@ void compute_alpha(double *err_sq, double *normA_p_sq, double *old_err_sq, doubl
 		clear_failed(MASK_ITERATE | MASK_P | MASK_OLD_P | MASK_A_P | MASK_NORM_A_P | MASK_RECOVERY);
 		log_err(SHOW_DBGINFO, "ERROR SUBSISTED PAST RECOVERY restart needed. At alpha, x:%d, p:%d, p':%d, Ap:%d, <p,Ap>:%d\n", (state & MASK_ITERATE) > 0, (state & MASK_P) > 0, (state & MASK_OLD_P) > 0, (state & MASK_A_P) > 0, (state & MASK_NORM_A_P) > 0);
 	}
-	#endif
 
 	#if DUE == DUE_ASYNC || DUE == DUE_IN_PATH
 	memset(mp.shared_page_reductions, 0, 2 * nb_blocks * sizeof(*mp.shared_page_reductions));

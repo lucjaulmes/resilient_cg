@@ -4,7 +4,10 @@ void hard_reset(magic_pointers *mp)
 	// This method can be used as a fallback when DUE techniques don't work.
 	// Primary use is to implement other techniques (against which to compare)
 	#if CKPT
+
 	force_rollback(mp->A->n, mp->ckpt_data, mp->x, mp->g, mp->old_p, mp->Ap);
+	#pragma omp taskwait
+
 	#else
 	// here we are called at alpha (the function will finish executing normally)
 	// we want ||p||_A = INF to have alpha = 0, err_sq = INF so that next beta = 0
@@ -16,9 +19,12 @@ void hard_reset(magic_pointers *mp)
 
 	recover_x_lossy(mp, mp->x);
 
+	clear_failed( ~0 );
+
 	recompute_gradient_mvm(mp->A, mp->x, mp->Ax);
 	recompute_gradient_update(mp->g, mp->Ax, mp->b);
-	clear_failed( ~0 );
+	#pragma omp taskwait
+
 	#endif
 }
 
