@@ -28,21 +28,21 @@
 int nb_blocks;
 int *block_ends;
 
-void set_blocks_sparse(Matrix *A, int *nb_blocks, const int fail_size UNUSED)
+int set_blocks_sparse(Matrix *A, int *nb_blocks, const int fail_size)
 {
 	block_ends = (int*)malloc(*nb_blocks * sizeof(int));
 
-	// compute block repartition now we have the matrix, arrange for block limits to be on fail block limits
+	// compute block repartition now we have the matrix, increment by 8 to avoid false sharing
 	int i, pos = 0, next_stop = 0, ideal_bs = (A->nnz + *nb_blocks / 2) / *nb_blocks;
 	for(i=0; i<*nb_blocks-1; i++)
 	{
 		next_stop += ideal_bs;
 
-		while( pos + 1 < A->n && A->r[pos + 1] < next_stop )
-			pos ++;
+		while( pos + 8 < A->n && A->r[pos + 8] < next_stop )
+			pos += 8;
 
-		if( pos + 1 < A->n && A->r[pos + 1] - next_stop < next_stop - A->r[pos] )
-			pos ++;
+		if( pos + 8 < A->n && A->r[pos + 8] - next_stop < next_stop - A->r[pos] )
+			pos += 8;
 
 		if(pos >= A->n)
 		{
@@ -55,10 +55,17 @@ void set_blocks_sparse(Matrix *A, int *nb_blocks, const int fail_size UNUSED)
 		set_block_end(i, pos);
 
 		// force to increment by at least 1
-		pos ++;
+		pos += 8;
 	}
 
 	set_block_end( *nb_blocks -1, A->n );
+
+	int shared_failblocks = 0;
+	for(i=0; i<*nb_blocks-1; i++)
+		if (get_block_end(i) & (fail_size - 1))
+			shared_failblocks++;
+
+	return shared_failblocks;
 }
 
 int MAXIT = 0;
@@ -400,7 +407,7 @@ int main(int argc, char* argv[])
 			allocate_matrix(n, m, lines_in_file * (1 + symmetric), &matrix, fail_size);
 			read_matrix(n, m, lines_in_file, symmetric, &matrix, input_file);
 
-			set_blocks_sparse(&matrix, &nb_blocks, fail_size);
+			int shared_failblocks = set_blocks_sparse(&matrix, &nb_blocks, fail_size / sizeof(double));
 
 			fclose(input_file);
 
@@ -413,8 +420,8 @@ int main(int argc, char* argv[])
 			const char * const due_names[] = {"none", "async", "in_path", "rollback", "lossy"};
 			const char * const fault_strat_names[] = {"global", "uncorrelated", "decorrelated"};
 
-			sprintf(header, "matrix_format:SPARSE executable:%s File:%s problem_size:%d nb_threads:%d nb_blocks:%d due:%s strategy:%s failure_size:%ld srand_seed:%u maxit:%d convergence_at:%e\n",
-					argv[0], argv[f], n, nb_threads, nb_blocks, due_names[DUE], fault_strat_names[fault_strat-1], fail_size, seed, MAXIT, cv_thres);
+			sprintf(header, "matrix_format:SPARSE executable:%s File:%s problem_size:%d nb_threads:%d nb_blocks:%d due:%s strategy:%s failure_size:%ld srand_seed:%u maxit:%d convergence_at:%e shared_blocks:%d\n",
+					argv[0], argv[f], n, nb_threads, nb_blocks, due_names[DUE], fault_strat_names[fault_strat-1], fail_size, seed, MAXIT, cv_thres, shared_failblocks);
 
 			if( nerr )
 				sprintf(strchr(header, '\n'), " inject_errors:%d inject_duration:%e\n", nerr, lambda);

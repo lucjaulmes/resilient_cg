@@ -19,7 +19,7 @@ const char * const mask_names[] = { "0 ",
 	"X ", "Ax", "G ", "P4", "P5", "Ap", "7 ", "8 ",
 	"Sx", "10", "Sg", "Sp", "13", "Tp", "15", "16",
 	"Ng", "Np", "19", "RC", "CP", "22", "23", "24",
-	"25", "26", "27", "28", "29", "Fg", "Fp" };
+	"25", "26", "27", "28", "Fg", "Fp", "Sh" };
 
 #include "failinfo.h"
 
@@ -88,6 +88,14 @@ void setup_resilience(const Matrix *A UNUSED, const int nb, magic_pointers *mp)
 	errinfo.skipped_blocks = (int*)calloc( errinfo.nb_failblocks, sizeof(int) );
 	#endif
 
+	#if DUE == DUE_ASYNC || DUE == DUE_IN_PATH
+	mp->shared_page_reductions = (double*)calloc(2 * nb_blocks, sizeof(double));
+	int b;
+	for (b = 0; b < nb_blocks; b++)
+		if (get_block_end(b) & (errinfo.failblock_size - 1))
+			errinfo.skipped_blocks[get_block_end(b) >> errinfo.log2fbs] |= SHARED_BLOCK;
+	#endif
+
 	#if CKPT == CKPT_TO_DISK
 	mp->ckpt_data->checkpoint_path = errinfo.ckpt;
 	#endif
@@ -131,7 +139,7 @@ void start_error_injection()
 	sem_post(&sim_err.start_sim);
 }
 
-void unset_resilience()
+void unset_resilience(magic_pointers *mp UNUSED)
 {
 	if( sim_err.lambda != 0 && sim_err.th )
 	{
@@ -162,6 +170,10 @@ void unset_resilience()
 	deallocate_matrix(errinfo.neighbours);
 	free(errinfo.neighbours);
 	free((void*)errinfo.skipped_blocks);
+	#endif
+
+	#if DUE == DUE_ASYNC || DUE == DUE_IN_PATH
+	free((void*)mp->shared_page_reductions);
 	#endif
 
 	free(errinfo.data);
@@ -404,7 +416,7 @@ int check_recovery_errors()
 	return r;
 }
 
-int check_block(const int block, const int input_mask)
+int check_block(const int block, int input_mask, int *is_shared)
 {
 	// if fault happened in this task/thread, it is already marked with out_mask : nothing more to do
 	if( check_for_exceptions() )
@@ -416,7 +428,10 @@ int check_block(const int block, const int input_mask)
 	// this is called a posteriori, be sure to not mark just 'skipped'
 	int b;
 	const int out_mask = COMPLETE_WITH_FAIL(1 << out_vect);
+	input_mask &= ~CONSTANT_MASKS;
 
+	// atomically: if input_mask is marked, add output mask
+	// if input_mask is not marked (or removed concurrently) don't add ouput mask and return 0
 	do
 	{
 		b = errinfo.skipped_blocks[block];
@@ -431,12 +446,16 @@ int check_block(const int block, const int input_mask)
 	}
 	#endif
 
+	if (is_shared)
+		*is_shared = b & SHARED_BLOCK;
+
 	return (b & input_mask);
 }
 
-int should_skip_block(const int block, const int mask)
+int should_skip_block(const int block, int mask)
 {
 	const int out_mask = (1 << out_vect);
+	mask &= ~CONSTANT_MASKS;
 	int b;
 
 	do
@@ -456,8 +475,9 @@ int should_skip_block(const int block, const int mask)
 	return ( b & mask );
 }
 
-int count_neighbour_faults(const int block, const int mask)
+int count_neighbour_faults(const int block, int mask)
 {
+	mask &= ~CONSTANT_MASKS;
 	int r = 0, i;
 
 	for(i=errinfo.neighbours->r[block]; i<errinfo.neighbours->r[block+1]; i++)
@@ -465,11 +485,12 @@ int count_neighbour_faults(const int block, const int mask)
 	return r;
 }
 
-void mark_to_skip(const int block, const int mask)
+void mark_to_skip(const int block, int mask)
 {
+	mask &= ~CONSTANT_MASKS;
 	int before = __sync_fetch_and_or( &(errinfo.skipped_blocks[block]), mask );
 
-	if( before == 0 )
+	if( (before & ~CONSTANT_MASKS) == 0 )
 	{
 		#pragma omp atomic
 			errinfo.skips ++ ;
@@ -477,17 +498,18 @@ void mark_to_skip(const int block, const int mask)
 
 	#if VERBOSE >= SHOW_FAILINFO
 	char mask_str[ 30 ];
-	log_err(SHOW_FAILINFO, "\tblock %2d marked as skipped/for skipping with mask %s : %x\n", block, str_mask(mask_str, mask), mask);
+	log_err(SHOW_FAILINFO, "\tblock %2d marked as skipped/for skipping with mask %s : %x (was %x)\n", block, str_mask(mask_str, mask), mask, before);
 	#endif
 }
 
-void mark_corrected(const int block, const int mask)
+void mark_corrected(const int block, int mask)
 {
+	mask &= ~CONSTANT_MASKS;
 	const int complete_mask = COMPLETE_WITH_FAIL(mask);
-	int before = __sync_fetch_and_and( &(errinfo.skipped_blocks[block]), ~ complete_mask );
+	int before = __sync_fetch_and_and( &(errinfo.skipped_blocks[block]), ~complete_mask );
 
 	// if last thing skipped for this block was the one we just removed
-	if( before > 0 && (before & complete_mask) == before )
+	if( (before & ~CONSTANT_MASKS) > 0 && (before & complete_mask) == (before & ~CONSTANT_MASKS) )
 	{
 		#pragma omp atomic
 			errinfo.skips -- ;
@@ -505,11 +527,12 @@ int aggregate_skips()
 	for(i=0; i<errinfo.nb_failblocks; i++)
 		r |= errinfo.skipped_blocks[i];
 
-	return r;
+	return r & (~CONSTANT_MASKS);
 }
 
-int has_skipped_blocks(const int mask)
+int has_skipped_blocks(int mask)
 {
+	mask &= ~CONSTANT_MASKS;
 	int i, r = 0;
 	for(i=0; i<errinfo.nb_failblocks; i++)
 		if( errinfo.skipped_blocks[i] & mask )
@@ -521,22 +544,26 @@ int has_skipped_blocks(const int mask)
 	return r;
 }
 
-int is_skipped_not_failed_block(const int block, const int mask)
+int is_skipped_not_failed_block(const int block, int mask)
 {
+	mask &= ~CONSTANT_MASKS;
 	int b = errinfo.skipped_blocks[block] & COMPLETE_WITH_FAIL(mask);
 
 	return REMOVE_FAIL(mask) == b;
 }
 
-int is_failed_not_skipped_block(const int block, const int mask)
+int is_failed_not_skipped_block(const int block, int mask)
 {
+	mask &= ~CONSTANT_MASKS;
 	int b = errinfo.skipped_blocks[block] & COMPLETE_WITH_FAIL(mask);
 
 	return COMPLETE_WITH_FAIL(mask) == b;
 }
 
-int overlapping_faults(const int mask_v, const int mask_w)
+int overlapping_faults(int mask_v, int mask_w)
 {
+	mask_v &= ~CONSTANT_MASKS;
+	mask_w &= ~CONSTANT_MASKS;
 	int i, r = 0, block;
 
 	for(i=0; i<errinfo.nb_failblocks; i++)
@@ -552,16 +579,18 @@ int overlapping_faults(const int mask_v, const int mask_w)
 	return r;
 }
 
-void clear_failed_blocks(const int mask, const int start, const int end)
+void clear_failed_blocks(int mask, const int start, const int end)
 {
+	mask &= ~CONSTANT_MASKS;
 	int i;
 	for(i = (start >> errinfo.log2fbs); i < (end >> errinfo.log2fbs) ; i++)
 		if( errinfo.skipped_blocks[i] & mask )
 			__sync_fetch_and_and(&(errinfo.skipped_blocks[i]), ~mask);
 }
 
-void clear_failed(const int mask)
+void clear_failed(int mask)
 {
+	mask &= ~CONSTANT_MASKS;
 	int i;
 	for(i=0; i<errinfo.nb_failblocks; i++)
 		if( errinfo.skipped_blocks[i] & mask )
@@ -573,8 +602,9 @@ void clear_failed_vect(const double *vect)
 	clear_failed( 1 << get_data_vectptr(vect) );
 }
 
-int get_all_failed_blocks(const int mask, int **lost_blocks)
+int get_all_failed_blocks(int mask, int **lost_blocks)
 {
+	mask &= ~CONSTANT_MASKS;
 	int total_skips = errinfo.skips;
 	if( ! total_skips )
 		return 0;

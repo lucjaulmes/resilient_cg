@@ -25,7 +25,13 @@ void hard_reset(magic_pointers *mp)
 void recover_rectify_xk(const int n UNUSED, magic_pointers *mp, double *x UNUSED)
 {
 	// g used for recovery, also waiting for all its blocks makes sure it's not updating
-	PRAGMA_TASK(inout(ALL_BLOCKS(x)) in(ALL_BLOCKS(mp->g)), recover_xk, 20)
+	// normA_p_sq is used artificially to force recovery in the critical path
+	// alpha is used to force recovery before next compute_alpha (as well as after g and x)
+#if DUE == DUE_IN_PATH
+	PRAGMA_TASK(inout(ALL_BLOCKS(x), mp->normA_p_sq) in(ALL_BLOCKS(mp->g)), recover_xk, 20)
+#else
+	PRAGMA_TASK(inout(ALL_BLOCKS(x), mp->alpha) in(ALL_BLOCKS(mp->g)), recover_xk, 20)
+#endif
 	{
 		int faults = get_nb_failed_blocks();
 		if( !faults )
@@ -56,11 +62,11 @@ void recover_rectify_xk(const int n UNUSED, magic_pointers *mp, double *x UNUSED
 void recover_rectify_g(const int n UNUSED, magic_pointers *mp, const double *p, double *Ap, double *gradient, double *err_sq UNUSED)
 {
 	// p and x may be used for recovering
-	// Also, waiting for all blocks of x makes sure it's not updating
+	// Also, using inout(p) forces update_it(in:p inout:x) to wait, so we get consistent recoveries
 #if DUE == DUE_IN_PATH
-	PRAGMA_TASK(inout(*err_sq, ALL_BLOCKS(gradient), [n]Ap) in([n]p, [n]mp->x), recover_xk, 0)
+	PRAGMA_TASK(inout(*err_sq, ALL_BLOCKS(gradient), ALL_BLOCKS(Ap), ALL_BLOCKS(p)) in([n]mp->x), recover_g, 0)
 #else
-	PRAGMA_TASK(concurrent(*err_sq, ALL_BLOCKS(gradient)) inout([n]Ap) in([n]p, [n]mp->x), recover_xk, 5)
+	PRAGMA_TASK(concurrent(*err_sq, ALL_BLOCKS(gradient)) inout(ALL_BLOCKS(Ap), ALL_BLOCKS(p)) in([n]mp->x), recover_g, 5)
 #endif
 	{
 		int faults = get_nb_failed_blocks();
@@ -120,6 +126,24 @@ void recover_rectify_g(const int n UNUSED, magic_pointers *mp, const double *p, 
 
 			#if VERBOSE >= SHOW_FAILINFO
 			sprintf(str+strlen(str), " %d ; %e", i, page_r);
+			#endif
+
+			// if it was a shared block, remove all (potential) partial contributions
+			#if DUE == DUE_ASYNC || DUE == DUE_IN_PATH
+			if (is_shared_block(i))
+			{
+				for (j = 0; j < nb_blocks - 1; j++)
+				{
+					if ((get_block_end(j) >> log2fbs) == i)
+					{
+						// end of block and start of next
+						page_r -= mp->shared_page_reductions[2 * j + 1];
+						page_r -= mp->shared_page_reductions[2 * j + 2];
+					}
+					else if ((get_block_end(j) >> log2fbs) > i)
+						break;
+				}
+			}
 			#endif
 
 			mark_corrected(i, MASK_NORM_G);
@@ -211,6 +235,24 @@ void recover_rectify_x_g(const int n UNUSED, magic_pointers *mp, double *x, doub
 			sprintf(str+strlen(str), " %d ; %e", i, page_r);
 			#endif
 
+			#if DUE == DUE_ASYNC || DUE == DUE_IN_PATH
+			// if it was a shared block, remove all (potential) partial contributions
+			if (is_shared_block(i))
+			{
+				for (j = 0; j < nb_blocks - 1; j++)
+				{
+					if ((get_block_end(j) >> log2fbs) == i)
+					{
+						// end of block and start of next
+						page_r -= mp->shared_page_reductions[2 * j + 1];
+						page_r -= mp->shared_page_reductions[2 * j + 2];
+					}
+					else if ((get_block_end(j) >> log2fbs) > i)
+						break;
+				}
+			}
+			#endif
+
 			mark_corrected(i, MASK_NORM_G);
 			local_r += page_r;
 		}
@@ -293,16 +335,34 @@ void recover_rectify_p_Ap(const int n UNUSED, magic_pointers *mp, double *p, dou
 
 			page_r = 0.0;
 
-			// block skipped by reduction
+			// block skipped by reduction, recompute
 			for(j=i<<log2fbs; j<(i+1)<<log2fbs && j<n; j++)
 				page_r += p[j] * Ap[j];
 
-			local_r += page_r;
 
 			#if VERBOSE >= SHOW_FAILINFO
 			sprintf(str+strlen(str), " %d ; %e", i, page_r);
 			#endif
 
+			#if DUE == DUE_ASYNC || DUE == DUE_IN_PATH
+			// if it was a shared block, remove all (potential) partial contributions
+			if (is_shared_block(i))
+			{
+				for (j = 0; j < nb_blocks - 1; j++)
+				{
+					if ((get_block_end(j) >> log2fbs) == i)
+					{
+						// end of block and start of next
+						page_r -= mp->shared_page_reductions[2 * j + 1];
+						page_r -= mp->shared_page_reductions[2 * j + 2];
+					}
+					else if ((get_block_end(j) >> log2fbs) > i)
+						break;
+				}
+			}
+			#endif
+
+			local_r += page_r;
 			mark_corrected(i, MASK_NORM_A_P);
 		}
 
@@ -314,3 +374,4 @@ void recover_rectify_p_Ap(const int n UNUSED, magic_pointers *mp, double *p, dou
 		exit_task();
 	}
 }
+

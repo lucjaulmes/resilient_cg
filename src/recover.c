@@ -494,24 +494,30 @@ int recover_full_old_p_invert(magic_pointers *mp, double *old_p, const int mark_
 void save_oldAp_for_old_p_recovery(magic_pointers *mp, double *old_p, const int s, const int e)
 {
 	const int log2fbs = get_log2_failblock_size(), fbs = get_failblock_size(), mask = 1 << get_data_vectptr(old_p);
-	int bs_bytes = sizeof(double) << log2fbs, start_block, i;
+	int start_block, end_block, i;
 
 	#if VERBOSE >= SHOW_FAILINFO
 	char str[500];
 	sprintf(str, "\tSaving failed blocks of old_Ap for later recovery of old_p[%d] : {  ", get_data_vectptr(old_p));
 	#endif
 
-	for(i=(s >> log2fbs), start_block = s; start_block < e; i++, start_block += fbs)
+	for (i = s >> log2fbs; i < (e + fbs - 1) >> log2fbs; i++)
 	{
 		if(! is_skipped_block(i, mask))
 			continue;
 
-		if(e - start_block < fbs)
-			bs_bytes = (e - start_block) * sizeof(double);
+		// compute task-local part of this fail block and copy that
+		start_block = i << log2fbs;
+		end_block = (i + 1) << log2fbs;
+
+		if (start_block < s)
+			start_block = s;
+		if (end_block > e)
+			end_block = e;
 
 		if(!is_skipped_block(i, MASK_A_P))
 		{
-			memcpy(&(old_p[start_block]), &(mp->Ap[start_block]), bs_bytes);
+			memcpy(&(old_p[start_block]), &(mp->Ap[start_block]), (end_block - start_block) * sizeof(double));
 
 			#if VERBOSE >= SHOW_FAILINFO
 			sprintf(str+strlen(str),  "%d, ", i);

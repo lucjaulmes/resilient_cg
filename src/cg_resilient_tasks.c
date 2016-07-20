@@ -7,11 +7,14 @@ void scalar_product_task(const double *p, const double *Ap, double* r)
 		int s = get_block_start(i), e = get_block_end(i);
 
 		// r <- <p, Ap>
-		PRAGMA_TASK(concurrent(*r, p[s:e-1], Ap[s:e-1]) firstprivate(s, e), dotp, 10)
+		PRAGMA_TASK(concurrent(*r, p[s:e-1], Ap[s:e-1]) firstprivate(i, s, e), dotp, 10)
 		{
 			double local_r = 0, page_r;
 			const int fbs = get_failblock_size(), mask = MASK_A_P | (1 << get_data_vectptr(p));
 			int j, k, page;
+			#if DUE == DUE_ASYNC || DUE == DUE_IN_PATH
+			int shared_block = 0;
+			#endif
 
 			enter_task(NORM_A_P);
 
@@ -31,8 +34,22 @@ void scalar_product_task(const double *p, const double *Ap, double* r)
 				for(k=j; k < next_j; k++)
 					page_r += p[k] * Ap[k];
 
-				if( !check_block(page, mask) )
+				#if DUE == DUE_ASYNC || DUE == DUE_IN_PATH
+				if( !check_block(page, mask, &shared_block) )
+				{
 					local_r += page_r;
+					if (shared_block)
+					{
+						if (j == s)
+							mp.shared_page_reductions[2 * i] = page_r;
+						else if (k == e)
+							mp.shared_page_reductions[2 * i + 1] = page_r;
+					}
+				}
+				#else
+				if( !check_block(page, mask, NULL) )
+					local_r += page_r;
+				#endif
 			}
 
 			#pragma omp atomic
@@ -52,11 +69,14 @@ void norm_task(const double *v, double* r)
 		int s = get_block_start(i), e = get_block_end(i);
 
 		// r <- || v ||
-		PRAGMA_TASK(concurrent(*r, v[s:e-1]) firstprivate(s, e), norm, 10)
+		PRAGMA_TASK(concurrent(*r, v[s:e-1]) firstprivate(i, s, e), norm, 10)
 		{
 			double local_r = 0, page_r;
 			const int fbs = get_failblock_size();
 			int j, k, page;
+			#if DUE == DUE_ASYNC || DUE == DUE_IN_PATH
+			int shared_block = 0;
+			#endif
 
 			enter_task(NORM_GRADIENT);
 
@@ -76,8 +96,22 @@ void norm_task(const double *v, double* r)
 				for(k=j; k < next_j; k++)
 					page_r += v[k] * v[k];
 
-				if( !check_block(page, MASK_GRADIENT) )
+				#if DUE == DUE_ASYNC || DUE == DUE_IN_PATH
+				if( !check_block(page, MASK_GRADIENT, &shared_block) )
+				{
 					local_r += page_r;
+					if (shared_block)
+					{
+						if (j == s)
+							mp.shared_page_reductions[2 * i] = page_r;
+						else if (k == e)
+							mp.shared_page_reductions[2 * i + 1] = page_r;
+					}
+				}
+				#else
+				if( !check_block(page, MASK_GRADIENT, NULL) )
+					local_r += page_r;
+				#endif
 			}
 
 			#pragma omp atomic
@@ -118,7 +152,7 @@ void update_gradient(double *gradient, double *Ap, double *alpha UNUSED)
 				for(k=j; k < next_j; k++)
 					gradient[k] -= (*alpha) * Ap[k];
 
-				check_block(page, MASK_GRADIENT | MASK_A_P);
+				check_block(page, MASK_GRADIENT | MASK_A_P, NULL);
 			}
 
 			log_err(SHOW_TASKINFO, "Updating gradient part %d finished = %e with alpha = %e\n", i, norm(e-s, &(gradient[s])), *alpha);
@@ -213,7 +247,7 @@ void recompute_gradient_update(double *gradient UNUSED, double *Aiterate, const 
 				for(k=j; k < next_j; k++)
 					gradient[k] = b[k] - Aiterate[k] ;
 
-				check_block(page, MASK_A_ITERATE);
+				check_block(page, MASK_A_ITERATE, NULL);
 			}
 
 			log_err(SHOW_TASKINFO, "b - Ax part %d finished = %e\n", i, norm(e-s, &(gradient[s])));
@@ -253,7 +287,7 @@ void update_p(double *p, double *old_p UNUSED, double *gradient, double *beta)
 				for(k=j; k < next_j; k++)
 					p[k] = (*beta) * old_p[k] + gradient[k];
 
-				errcount += check_block(page, mask);
+				errcount += check_block(page, mask, NULL);
 			}
 
 			log_err(SHOW_TASKINFO, "Updating p[%d from %d] part %d finished = %e with beta = %e\n", get_data_vectptr(p), get_data_vectptr(old_p), i, norm(e-s, &(p[s])), *beta);
@@ -342,7 +376,7 @@ void update_iterate(double *iterate UNUSED, double *p, double *alpha)
 				for(k=j; k < next_j; k++)
 					iterate[k] += (*alpha) * p[k];
 
-				check_block(page, mask);
+				check_block(page, mask, NULL);
 			}
 
 			log_err(SHOW_TASKINFO, "Updating it (from p[%d]) part %d finished = %e with alpha = %e\n", get_data_vectptr(p), i, norm(e-s, &(iterate[s])), *alpha);

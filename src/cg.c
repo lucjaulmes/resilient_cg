@@ -44,9 +44,13 @@ void compute_beta(const double *err_sq, const double *old_err_sq, double *beta, 
 		else
 			fprintf(stderr, "Error remaining or discovered post recovery\n");
 
-		clear_failed(MASK_GRADIENT | MASK_NORM_G | MASK_RECOVERY);
+		clear_failed(MASK_GRADIENT | MASK_NORM_G | MASK_RECOVERY | (recomputed ? MASK_ITERATE : 0));
 		log_err(SHOW_DBGINFO, "ERROR SUBSISTED PAST RECOVERY restart needed. At beta, g:%d, ||g||:%d\n", (state & MASK_GRADIENT) > 0, (state & MASK_NORM_G) > 0);
 	}
+
+	#if DUE == DUE_ASYNC || DUE == DUE_IN_PATH
+	memset(mp.shared_page_reductions, 0, 2 * nb_blocks * sizeof(*mp.shared_page_reductions));
+	#endif
 	#endif
 
 	log_err(SHOW_TASKINFO, "Computing beta finished : err_sq = %e ; old_err_sq = %e ; beta = %e\n", *err_sq, *old_err_sq, *beta);
@@ -78,6 +82,10 @@ void compute_alpha(double *err_sq, double *normA_p_sq, double *old_err_sq, doubl
 		clear_failed(MASK_ITERATE | MASK_P | MASK_OLD_P | MASK_A_P | MASK_NORM_A_P | MASK_RECOVERY);
 		log_err(SHOW_DBGINFO, "ERROR SUBSISTED PAST RECOVERY restart needed. At alpha, x:%d, p:%d, p':%d, Ap:%d, <p,Ap>:%d\n", (state & MASK_ITERATE) > 0, (state & MASK_P) > 0, (state & MASK_OLD_P) > 0, (state & MASK_A_P) > 0, (state & MASK_NORM_A_P) > 0);
 	}
+	#endif
+
+	#if DUE == DUE_ASYNC || DUE == DUE_IN_PATH
+	memset(mp.shared_page_reductions, 0, 2 * nb_blocks * sizeof(*mp.shared_page_reductions));
 	#endif
 	#endif
 
@@ -274,7 +282,7 @@ void solve_cg(const Matrix *A, const double *b, double *iterate, double converge
 	printf("CG method finished iterations:%d with error:%e (failures:%d injected:%d)\n", r, sqrt((err_sq==0.0?old_err_sq:err_sq)/norm_b), total_failures, get_inject_count());
 
 	// stop resilience stuff that's still going on
-	unset_resilience();
+	unset_resilience(&mp);
 
 	free(p);
 	free(old_p);

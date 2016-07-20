@@ -31,8 +31,14 @@
 // the two next ones mean (in conjugation with the previous corresponding item) that
 // if g (resp. Ap) is marked failed with this extra bit, it has been skipped, but is not
 // contaminated with errors
-#define FAIL_GRADIENT  ((1 << 30) | MASK_GRADIENT)
-#define FAIL_A_P       ((1 << 31) | MASK_A_P)
+#define FAIL_GRADIENT  ((1 << 29) | MASK_GRADIENT)
+#define FAIL_A_P       ((1 << 30) | MASK_A_P)
+
+// set when a failblock is shared across several tasks
+#define SHARED_BLOCK   (1 << 31)
+
+// masks that should never be reset
+#define CONSTANT_MASKS (SHARED_BLOCK)
 
 #define COMPLETE_WITH_FAIL(mask) \
 	(mask | (mask & MASK_GRADIENT ? FAIL_GRADIENT : 0) | (mask & MASK_A_P ? FAIL_A_P : 0))
@@ -157,8 +163,14 @@ static inline int get_nb_failed_blocks()
 	return errinfo.skips;
 }
 
-static inline int is_skipped_block(const int block, const int mask)
+static inline int is_shared_block(const int block)
 {
+	return errinfo.skipped_blocks[block] & SHARED_BLOCK;
+}
+
+static inline int is_skipped_block(const int block, int mask)
+{
+	mask &= ~CONSTANT_MASKS;
 	return errinfo.skipped_blocks[block] & mask;
 }
 
@@ -183,7 +195,7 @@ int check_recovery_errors();
 void mark_to_skip(const int block, const int mask);
 void mark_corrected(const int block, const int mask);
 int should_skip_block(const int block, const int mask);
-int check_block(const int block, const int input_mask);
+int check_block(const int block, const int input_mask, int *is_shared);
 int count_neighbour_faults(const int block, const int mask);
 
 int overlapping_faults(const int mask_v, const int mask_w);
@@ -234,7 +246,7 @@ void* simulate_failures(void *ptr);
 void populate_global(const int n, const int fail_size_bytes, const int fault_strat, const int max_err, const double lambda, const int checkpoint_freq, const char *checkpoint_path);
 void setup_resilience(const Matrix *A, const int nb, magic_pointers *mp);
 void start_error_injection();
-void unset_resilience();
+void unset_resilience(magic_pointers *mp);
 void compute_neighbourhoods(const Matrix *mat, const int bs, Matrix *neighbours);
 
 void get_failed_neighbourset(const int *all_lost, const int nb_lost, const int start_block, int *set, int *num);

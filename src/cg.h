@@ -22,6 +22,9 @@ typedef struct magic_pointers
 	const double *b;
 	double *x, *p, *old_p, *g, *Ap, *Ax;
 	double *alpha, *beta, *err_sq, *old_err_sq, *old_err_sq2, *normA_p_sq;
+	#if DUE == DUE_ASYNC || DUE == DUE_IN_PATH
+	double *shared_page_reductions;
+	#endif
 	#if CKPT
 	checkpoint_data *ckpt_data;
 	#endif
