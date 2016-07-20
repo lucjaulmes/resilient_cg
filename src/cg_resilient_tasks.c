@@ -89,7 +89,7 @@ void norm_task(const double *v, double* r)
 	}
 }
 
-void update_gradient(double *gradient, double *Ap, double *alpha, char *wait_for_iterate UNUSED)
+void update_gradient(double *gradient, double *Ap, double *alpha UNUSED)
 {
 	int i;
 	for(i=0; i < nb_blocks; i ++ )
@@ -127,7 +127,7 @@ void update_gradient(double *gradient, double *Ap, double *alpha, char *wait_for
 	}
 }
 
-void recompute_gradient_mvm(const Matrix *A, double *iterate, char *wait_for_iterate UNUSED, char *wait_for_mvm UNUSED, double *Aiterate)
+void recompute_gradient_mvm(const Matrix *A, double *iterate UNUSED UNUSED, double *Aiterate)
 {
 	int i;
 	for(i=0; i < nb_blocks; i ++ )
@@ -180,7 +180,7 @@ void recompute_gradient_mvm(const Matrix *A, double *iterate, char *wait_for_ite
 	}
 }
 
-void recompute_gradient_update(double *gradient, char *wait_for_mvm UNUSED, double *Aiterate, const double *b)
+void recompute_gradient_update(double *gradient UNUSED, double *Aiterate, const double *b)
 {
 	int i;
 	for(i=0; i < nb_blocks; i ++ )
@@ -222,7 +222,7 @@ void recompute_gradient_update(double *gradient, char *wait_for_mvm UNUSED, doub
 	}
 }
 
-void update_p(double *p, double *old_p, char *wait_for_p UNUSED, double *gradient, double *beta)
+void update_p(double *p, double *old_p UNUSED, double *gradient, double *beta)
 {
 	int i;
 	for(i=0; i < nb_blocks; i ++ )
@@ -266,7 +266,7 @@ void update_p(double *p, double *old_p, char *wait_for_p UNUSED, double *gradien
 	}
 }
 
-void compute_Ap(const Matrix *A, double *p, char *wait_for_p UNUSED, char *wait_for_mvm UNUSED, double *Ap)
+void compute_Ap(const Matrix *A, double *p UNUSED UNUSED, double *Ap)
 {
 	int i;
 	for(i=0; i < nb_blocks; i ++ )
@@ -312,7 +312,7 @@ void compute_Ap(const Matrix *A, double *p, char *wait_for_p UNUSED, char *wait_
 	}
 }
 
-void update_iterate(double *iterate, char *wait_for_iterate UNUSED, double *p, double *alpha)
+void update_iterate(double *iterate UNUSED, double *p, double *alpha)
 {
 	int i;
 	for(i=0; i < nb_blocks; i ++ )

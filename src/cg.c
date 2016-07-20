@@ -103,7 +103,6 @@ void solve_cg(const Matrix *A, const double *b, double *iterate, double converge
 	int r = -1, total_failures = 0, failures = 0;
 	int do_update_gradient = 0;
 	double *p, *old_p, *Ap, normA_p_sq, *gradient, *Aiterate, err_sq = 0.0, old_err_sq = INFINITY, old_err_sq2 = DBL_MAX, alpha = 0.0, beta = 0.0;
-	char *wait_for_p = alloc_deptoken(), *wait_for_iterate = alloc_deptoken(), *wait_for_mvm = alloc_deptoken();
 	#if CKPT == CKPT_IN_MEMORY
 	double *save_it, *save_p, save_err_sq, save_alpha;
 	int do_checkpoint = 0;
@@ -155,30 +154,27 @@ void solve_cg(const Matrix *A, const double *b, double *iterate, double converge
 		if( --do_update_gradient > 0 )
 		{
 
-			update_gradient(gradient, Ap, &alpha, wait_for_iterate);
+			update_gradient(gradient, Ap, &alpha);
 
 			norm_task(gradient, &err_sq);
 
 			// at this point, Ap = A * old_p
 			#if DUE == DUE_ASYNC || DUE == DUE_IN_PATH
-			recover_rectify_g(n, &mp, old_p, Ap, gradient, &err_sq, wait_for_iterate);
+			recover_rectify_g(n, &mp, old_p, Ap, gradient, &err_sq);
 			#endif
 
 			compute_beta(&err_sq, &old_err_sq, &beta, 0);
 
-			update_iterate(iterate, wait_for_iterate, old_p, &alpha);
-			#if DUE == DUE_ASYNC
-			recover_rectify_xk(n, &mp, iterate, wait_for_iterate);
-			#endif
+			// in the algorithm, update_iterate is here, but we can delay it (for performance)
 		}
 		else
 		{
 			if( r > 0 )
-				update_iterate(iterate, wait_for_iterate, old_p, &alpha);
+				update_iterate(iterate, old_p, &alpha);
 
-			recompute_gradient_mvm(A, iterate, wait_for_iterate, wait_for_mvm, Aiterate);
+			recompute_gradient_mvm(A, iterate, Aiterate);
 
-			recompute_gradient_update(gradient, wait_for_mvm, Aiterate, b);
+			recompute_gradient_update(gradient, Aiterate, b);
 
 			norm_task(gradient, &err_sq);
 
@@ -188,7 +184,7 @@ void solve_cg(const Matrix *A, const double *b, double *iterate, double converge
 			#endif
 
 			#if DUE == DUE_ASYNC || DUE == DUE_IN_PATH
-			recover_rectify_x_g(n, &mp, iterate, gradient, &err_sq, wait_for_mvm);
+			recover_rectify_x_g(n, &mp, iterate, gradient, &err_sq);
 			#endif
 
 			compute_beta(&err_sq, &old_err_sq, &beta, 1);
@@ -200,19 +196,22 @@ void solve_cg(const Matrix *A, const double *b, double *iterate, double converge
 				start_error_injection();
 		}
 
-		update_p(p, old_p, wait_for_p, gradient, &beta);
+		update_p(p, old_p, gradient, &beta);
 
-		compute_Ap(A, p, wait_for_p, wait_for_mvm, Ap);
+		compute_Ap(A, p, Ap);
 
 		scalar_product_task(p, Ap, &normA_p_sq);
 
-		#if DUE == DUE_IN_PATH
 		if( do_update_gradient > 0 )
-			recover_rectify_xk(n, &mp, iterate, (char*)&normA_p_sq);
-		#endif
+		{
+			update_iterate(iterate, old_p, &alpha);
+			#if DUE == DUE_ASYNC || DUE == DUE_IN_PATH
+			recover_rectify_xk(n, &mp, iterate);
+			#endif
+		}
 
 		#if DUE == DUE_ASYNC || DUE == DUE_IN_PATH
-		recover_rectify_p_Ap(n, &mp, p, old_p, Ap, &normA_p_sq, wait_for_mvm, wait_for_iterate);
+		recover_rectify_p_Ap(n, &mp, p, old_p, Ap, &normA_p_sq);
 		#endif
 
 		// when reaching this point, all tasks of loop should be created.
@@ -282,9 +281,6 @@ void solve_cg(const Matrix *A, const double *b, double *iterate, double converge
 	free(Ap);
 	free(gradient);
 	free(Aiterate);
-	free(wait_for_p);
-	free(wait_for_mvm);
-	free(wait_for_iterate);
 
 	#if CKPT == CKPT_IN_MEMORY
 	free(save_it);

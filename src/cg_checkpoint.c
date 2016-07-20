@@ -28,7 +28,7 @@ void due_checkpoint(checkpoint_data *ckpt_data, double *iterate, double *p)
 	double *old_err_sq = mp.old_err_sq, *alpha = mp.alpha;
 
 	// reuse pragma check
-	#pragma omp task out(*behaviour) inout(*ckpt_data, *old_err_sq) label(due_checkpoint) no_copy_deps
+	#pragma omp task out(*behaviour) inout(*ckpt_data, *alpha, *old_err_sq) label(due_checkpoint) no_copy_deps
 	{
 		if(!aggregate_skips())
 		{
@@ -69,7 +69,7 @@ void force_rollback(checkpoint_data *ckpt_data, double *iterate, double *p)
 
 void checkpoint_vectors(checkpoint_data *ckpt_data, int *behaviour, double *iterate, double *p)
 {
-	double *taskwait_for_me = mp.old_err_sq2;
+	double *taskwait_for_me = mp.alpha;
 	int i;
 	for(i=0; i < nb_blocks; i ++)
 	{

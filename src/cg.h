@@ -58,12 +58,12 @@ typedef struct magic_pointers
 void solve_cg(const Matrix *A, const double *b, double *iterate, double convergence_thres);
 
 // all the algorithmical steps of CG that will be subdivided into tasks :
-void update_gradient(double *gradient, double *Ap, double *alpha, char *wait_for_iterate);
-void recompute_gradient_mvm(const Matrix *A, double *iterate, char *wait_for_iterate, char *wait_for_mvm, double *Aiterate);
-void recompute_gradient_update(double *gradient, char *wait_for_mvm, double *Aiterate, const double *b);
-void update_p(double *p, double *old_p, char *wait_for_p, double *gradient, double *beta);
-void update_iterate(double *iterate, char *wait_for_iterate, double *p, double *alpha);
-void compute_Ap(const Matrix *A, double *p, char *wait_for_p, char *wait_for_mvm, double *Ap);
+void update_gradient(double *gradient, double *Ap, double *alpha);
+void recompute_gradient_mvm(const Matrix *A, double *iterate, double *Aiterate);
+void recompute_gradient_update(double *gradient, double *Aiterate, const double *b);
+void update_p(double *p, double *old_p, double *gradient, double *beta);
+void update_iterate(double *iterate, double *p, double *alpha);
+void compute_Ap(const Matrix *A, double *p, double *Ap);
 
 void scalar_product_task(const double *p, const double *Ap, double* r);
 void norm_task(const double *v, double* r);
@@ -76,9 +76,9 @@ void force_checkpoint(checkpoint_data *ckpt_data, double *iterate, double *p);
 void due_checkpoint(checkpoint_data *ckpt_data, double *iterate, double *p);
 void checkpoint_vectors(checkpoint_data *ckpt_data, int *behaviour, double *iterate, double *p);
 
-void recover_rectify_xk(const int n, magic_pointers *mp, double *x, char *wait_for_iterate);
-void recover_rectify_g(const int n, magic_pointers *mp, const double *p, double *Ap, double *gradient, double *err_sq, char *wait_for_iterate);
-void recover_rectify_x_g(const int n, magic_pointers *mp, double *x, double *gradient, double *err_sq, char *wait_for_mvm);
-void recover_rectify_p_Ap(const int n, magic_pointers *mp, double *p, double *old_p, double *Ap, double *normA_p_sq, char *wait_for_mvm, char *wait_for_iterate);
+void recover_rectify_xk(const int n, magic_pointers *mp, double *x);
+void recover_rectify_g(const int n, magic_pointers *mp, const double *p, double *Ap, double *gradient, double *err_sq);
+void recover_rectify_x_g(const int n, magic_pointers *mp, double *x, double *gradient, double *err_sq);
+void recover_rectify_p_Ap(const int n, magic_pointers *mp, double *p, double *old_p, double *Ap, double *normA_p_sq);
 
 #endif // CG_H_INCLUDED

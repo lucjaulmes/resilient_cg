@@ -16,13 +16,13 @@ void hard_reset(magic_pointers *mp)
 
 	recover_x_lossy(mp, mp->x);
 
-	recompute_gradient_mvm(mp->A, mp->x, NULL, NULL, mp->Ax);
-	recompute_gradient_update(mp->g, NULL, mp->Ax, mp->b);
+	recompute_gradient_mvm(mp->A, mp->x, mp->Ax);
+	recompute_gradient_update(mp->g, mp->Ax, mp->b);
 	clear_failed( ~0 );
 	#endif
 }
 
-void recover_rectify_xk(const int n UNUSED, magic_pointers *mp, double *x, char *wait_for_iterate UNUSED)
+void recover_rectify_xk(const int n UNUSED, magic_pointers *mp, double *x UNUSED)
 {
 	// g used for recovery, also waiting for all its blocks makes sure it's not updating
 	PRAGMA_TASK(inout(ALL_BLOCKS(x)) in(ALL_BLOCKS(mp->g)), recover_xk, 20)
@@ -53,7 +53,7 @@ void recover_rectify_xk(const int n UNUSED, magic_pointers *mp, double *x, char 
 	}
 }
 
-void recover_rectify_g(const int n UNUSED, magic_pointers *mp, const double *p, double *Ap, double *gradient, double *err_sq, char *wait_for_iterate UNUSED)
+void recover_rectify_g(const int n UNUSED, magic_pointers *mp, const double *p, double *Ap, double *gradient, double *err_sq UNUSED)
 {
 	// p and x may be used for recovering
 	// Also, waiting for all blocks of x makes sure it's not updating
@@ -138,7 +138,7 @@ void recover_rectify_g(const int n UNUSED, magic_pointers *mp, const double *p, 
 	}
 }
 
-void recover_rectify_x_g(const int n UNUSED, magic_pointers *mp, double *x, double *gradient, double *err_sq, char *wait_for_mvm UNUSED)
+void recover_rectify_x_g(const int n UNUSED, magic_pointers *mp, double *x, double *gradient, double *err_sq UNUSED)
 {
 #if DUE == DUE_IN_PATH
 	PRAGMA_TASK(inout(*err_sq, ALL_BLOCKS(gradient), [n]x) in([n]mp->Ap), recover_xk_g, 0)
@@ -224,7 +224,7 @@ void recover_rectify_x_g(const int n UNUSED, magic_pointers *mp, double *x, doub
 	}
 }
 
-void recover_rectify_p_Ap(const int n UNUSED, magic_pointers *mp, double *p, double *old_p, double *Ap, double *normA_p_sq, char *wait_for_mvm UNUSED, char *wait_for_iterate UNUSED)
+void recover_rectify_p_Ap(const int n UNUSED, magic_pointers *mp, double *p, double *old_p, double *Ap, double *normA_p_sq UNUSED UNUSED)
 {
 	// both old_p and g used for recoveries (and maybe themselves repaired) -- thus requiring x
 #if DUE == DUE_IN_PATH
