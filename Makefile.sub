@@ -21,6 +21,8 @@ HEADERS = $(notdir $(wildcard Makefile*) $(wildcard *.h) $(foreach DIR,$(subst :
 
 # No more 'info' and 'note' messages...
 SILENCE = (grep -v -e info: -e note: || true)
+export SHELLOPTS:=pipefail
+export SHELL:=/bin/bash
 
 OBJECTS = $(SRC:.c=.o)
 CSPARSE_LIB = .objs/csparse.o
