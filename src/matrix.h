@@ -25,7 +25,7 @@ void read_matrix(const int n, const int m, const int nnz, const int symmetric, M
 void print_matrix(FILE* f, const Matrix *A);
 
 // memory utility functions
-void allocate_matrix(const int n, const int m, const int nnz, Matrix *A, int align_bytes);
+void allocate_matrix(const int n, const int m, const int nnz, Matrix *A);
 
 void deallocate_matrix(Matrix *A);
 

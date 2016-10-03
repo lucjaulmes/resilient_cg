@@ -222,7 +222,7 @@ void resilience_sighandler(int signum, siginfo_t *info, void *context UNUSED)
 		//memset(page, 0x00, sizeof(double) << get_log2_failblock_size());
 
 		// new : plain replace memory page
-		mmap(page, sizeof(double) << get_log2_failblock_size(), PROT_READ|PROT_WRITE, MAP_FIXED|MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
+		mmap(page, sizeof(double) << get_log2_failblock_size(), PROT_READ | PROT_WRITE, MAP_FIXED | MAP_PRIVATE | MAP_ANONYMOUS | HUGEPAGE_FLAG, -1, 0);
 
 
 		log_err(SHOW_DBGINFO, "Error has just been  signaled  on page %3d of vector %s (%d)\n", block, vect_name(vect), vect);

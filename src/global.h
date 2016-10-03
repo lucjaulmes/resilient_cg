@@ -1,6 +1,18 @@
 #ifndef GLOBAL_H_INCLUDED
 #define GLOBAL_H_INCLUDED
 
+//from HUGEPAGES doc
+#include <stdlib.h>
+#include <stdio.h>
+#include <unistd.h>
+#include <sys/mman.h>
+#include <fcntl.h>
+
+#ifndef MAP_HUGETLB
+#define MAP_HUGETLB 0x40000 /* arch specific */
+#endif
+
+
 // things that should be defined globally : constants, functions, etc.
 // these are the possible fault strategies
 
@@ -40,6 +52,12 @@
 	#endif
 #endif
 
+#if HUGEPAGES
+	#define HUGEPAGE_FLAG MAP_HUGETLB
+#else
+	#define HUGEPAGE_FLAG 0x0
+#endif
+
 #ifdef UNUSED
 #elif defined(__GNUC__)
 	#define UNUSED __attribute__((unused))
@@ -47,12 +65,6 @@
 	#define UNUSED /*@unused@*/
 #elif defined(__cplusplus)
 	#define UNUSED
-#endif
-
-#if ! _ISOC11_SOURCE
-//#warning ISOC11_SOURCE not defined ! Replacing aligned_alloc from glibc >= 2.12 with memalign
-#include <malloc.h>
-#define aligned_alloc memalign
 #endif
 
 #include <string.h>
@@ -89,11 +101,15 @@ static inline size_t round_up(size_t size, size_t alignment)
 	//return (size + (alignment - 1)) & ~(alignment - 1); // 4 ops also ? a-1, s+a, ~a, &
 }
 
-static inline void* aligned_calloc(size_t alignment, size_t size)
+// for get_log2_failblock_size()
+#include "failinfo.h"
+
+static inline void* big_calloc(size_t size)
 {
-	size_t aligned_size = round_up(size, alignment);
-	void *ptr = aligned_alloc(alignment, aligned_size);
-	if( ptr == NULL )
+
+	size_t aligned_size = round_up(size, sizeof(double) << get_log2_failblock_size());
+	void* ptr = mmap(NULL, aligned_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | HUGEPAGE_FLAG, -1, 0);
+	if( ptr == (void*)-1 )
 	{
 		perror("aligned_alloc failed");
 		exit(errno);
@@ -101,11 +117,9 @@ static inline void* aligned_calloc(size_t alignment, size_t size)
 	return memset(ptr, 0, aligned_size);
 }
 
-static inline char* alloc_deptoken()
+static inline void big_free(void* ptr, size_t size)
 {
-	char *deptoken = aligned_alloc(64, 64);
-
-	return deptoken;
+	munmap(ptr, round_up(size, sizeof(double) << get_log2_failblock_size()));
 }
 
 #endif // GLOBAL_H_INCLUDED

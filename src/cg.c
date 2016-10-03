@@ -119,15 +119,15 @@ void solve_cg(const Matrix *A, const double *b, double *iterate, double converge
 	int do_checkpoint = 0;
 	#endif
 
-	p        = (double*)aligned_calloc(sizeof(double) << get_log2_failblock_size(), n * sizeof(double));
-	old_p    = (double*)aligned_calloc(sizeof(double) << get_log2_failblock_size(), n * sizeof(double));
-	Ap       = (double*)aligned_calloc(sizeof(double) << get_log2_failblock_size(), n * sizeof(double));
-	gradient = (double*)aligned_calloc(sizeof(double) << get_log2_failblock_size(), n * sizeof(double));
-	Aiterate = (double*)aligned_calloc(sizeof(double) << get_log2_failblock_size(), n * sizeof(double));
+	p        = (double*)big_calloc(n * sizeof(double));
+	old_p    = (double*)big_calloc(n * sizeof(double));
+	Ap       = (double*)big_calloc(n * sizeof(double));
+	gradient = (double*)big_calloc(n * sizeof(double));
+	Aiterate = (double*)big_calloc(n * sizeof(double));
 
 	#if CKPT == CKPT_IN_MEMORY
-	save_it  = (double*)aligned_calloc(sizeof(double) << get_log2_failblock_size(), n * sizeof(double));
-	save_p   = (double*)aligned_calloc(sizeof(double) << get_log2_failblock_size(), n * sizeof(double));
+	save_it  = (double*)big_calloc(n * sizeof(double));
+	save_p   = (double*)big_calloc(n * sizeof(double));
 	#endif
 
 	// some parameters pre-computed, and show some informations
@@ -284,15 +284,15 @@ void solve_cg(const Matrix *A, const double *b, double *iterate, double converge
 	// stop resilience stuff that's still going on
 	unset_resilience(&mp);
 
-	free(p);
-	free(old_p);
-	free(Ap);
-	free(gradient);
-	free(Aiterate);
+	big_free(p, n * sizeof(double));
+	big_free(old_p, n * sizeof(double));
+	big_free(Ap, n * sizeof(double));
+	big_free(gradient, n * sizeof(double));
+	big_free(Aiterate, n * sizeof(double));
 
 	#if CKPT == CKPT_IN_MEMORY
-	free(save_it);
-	free(save_p);
+	big_free(save_it, n * sizeof(double));
+	big_free(save_p, n * sizeof(double));
 	#endif
 }
 

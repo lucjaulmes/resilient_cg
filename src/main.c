@@ -404,7 +404,7 @@ int main(int argc, char* argv[])
 				usage(argv[0]);
 
 			Matrix matrix;
-			allocate_matrix(n, m, lines_in_file * (1 + symmetric), &matrix, fail_size);
+			allocate_matrix(n, m, lines_in_file * (1 + symmetric), &matrix);
 			read_matrix(n, m, lines_in_file, symmetric, &matrix, input_file);
 
 			int shared_failblocks = set_blocks_sparse(&matrix, &nb_blocks, fail_size / sizeof(double));
@@ -454,9 +454,9 @@ int main(int argc, char* argv[])
 
 			// a few vectors for rhs of equation, solution and verification
 			double *b, *x, *s;
-			b = (double*)aligned_calloc(fail_size, n * sizeof(double));
-			x = (double*)aligned_calloc(fail_size, n * sizeof(double));
-			s = (double*)aligned_calloc(fail_size, n * sizeof(double));
+			b = (double*)big_calloc(n * sizeof(double));
+			x = (double*)big_calloc(n * sizeof(double));
+			s = (double*)big_calloc(n * sizeof(double));
 
 			// interesting stuff is here
 			for(j=0;j<runs;j++)
@@ -499,9 +499,9 @@ int main(int argc, char* argv[])
 			unset_measure();
 
 			deallocate_matrix(&matrix);
-			free(b);
-			free(x);
-			free(s);
+			big_free(b, n * sizeof(double));
+			big_free(x, n * sizeof(double));
+			big_free(s, n * sizeof(double));
 			free(block_ends);
 		}
 	}

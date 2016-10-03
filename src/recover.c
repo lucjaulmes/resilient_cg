@@ -171,7 +171,7 @@ void do_interpolation(const Matrix *A, const double *b, const double *g, double 
 		total_lost -= (lost[nb_lost -1] + fbs - A->n);
 
 	Matrix recup;
-	double *rhs = (double*)aligned_calloc(sizeof(double) << log2fbs, total_lost * sizeof(double));
+	double *rhs = (double*)big_calloc(total_lost * sizeof(double));
 
 	int nnz = 0;
 	for(i=0; i<nb_lost; i++)
@@ -182,7 +182,7 @@ void do_interpolation(const Matrix *A, const double *b, const double *g, double 
 		nnz += A->r[ max ] - A->r[ lost[i] ];
 	}
 
-	allocate_matrix(total_lost, total_lost, nnz, &recup, sizeof(double) << log2fbs);
+	allocate_matrix(total_lost, total_lost, nnz, &recup);
 
 	// get the submatrix for those lines
 	get_submatrix(A, lost, nb_lost, lost, nb_lost, fbs, &recup);
@@ -213,7 +213,7 @@ void do_interpolation(const Matrix *A, const double *b, const double *g, double 
 	cs_free(submatrix);
 
 	deallocate_matrix(&recup);
-	free(rhs);
+	big_free(rhs, total_lost * sizeof(double));
 }
 
 // give rows to but in rhs, and cols to avoid

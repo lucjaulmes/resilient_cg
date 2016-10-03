@@ -155,17 +155,17 @@ void read_matrix(const int n, const int m, const int nnz, const int symmetric, M
 	}
 }
 
-void allocate_matrix(const int n, const int m, const int nnz, Matrix *A, int align_bytes)
+void allocate_matrix(const int n, const int m, const int nnz, Matrix *A)
 {
 	A->n = n;
 	A->m = m;
 	A->nnz = nnz;
 
 
-	A->r = (int*)aligned_calloc(align_bytes, (n+1) * sizeof(int));
+	A->r = (int*)big_calloc((n+1) * sizeof(int));
 
-	A->c = (int*)aligned_calloc(align_bytes, nnz * sizeof(int));
-	A->v = (double*)aligned_calloc(align_bytes, nnz * sizeof(double));
+	A->c = (int*)big_calloc(nnz * sizeof(int));
+	A->v = (double*)big_calloc(nnz * sizeof(double));
 
 	if(! A->v || ! A->c || ! A->r)
 	{
@@ -176,11 +176,11 @@ void allocate_matrix(const int n, const int m, const int nnz, Matrix *A, int ali
 
 void deallocate_matrix(Matrix *A)
 {
-	free(A->r);
-	free(A->c);
+	big_free(A->r, (A->n + 1) * sizeof(int));
+	big_free(A->c, A->nnz * sizeof(int));
 
 	if(A->v)
-		free(A->v);
+		big_free(A->v, A->nnz * sizeof(double));
 }
 
 void get_submatrix(const Matrix *A , const int *rows, const int nr, const int *cols, const int nc, const int bs, Matrix *B)

@@ -6,7 +6,6 @@
 #include <semaphore.h> // sem_t
 #include <signal.h>    // siginfo_t
 #include <string.h>    // ffs
-#include "global.h"
 #include "cg.h"        // magic_pointers, ASSOC_CONST_MP , VECT_xxx
 #include "matrix.h"    // Matrix
 
