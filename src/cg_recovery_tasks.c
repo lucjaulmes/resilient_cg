@@ -83,7 +83,6 @@ void recover_rectify_g(const int n UNUSED, magic_pointers *mp, const double *p, 
 		}
 
 		// this should happen concurrently to norm_task's, and split work onto more tasks if there is too much work ; however before update_it
-		const int log2fbs = get_log2_failblock_size();
 		int failed_recovery = 0, error_types;
 
 		enter_task(RECOVERY);
@@ -119,7 +118,7 @@ void recover_rectify_g(const int n UNUSED, magic_pointers *mp, const double *p, 
 		sprintf(str, "\tAdding blocks that were skipped in reduction:");
 		#endif
 
-		for(i=0; i<get_nb_failblocks(); i++)
+		for(i = 0; i < nb_failblocks; i++)
 		{
 			if( !is_skipped_block(i, MASK_NORM_G) )
 				continue;
@@ -127,7 +126,7 @@ void recover_rectify_g(const int n UNUSED, magic_pointers *mp, const double *p, 
 			page_r = 0.0;
 
 			// block skipped by reduction
-			for(j=i<<log2fbs; j<(i+1)<<log2fbs && j<n; j++)
+			for(j = i * failblock_size_dbl; j < (i+1) * failblock_size_dbl && j < n; j++)
 				page_r += gradient[j] * gradient[j];
 
 			#if VERBOSE >= SHOW_FAILINFO
@@ -140,13 +139,13 @@ void recover_rectify_g(const int n UNUSED, magic_pointers *mp, const double *p, 
 			{
 				for (j = 0; j < nb_blocks - 1; j++)
 				{
-					if ((get_block_end(j) >> log2fbs) == i)
+					if ((get_block_end(j) / failblock_size_dbl) == i)
 					{
 						// end of block and start of next
 						page_r -= mp->shared_page_reductions[2 * j + 1];
 						page_r -= mp->shared_page_reductions[2 * j + 2];
 					}
-					else if ((get_block_end(j) >> log2fbs) > i)
+					else if ((get_block_end(j) / failblock_size_dbl) > i)
 						break;
 				}
 			}
@@ -184,7 +183,6 @@ void recover_rectify_x_g(const int n UNUSED, magic_pointers *mp, double *x, doub
 		}
 
 		// this should happen concurrently to norm_task's, and split work onto more tasks if there is too much work
-		const int log2fbs = get_log2_failblock_size();
 		int failed_recovery = 0, error_types;
 
 		enter_task(RECOVERY);
@@ -227,14 +225,14 @@ void recover_rectify_x_g(const int n UNUSED, magic_pointers *mp, double *x, doub
 		sprintf(str, "\tAdding blocks that were skipped in reduction:");
 		#endif
 
-		for(i=0; i<get_nb_failblocks(); i++)
+		for(i = 0; i < nb_failblocks; i++)
 		{
 			if( !is_skipped_block(i, MASK_NORM_G) )
 				continue;
 
 			page_r = 0.0;
 			// block skipped by reduction
-			for(j=i<<log2fbs; j<(i+1)<<log2fbs && j<n; j++)
+			for(j = i * failblock_size_dbl; j < (i+1) * failblock_size_dbl && j < n; j++)
 				page_r += gradient[j] * gradient[j];
 
 			#if VERBOSE >= SHOW_FAILINFO
@@ -247,13 +245,13 @@ void recover_rectify_x_g(const int n UNUSED, magic_pointers *mp, double *x, doub
 			{
 				for (j = 0; j < nb_blocks - 1; j++)
 				{
-					if ((get_block_end(j) >> log2fbs) == i)
+					if ((get_block_end(j) / failblock_size_dbl) == i)
 					{
 						// end of block and start of next
 						page_r -= mp->shared_page_reductions[2 * j + 1];
 						page_r -= mp->shared_page_reductions[2 * j + 2];
 					}
-					else if ((get_block_end(j) >> log2fbs) > i)
+					else if ((get_block_end(j) / failblock_size_dbl) > i)
 						break;
 				}
 			}
@@ -289,7 +287,7 @@ void recover_rectify_p_Ap(const int n UNUSED, magic_pointers *mp, double *p, dou
 		}
 
 		// this should happen concurrently to norm_task's, and split work onto more tasks if there is too much work
-		const int log2fbs = get_log2_failblock_size(), mask_p = 1 << get_data_vectptr(p), mask_old_p = 1 << get_data_vectptr(old_p);
+		const int mask_p = 1 << get_data_vectptr(p), mask_old_p = 1 << get_data_vectptr(old_p);
 		int failed_recovery = 0, error_types;
 		// are we sure g is already recomputed ?
 
@@ -329,7 +327,7 @@ void recover_rectify_p_Ap(const int n UNUSED, magic_pointers *mp, double *p, dou
 		sprintf(str, "\tAdding blocks that were skipped in reduction:");
 		#endif
 
-		for(i=0; i<get_nb_failblocks(); i++)
+		for(i = 0; i < nb_failblocks; i++)
 		{
 			if( !is_skipped_block(i, MASK_NORM_A_P) )
 				continue;
@@ -342,7 +340,7 @@ void recover_rectify_p_Ap(const int n UNUSED, magic_pointers *mp, double *p, dou
 			page_r = 0.0;
 
 			// block skipped by reduction, recompute
-			for(j=i<<log2fbs; j<(i+1)<<log2fbs && j<n; j++)
+			for(j = i * failblock_size_dbl; j < (i+1) * failblock_size_dbl && j < n; j++)
 				page_r += p[j] * Ap[j];
 
 
@@ -356,13 +354,13 @@ void recover_rectify_p_Ap(const int n UNUSED, magic_pointers *mp, double *p, dou
 			{
 				for (j = 0; j < nb_blocks - 1; j++)
 				{
-					if ((get_block_end(j) >> log2fbs) == i)
+					if ((get_block_end(j) / failblock_size_dbl) == i)
 					{
 						// end of block and start of next
 						page_r -= mp->shared_page_reductions[2 * j + 1];
 						page_r -= mp->shared_page_reductions[2 * j + 2];
 					}
-					else if ((get_block_end(j) >> log2fbs) > i)
+					else if ((get_block_end(j) / failblock_size_dbl) > i)
 						break;
 				}
 			}

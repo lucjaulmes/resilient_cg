@@ -92,7 +92,7 @@ static inline char * str_mask(char * str, const int mask)
 
 typedef struct analyze_err
 {
-	int nb_failblocks, failblock_size, log2fbs, fault_strat;
+	int fault_strat;
 	Matrix *neighbours;
 
 	#if CKPT
@@ -132,21 +132,7 @@ int get_data_vectptr(const double *vect);
 int get_data_blockptr(const void *vect, int *block);
 
 // get info about failures, for the recovery methods
-
-static inline int get_nb_failblocks()
-{
-	return errinfo.nb_failblocks;
-}
-
-static inline int get_log2_failblock_size()
-{
-	return errinfo.log2fbs;
-}
-
-static inline int get_failblock_size()
-{
-	return errinfo.failblock_size;
-}
+extern int nb_failblocks, failblock_size_dbl, failblock_size_bytes;
 
 static inline int get_strategy()
 {

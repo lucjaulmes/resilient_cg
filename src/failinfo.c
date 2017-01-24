@@ -27,6 +27,7 @@ const char * const mask_names[] = { "0 ",
 
 error_sim_data sim_err;
 analyze_err errinfo;
+int nb_failblocks, failblock_size_bytes, failblock_size_dbl;
 
 // these are used to communicate between a thread and its tasks and vice versa, but not between threads
 // N.B this is still __thread and not _Thread_local until mcc supports it : https://pm.bsc.es/projects/mcxx/ticket/404
@@ -57,8 +58,11 @@ double exponential(const double lambda, const double x)
 
 void populate_global(const int n, const int fail_size_bytes, const int fault_strat, const int nerr, const double lambda, const int checkpoint_freq UNUSED, const char *checkpoint_path UNUSED)
 {
-	const int fail_size = fail_size_bytes / sizeof(double);
-	errinfo = (analyze_err){ .failblock_size = fail_size, .log2fbs = ffs(fail_size)-1, .nb_failblocks = (n + fail_size -1) / fail_size, .fault_strat = fault_strat,
+	failblock_size_bytes = fail_size_bytes;
+	failblock_size_dbl = fail_size_bytes / sizeof(double);
+	nb_failblocks = (n + failblock_size_bytes - 1) / failblock_size_bytes;
+
+	errinfo = (analyze_err){.fault_strat = fault_strat,
 		#if CKPT
 		.ckpt_freq = checkpoint_freq,
 		#endif
@@ -80,18 +84,18 @@ void setup_resilience(const Matrix *A UNUSED, const int nb, magic_pointers *mp)
 	if (errinfo.neighbours == NULL)
 		err(1, "Failed to allocate errinfo.neighbours");
 	// don't want A->v so we allocate manually
-	errinfo.neighbours->nnz = errinfo.nb_failblocks * errinfo.nb_failblocks;
-	errinfo.neighbours->n = errinfo.neighbours->m = errinfo.nb_failblocks;
-	errinfo.neighbours->r = (int*)calloc( (errinfo.nb_failblocks+1), sizeof(int) );
-	errinfo.neighbours->c = (int*)calloc( errinfo.nb_failblocks * errinfo.nb_failblocks, sizeof(int) );
+	errinfo.neighbours->nnz = nb_failblocks * nb_failblocks;
+	errinfo.neighbours->n = errinfo.neighbours->m = nb_failblocks;
+	errinfo.neighbours->r = (int*)calloc( (nb_failblocks+1), sizeof(int) );
+	errinfo.neighbours->c = (int*)calloc( nb_failblocks * nb_failblocks, sizeof(int) );
 	errinfo.neighbours->v = NULL;
 	if (errinfo.neighbours->r == NULL || errinfo.neighbours->c == NULL)
 		err(1, "Failed to allocate errinfo.neighbours");
 
-	compute_neighbourhoods(A, errinfo.failblock_size, errinfo.neighbours);
+	compute_neighbourhoods(A, failblock_size_bytes, errinfo.neighbours);
 
 	// now for storing infos about errors
-	errinfo.skipped_blocks = (int*)calloc( errinfo.nb_failblocks, sizeof(int) );
+	errinfo.skipped_blocks = (int*)calloc( nb_failblocks, sizeof(int) );
 	if (errinfo.skipped_blocks == NULL)
 		err(1, "Failed to allocate errinfo.skipped_blocks");
 	#endif
@@ -102,8 +106,8 @@ void setup_resilience(const Matrix *A UNUSED, const int nb, magic_pointers *mp)
 		err(1, "Failed to allocate mp->shared_page_reductions");
 	int b;
 	for (b = 0; b < nb_blocks; b++)
-		if (get_block_end(b) & (errinfo.failblock_size - 1))
-			errinfo.skipped_blocks[get_block_end(b) >> errinfo.log2fbs] |= SHARED_BLOCK;
+		if (get_block_end(b) & (failblock_size_bytes - 1))
+			errinfo.skipped_blocks[get_block_end(b) / failblock_size_dbl] |= SHARED_BLOCK;
 	#endif
 
 	#if CKPT == CKPT_TO_DISK
@@ -161,7 +165,7 @@ void unset_resilience(magic_pointers *mp UNUSED)
 
 	// undo all potentially undetected but already injected errors in memory from previous runs
 	int i;
-	const intptr_t vect_size = errinfo.nb_failblocks * (sizeof(double) << get_log2_failblock_size());
+	const intptr_t vect_size = nb_failblocks * failblock_size_bytes;
 	for(i=0; i<errinfo.nb_data; i++)
 		mprotect(errinfo.data[i], vect_size, PROT_READ | PROT_WRITE);
 
@@ -194,7 +198,7 @@ void resilience_sighandler(int signum, siginfo_t *info, void *context UNUSED)
 	if( (signum == SIGBUS /* && (info->si_code == BUS_MCEER_AR || info->si_code == BUS_MCEER_A0 )*/) ||
 		(signum == SIGSEGV && info->si_code == SEGV_ACCERR) )
 	{
-		void * page = (void*)((long)info->si_addr - ((long)info->si_addr % (sizeof(double) << get_log2_failblock_size())));
+		void * page = (void*)((long)info->si_addr - ((long)info->si_addr % failblock_size_bytes));
 		//info.si_add_lsb contains lsb of corrupted data, e.g. log2(sysconf(_SC_PAGESIZE)) for a full page
 		// so long lastpage = (long)info.si_addr + (long)(1 << info.si_add_lsb);
 		// and we should report all pages from page(page) to page(lastpage)
@@ -228,11 +232,11 @@ void resilience_sighandler(int signum, siginfo_t *info, void *context UNUSED)
 
 		// old : unprotect, mess with data in the page
 		//if( signum == SIGSEGV )
-		//	mprotect(page, sizeof(double) << get_log2_failblock_size(), PROT_READ | PROT_WRITE);
-		//memset(page, 0x00, sizeof(double) << get_log2_failblock_size());
+		//	mprotect(page, failblock_size_bytes, PROT_READ | PROT_WRITE);
+		//memset(page, 0x00, failblock_size_bytes);
 
 		// new : plain replace memory page
-		void *ret = mmap(page, sizeof(double) << get_log2_failblock_size(), PROT_READ | PROT_WRITE, MAP_FIXED | MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+		void *ret = mmap(page, failblock_size_bytes, PROT_READ | PROT_WRITE, MAP_FIXED | MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 
 		if (ret == MAP_FAILED)
 			err(1, "Failed to remap failed page");
@@ -253,8 +257,8 @@ void silent_deallocating_sighandler(int signum, siginfo_t *info, void *context U
 	if(signum == SIGSEGV && info->si_code == SEGV_ACCERR)
 	{
 		int block, vect = get_data_blockptr(info->si_addr, &block), r;
-		void * page = (void*)((long)info->si_addr - ((long)info->si_addr % (sizeof(double) << get_log2_failblock_size())));
-		r = mprotect(page, sizeof(double) << get_log2_failblock_size(), PROT_READ | PROT_WRITE);
+		void * page = (void*)((long)info->si_addr - ((long)info->si_addr % failblock_size_bytes));
+		r = mprotect(page, failblock_size_bytes, PROT_READ | PROT_WRITE);
 
 		fprintf(stderr, "SILENT handler caught %d SIGSEGV (%d SEGV_ACCERR), pointing to %p [vect %d, block %2d], mprotect returned %d\n", signum, info->si_code, info->si_addr, vect, block, r);
 	}
@@ -356,24 +360,24 @@ void* simulate_failures(void* ptr)
 
 void cause_mpr(error_sim_data *sim_err)
 {
-	int rand_page = (int)( ((double)rand() / (double)RAND_MAX) * sim_err->info->nb_failblocks ) ;
+	int rand_page = (int)(((double)rand() / (double)RAND_MAX) * nb_failblocks);
 	int vect      = (int)( ((double)rand() / (double)RAND_MAX) * sim_err->info->nb_data ) ;
 
-	double* addr = sim_err->info->data[ vect ] + rand_page * sim_err->info->failblock_size;
+	double* addr = sim_err->info->data[vect] + rand_page * failblock_size_dbl;
 
 	log_err(SHOW_DBGINFO, "Error is going to be triggered on page %3d of vector %s (%d) : %p\n", rand_page, vect_name(vect+1), vect+1, (void*)addr);
 
 	sim_err->inj++;
 
-	mprotect((void*)addr, sizeof(double) << sim_err->info->log2fbs, PROT_NONE);
+	mprotect((void*)addr, failblock_size_bytes, PROT_NONE);
 	//madvise((void*)addr, sysconf(_SC_PAGESIZE), MADV_HWPOISON);
 }
 
 void flip_a_bit(analyze_err *info)
 {
-	int flip_pos = (int)( ((double)rand() / (double)RAND_MAX) * info->nb_failblocks * info->failblock_size ) ;
+	int flip_pos = (int)(((double)rand() / (double)RAND_MAX) * nb_failblocks * failblock_size_dbl);
 	int vect     = (int)( ((double)rand() / (double)RAND_MAX) * info->nb_data ) ;
-	int flip_bit = (int)( ((double)rand() / (double)RAND_MAX) * 8 * sizeof(double) ) ;
+	int flip_bit = (int)(((double)rand() / (double)RAND_MAX) * sizeof(double) * CHAR_BIT);
 
 	long long *victim = ((long long*)info->data[ vect ]) + flip_pos;
 
@@ -386,7 +390,7 @@ void flip_a_bit(analyze_err *info)
 	sim_err.inj++;
 
 	log_err(SHOW_DBGINFO,"Flipped bit %2d of double %5d (page %2d) in vect %2s :\t% .14e -> % .14e\tdiff = %e\n",
-			flip_bit, flip_pos, flip_pos/info->failblock_size, mask_names[vect+1],
+			flip_bit, flip_pos, flip_pos/failblock_size_bytes, mask_names[vect+1],
 			before, info->data[ vect ][ flip_pos ], fabs(before - info->data[ vect ][ flip_pos ]));
 }
 
@@ -394,7 +398,7 @@ int get_data_blockptr(const void *vect, int *block)
 {
 	int i;
 	intptr_t ptr = (intptr_t)vect, pos;
-	const intptr_t block_size = sizeof(double) << get_log2_failblock_size(), max_vect_size = errinfo.nb_failblocks * block_size;
+	const intptr_t max_vect_size = nb_failblocks * failblock_size_bytes;
 
 
 	for(i=0; i<errinfo.nb_data; i++)
@@ -403,7 +407,7 @@ int get_data_blockptr(const void *vect, int *block)
 
 		if( pos >= 0 && pos < max_vect_size )
 		{
-			*block = (int)(pos / block_size);
+			*block = (int)(pos / failblock_size_bytes);
 			return i+1;
 		}
 	}
@@ -537,7 +541,7 @@ void mark_corrected(const int block, int mask)
 int aggregate_skips()
 {
 	int i, r = 0;
-	for(i=0; i<errinfo.nb_failblocks; i++)
+	for(i=0; i<nb_failblocks; i++)
 		r |= errinfo.skipped_blocks[i];
 
 	return r & (~CONSTANT_MASKS);
@@ -547,7 +551,7 @@ int has_skipped_blocks(int mask)
 {
 	mask &= ~CONSTANT_MASKS;
 	int i, r = 0;
-	for(i=0; i<errinfo.nb_failblocks; i++)
+	for(i=0; i<nb_failblocks; i++)
 		if( errinfo.skipped_blocks[i] & mask )
 		{
 			r++;
@@ -579,7 +583,7 @@ int overlapping_faults(int mask_v, int mask_w)
 	mask_w &= ~CONSTANT_MASKS;
 	int i, r = 0, block;
 
-	for(i=0; i<errinfo.nb_failblocks; i++)
+	for(i=0; i<nb_failblocks; i++)
 	{
 		block = errinfo.skipped_blocks[i];
 		if( block & mask_v && block & mask_w )
@@ -596,7 +600,7 @@ void clear_failed_blocks(int mask, const int start, const int end)
 {
 	mask &= ~CONSTANT_MASKS;
 	int i;
-	for(i = (start >> errinfo.log2fbs); i < (end >> errinfo.log2fbs) ; i++)
+	for(i = start / failblock_size_dbl; i < end / failblock_size_dbl; i++)
 		if( errinfo.skipped_blocks[i] & mask )
 			__sync_fetch_and_and(&(errinfo.skipped_blocks[i]), ~mask);
 }
@@ -605,7 +609,7 @@ void clear_failed(int mask)
 {
 	mask &= ~CONSTANT_MASKS;
 	int i;
-	for(i=0; i<errinfo.nb_failblocks; i++)
+	for(i=0; i<nb_failblocks; i++)
 		if( errinfo.skipped_blocks[i] & mask )
 			__sync_fetch_and_and(&(errinfo.skipped_blocks[i]), ~mask);
 }
@@ -627,8 +631,8 @@ int get_all_failed_blocks(int mask, int **lost_blocks_ptr)
 		err(1, "Failed to allocate *lost_blocks");
 
 	int i, j = 0;
-	for(i=0; i<errinfo.nb_failblocks && j < total_skips; i++)
-		if( errinfo.skipped_blocks[i] & mask )
+	for (i = 0; i < nb_failblocks && j < total_skips; i++)
+		if (errinfo.skipped_blocks[i] & mask)
 			lost_blocks[j++] = i;
 
 	*lost_blocks_ptr = lost_blocks;
@@ -649,7 +653,7 @@ int get_all_failed_blocks_vect(const double *v, int **lost_blocks)
 
 void get_recovering_blocks_bounds(int *start, int *end, const int *lost, const int nb_lost)
 {
-	int min_block = errinfo.nb_failblocks + 1, max_block = -1, i, b;
+	int min_block = nb_failblocks + 1, max_block = -1, i, b;
 
 	for(i=0; i<nb_lost; i++)
 	{
@@ -659,7 +663,7 @@ void get_recovering_blocks_bounds(int *start, int *end, const int *lost, const i
 			max_block = lost[i];
 	}
 
-	int min_lost_item = min_block << get_log2_failblock_size(), max_lost_item = ((max_block + 1) << get_log2_failblock_size()) -1;
+	int min_lost_item = min_block * failblock_size_dbl, max_lost_item = ((max_block + 1) * failblock_size_dbl) -1;
 
 	// link to blocks
 	for(b=0; b<nb_blocks; b++)
@@ -678,7 +682,7 @@ int get_failed_neighbourset(const int *all_lost, const int nb_lost, int *set, co
 		return -1;
 
 	/* 'added' checks which blocks are added to the set */
-	char added[errinfo.nb_failblocks];
+	char added[nb_failblocks];
 	memset(added, 0, sizeof(added));
 
 	/* obviously start by adding start_block to the set */
@@ -731,14 +735,14 @@ int get_failed_neighbourset(const int *all_lost, const int nb_lost, int *set, co
 
 void compute_neighbourhoods(const Matrix *mat, const int bs, Matrix *neighbours)
 {
-	int i, ii, bi, k, bj, pos = 0, set_in_block[errinfo.nb_failblocks];
+	int i, ii, bi, k, bj, pos = 0, set_in_block[nb_failblocks];
 
 	// iterate all lines, i points to the start of the block, ii to the line and bi to the number of the block
 	for(i=0, bi=0; i < mat->n; i += bs, bi++ )
 	{
 		neighbours->r[bi] = pos;
 
-		for(bj=0; bj<errinfo.nb_failblocks; bj++)
+		for(bj=0; bj<nb_failblocks; bj++)
 			set_in_block[bj] = 0;
 
 		for( ii = i; ii < i+bs && ii < mat->n ; ii ++ )
@@ -751,7 +755,7 @@ void compute_neighbourhoods(const Matrix *mat, const int bs, Matrix *neighbours)
 					set_in_block[bj] = 1;
 			}
 
-		for(bj=0; bj<errinfo.nb_failblocks; bj++)
+		for(bj=0; bj<nb_failblocks; bj++)
 			if( set_in_block[bj] )
 			{
 				neighbours->c[pos] = bj;

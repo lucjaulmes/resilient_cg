@@ -119,15 +119,15 @@ void solve_cg(const Matrix *A, const double *b, double *iterate, double converge
 	int do_checkpoint = 0;
 	#endif
 
-	p        = (double*)aligned_calloc(sizeof(double) << get_log2_failblock_size(), n * sizeof(double));
-	old_p    = (double*)aligned_calloc(sizeof(double) << get_log2_failblock_size(), n * sizeof(double));
-	Ap       = (double*)aligned_calloc(sizeof(double) << get_log2_failblock_size(), n * sizeof(double));
-	gradient = (double*)aligned_calloc(sizeof(double) << get_log2_failblock_size(), n * sizeof(double));
-	Aiterate = (double*)aligned_calloc(sizeof(double) << get_log2_failblock_size(), n * sizeof(double));
+	p        = (double*)aligned_calloc(failblock_size_bytes, n * sizeof(double));
+	old_p    = (double*)aligned_calloc(failblock_size_bytes, n * sizeof(double));
+	Ap       = (double*)aligned_calloc(failblock_size_bytes, n * sizeof(double));
+	gradient = (double*)aligned_calloc(failblock_size_bytes, n * sizeof(double));
+	Aiterate = (double*)aligned_calloc(failblock_size_bytes, n * sizeof(double));
 
 	#if CKPT == CKPT_IN_MEMORY
-	save_it  = (double*)aligned_calloc(sizeof(double) << get_log2_failblock_size(), n * sizeof(double));
-	save_p   = (double*)aligned_calloc(sizeof(double) << get_log2_failblock_size(), n * sizeof(double));
+	save_it  = (double*)aligned_calloc(failblock_size_bytes, n * sizeof(double));
+	save_p   = (double*)aligned_calloc(failblock_size_bytes, n * sizeof(double));
 	#endif
 
 	// some parameters pre-computed, and show some informations

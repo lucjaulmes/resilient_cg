@@ -112,12 +112,5 @@ static inline void* aligned_calloc(size_t alignment, size_t size)
 	return memset(ptr, 0, aligned_size);
 }
 
-static inline char* alloc_deptoken()
-{
-	char *deptoken = aligned_alloc(64, 64);
-
-	return deptoken;
-}
-
 #endif // GLOBAL_H_INCLUDED
 

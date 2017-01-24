@@ -21,22 +21,22 @@
 
 void prepare_x_decorrelated(double *x, const int n, const int *lost_blocks, const int nb_lost)
 {
-	int b, i, log2fbs = get_log2_failblock_size();
+	int b, i;
 
 	for(b=0; b < nb_lost; b++)
 	{
-		for(i=lost_blocks[b]<<log2fbs; i<lost_blocks[b+1]<<log2fbs && i < n; i++)
+		for(i=lost_blocks[b] * failblock_size_dbl; i<lost_blocks[b+1] * failblock_size_dbl && i < n; i++)
 			x[ i ] = 0;
 	}
 }
 
 void prepare_x_uncorrelated(double *x, const double *initial_x, const int n, const int *lost_blocks, const int nb_lost)
 {
-	int b, i, log2fbs = get_log2_failblock_size();
+	int b, i;
 
 	for(b=0; b < nb_lost; b++)
 	{
-		for(i=lost_blocks[b]<<log2fbs; i<lost_blocks[b+1]<<log2fbs && i < n; i++)
+		for(i=lost_blocks[b] * failblock_size_dbl; i<lost_blocks[b+1] * failblock_size_dbl && i < n; i++)
 			x[ i ] = initial_x[ i ];
 	}
 }
@@ -48,8 +48,7 @@ void recover_direct(const Matrix *A, const int sgn, const double *u, const doubl
 	// v = w + A u
 	// w = v - A u
 	// so s is +/- 1, we get w = v + sgn(A u)
-	const int fbs = get_failblock_size();
-	int i, lost = lost_block << get_log2_failblock_size();
+	int i, lost = lost_block * failblock_size_dbl;
 
 	if(lost > A->n)
 	{
@@ -60,9 +59,9 @@ void recover_direct(const Matrix *A, const int sgn, const double *u, const doubl
 
 	Matrix local;
 	local.m = A->m;
-	local.n = fbs;
+	local.n = failblock_size_dbl;
 
-	if(lost + fbs > A->n)
+	if(lost + failblock_size_dbl > A->n)
 		local.n = A->n - lost;
 
 	local.v = A->v;
@@ -146,12 +145,11 @@ void recover_inverse(const Matrix *A, const double *b, const double *g, double *
 
 void do_interpolation(const Matrix *A, const double *b, const double *g, double *x, const int *lost_blocks, const int nb_lost)
 {
-	const int log2fbs = get_log2_failblock_size(), fbs = get_failblock_size();
-	int i, total_lost = nb_lost << log2fbs, lost[nb_lost];
+	int i, total_lost = nb_lost * failblock_size_dbl, lost[nb_lost];
 
 	// change from block number to first row in block number
 	for(i=0; i<nb_lost; i++)
-		lost[i] = lost_blocks[i] << log2fbs;
+		lost[i] = lost_blocks[i] * failblock_size_dbl;
 
 	if(lost[nb_lost -1] > A->n)
 	{
@@ -160,28 +158,28 @@ void do_interpolation(const Matrix *A, const double *b, const double *g, double 
 		return ;
 	}
 
-	if(lost[nb_lost -1] + fbs > A->n)
-		total_lost -= (lost[nb_lost -1] + fbs - A->n);
+	if(lost[nb_lost -1] + failblock_size_dbl > A->n)
+		total_lost -= (lost[nb_lost -1] + failblock_size_dbl - A->n);
 
 	Matrix recup;
-	double *rhs = (double*)aligned_calloc(sizeof(double) << log2fbs, total_lost * sizeof(double));
+	double *rhs = (double*)aligned_calloc(failblock_size_bytes, total_lost * sizeof(double));
 
 	int nnz = 0;
 	for(i=0; i<nb_lost; i++)
 	{
-		int max = lost[i] + fbs;
-		if(max > A->n)
+		int max = lost[i] + failblock_size_dbl;
+		if (max > A->n)
 			max = A->n ;
 		nnz += A->r[ max ] - A->r[ lost[i] ];
 	}
 
-	allocate_matrix(total_lost, total_lost, nnz, &recup, sizeof(double) << log2fbs);
+	allocate_matrix(total_lost, total_lost, nnz, &recup, failblock_size_bytes);
 
 	// get the submatrix for those lines
-	get_submatrix(A, lost, nb_lost, lost, nb_lost, fbs, &recup);
+	get_submatrix(A, lost, nb_lost, lost, nb_lost, failblock_size_dbl, &recup);
 
 	// fill in the rhs with the part we need
-	get_rhs(nb_lost, lost, nb_lost, lost, fbs, A, b, g, x, rhs);
+	get_rhs(nb_lost, lost, nb_lost, lost, failblock_size_dbl, A, b, g, x, rhs);
 
 	// from csparse
 	cs *submatrix = cs_calloc(1, sizeof(cs));
@@ -202,7 +200,7 @@ void do_interpolation(const Matrix *A, const double *b, const double *g, double 
 	// and update the x values we interpolated, that are returned in rhs
 	int j, k;
 	for(i=0, k=0; i<nb_lost; i++)
-		for(j=lost[i]; j<lost[i]+fbs && j<A->n; j++, k++)
+		for(j = lost[i]; j < lost[i] + failblock_size_dbl && j < A->n; j++, k++)
 			x[ j ] = rhs[ k ];
 
 	cs_free(submatrix);
@@ -317,11 +315,11 @@ int recover_g_update(magic_pointers *mp, double *g, int block)
 
 	if(!is_skipped_block(block, MASK_A_P))
 	{
-		int fbs = get_failblock_size(), blockpos = block << get_log2_failblock_size();
-		if(blockpos + fbs > mp->A->n)
-			fbs = mp->A->n - blockpos;
+		int recover_size = failblock_size_dbl, blockpos = block * failblock_size_dbl;
+		if(blockpos + recover_size > mp->A->n)
+			recover_size = mp->A->n - blockpos;
 
-		daxpy(fbs, -(*mp->alpha), Ap + blockpos, g + blockpos, g + blockpos);
+		daxpy(recover_size, -(*mp->alpha), Ap + blockpos, g + blockpos, g + blockpos);
 
 		r = check_recovery_errors();
 	}
@@ -339,11 +337,11 @@ int recover_p_repeat(magic_pointers *mp, double *p, const double *old_p, int blo
 
 	if(!is_skipped_block(block, 1 << get_data_vectptr(old_p)) && !is_skipped_block(block, MASK_GRADIENT))
 	{
-		int fbs = get_failblock_size(), blockpos = block << get_log2_failblock_size();
-		if(blockpos + fbs > mp->A->n)
-			fbs = mp->A->n - blockpos;
+		int recover_size = failblock_size_dbl, blockpos = block * failblock_size_dbl;
+		if(blockpos + recover_size > mp->A->n)
+			recover_size = mp->A->n - blockpos;
 
-		daxpy(fbs, *(mp->beta), old_p + blockpos, g + blockpos, p + blockpos);
+		daxpy(recover_size, *(mp->beta), old_p + blockpos, g + blockpos, p + blockpos);
 
 		r = check_recovery_errors();
 	}
@@ -456,7 +454,7 @@ int recover_full_old_p_invert(magic_pointers *mp, double *old_p, const int mark_
 	nb_lost = get_all_failed_blocks_vect(old_p, &lost_blocks);
 
 	for(i=0; i<nb_lost; i++)
-		if(old_Ap[ lost_blocks[i] << get_log2_failblock_size() ] == NAN)
+		if(old_Ap[lost_blocks[i] * failblock_size_dbl] == NAN)
 		{
 			r = -1;
 			break;
@@ -488,7 +486,7 @@ int recover_full_old_p_invert(magic_pointers *mp, double *old_p, const int mark_
 
 void save_oldAp_for_old_p_recovery(magic_pointers *mp, double *old_p, const int s, const int e)
 {
-	const int log2fbs = get_log2_failblock_size(), fbs = get_failblock_size(), mask = 1 << get_data_vectptr(old_p);
+	const int mask = 1 << get_data_vectptr(old_p);
 	int start_block, end_block, i;
 
 	#if VERBOSE >= SHOW_FAILINFO
@@ -496,14 +494,14 @@ void save_oldAp_for_old_p_recovery(magic_pointers *mp, double *old_p, const int 
 	sprintf(str, "\tSaving failed blocks of old_Ap for later recovery of old_p[%d] : {  ", get_data_vectptr(old_p));
 	#endif
 
-	for (i = s >> log2fbs; i < (e + fbs - 1) >> log2fbs; i++)
+	for (i = s / failblock_size_dbl; i < (e + failblock_size_dbl - 1) / failblock_size_dbl; i++)
 	{
 		if(! is_skipped_block(i, mask))
 			continue;
 
 		// compute task-local part of this fail block and copy that
-		start_block = i << log2fbs;
-		end_block = (i + 1) << log2fbs;
+		start_block = i * failblock_size_dbl;
+		end_block = (i + 1) * failblock_size_dbl;
 
 		if (start_block < s)
 			start_block = s;
@@ -535,7 +533,7 @@ int recover_full_p_repeat(magic_pointers *mp, double *p, const double *old_p, co
 	int i, r = 0, rr;
 	const int mask = 1 << get_data_vectptr(p);
 
-	for(i=0; i < get_nb_failblocks(); i++)
+	for(i=0; i < nb_failblocks; i++)
 	{
 		if(! is_skipped_block(i, mask))
 			continue;
@@ -555,7 +553,7 @@ int recover_full_g_recompute(magic_pointers *mp, double *g, const int mark_clean
 {
 	int i, r = 0, rr;
 
-	for(i=0; i < get_nb_failblocks(); i++)
+	for(i=0; i < nb_failblocks; i++)
 	{
 		if(! is_skipped_block(i, MASK_GRADIENT))
 			continue;
@@ -575,7 +573,7 @@ int recover_full_g_update(magic_pointers *mp, double *g, const int mark_clean)
 {
 	int i, r = 0, rr;
 
-	for(i=0; i < get_nb_failblocks(); i++)
+	for(i=0; i < nb_failblocks; i++)
 	{
 		if(! is_skipped_block(i, MASK_GRADIENT))
 			continue;
@@ -595,7 +593,7 @@ int recover_mvm_skips_g(magic_pointers *mp, double *g, const int mark_clean)
 {
 	int i, r = 0, rr;
 
-	for(i=0; i < get_nb_failblocks(); i++)
+	for(i=0; i < nb_failblocks; i++)
 		if(is_skipped_not_failed_block(i, MASK_GRADIENT))
 		{
 
@@ -614,7 +612,7 @@ int recover_full_Ap(magic_pointers *mp, double *Ap, const double *p, const int m
 {
 	int i, r = 0, rr;
 
-	for(i=0; i < get_nb_failblocks(); i++)
+	for(i=0; i < nb_failblocks; i++)
 	{
 		if(! is_skipped_block(i, MASK_A_P))
 			continue;

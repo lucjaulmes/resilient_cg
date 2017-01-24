@@ -10,7 +10,7 @@ void scalar_product_task(const double *p, const double *Ap, double* r)
 		PRAGMA_TASK(concurrent(*r, p[s:e-1], Ap[s:e-1]) firstprivate(i, s, e), dotp, 10)
 		{
 			double local_r = 0, page_r;
-			const int fbs = get_failblock_size(), mask = MASK_A_P | (1 << get_data_vectptr(p));
+			const int mask = MASK_A_P | (1 << get_data_vectptr(p));
 			int j, k, page;
 			#if DUE == DUE_ASYNC || DUE == DUE_IN_PATH
 			int shared_block = 0;
@@ -18,9 +18,9 @@ void scalar_product_task(const double *p, const double *Ap, double* r)
 
 			enter_task(NORM_A_P);
 
-			for(j=s, page = s >> get_log2_failblock_size(); j<e; page++, j = k)
+			for(j = s, page = s / failblock_size_dbl; j < e; page++, j = k)
 			{
-				int next_j = (j | (fbs - 1)) + 1;
+				int next_j = round_up(j, failblock_size_dbl);
 				if (next_j > e)
 					next_j = e;
 
@@ -72,7 +72,6 @@ void norm_task(const double *v, double* r)
 		PRAGMA_TASK(concurrent(*r, v[s:e-1]) firstprivate(i, s, e), norm, 10)
 		{
 			double local_r = 0, page_r;
-			const int fbs = get_failblock_size();
 			int j, k, page;
 			#if DUE == DUE_ASYNC || DUE == DUE_IN_PATH
 			int shared_block = 0;
@@ -80,9 +79,9 @@ void norm_task(const double *v, double* r)
 
 			enter_task(NORM_GRADIENT);
 
-			for(j=s, page = s >> get_log2_failblock_size(); j<e; page++, j = k)
+			for(j = s, page = s / failblock_size_dbl; j < e; page++, j = k)
 			{
-				int next_j = (j | (fbs - 1)) + 1;
+				int next_j = round_up(j, failblock_size_dbl);
 				if (next_j > e)
 					next_j = e;
 
@@ -132,14 +131,13 @@ void update_gradient(double *gradient, double *Ap, double *alpha UNUSED)
 
 		PRAGMA_TASK(in(*alpha, Ap[s:e-1]) inout(gradient[s:e-1]) firstprivate(s, e), update_gradient, 10)
 		{
-			const int fbs = get_failblock_size();
 			int j, k, page;
 
 			enter_task(VECT_GRADIENT);
 
-			for(j=s, page = s >> get_log2_failblock_size(); j<e; page++, j = k)
+			for(j = s, page = s / failblock_size_dbl; j < e; page++, j = k)
 			{
-				int next_j = (j | (fbs - 1)) + 1;
+				int next_j = round_up(j, failblock_size_dbl);
 				if (next_j > e)
 					next_j = e;
 
@@ -171,14 +169,13 @@ void recompute_gradient_mvm(const Matrix *A, double *iterate UNUSED UNUSED, doub
 		// Aiterate <- A * iterate
 		PRAGMA_TASK(in(ALL_BLOCKS(iterate)) out(Aiterate[s:e-1]) firstprivate(s, e), AxIt, 10)
 		{
-			int j, k, l, page = s >> get_log2_failblock_size(), skips;
-			const int fbs = get_failblock_size();
+			int j, k, l, page, skips;
 
 			enter_task(VECT_A_ITERATE);
 
-			for(j=s, page = s >> get_log2_failblock_size(); j<e; page++, j = l)
+			for(j = s, page = s / failblock_size_dbl; j<e; page++, j = l)
 			{
-				int next_j = (j | (fbs - 1)) + 1;
+				int next_j = round_up(j, failblock_size_dbl);
 				if (next_j > e)
 					next_j = e;
 
@@ -227,14 +224,13 @@ void recompute_gradient_update(double *gradient UNUSED, double *Aiterate, const 
 			// Can't afford to propagate errors from Ax to g ; if they come from a block i of x
 			// then it will be impossible for x_i to be recovered from g_i, x_j (j!=i)
 
-			const int fbs = get_failblock_size();
 			int j, k, page;
 
 			enter_task(VECT_GRADIENT);
 
-			for(j=s, page = s >> get_log2_failblock_size(); j<e; page++, j = k)
+			for(j=s, page = s / failblock_size_dbl; j<e; page++, j = k)
 			{
-				int next_j = (j | (fbs - 1)) + 1;
+				int next_j = round_up(j, failblock_size_dbl);
 				if (next_j > e)
 					next_j = e;
 
@@ -266,14 +262,14 @@ void update_p(double *p, double *old_p UNUSED, double *gradient, double *beta)
 		// p <- beta * old_p + gradient
 		PRAGMA_TASK(in(*beta, gradient[s:e-1], old_p[s:e-1]) out(p[s:e-1]) firstprivate(s, e), update_p, 10)
 		{
-			const int fbs = get_failblock_size(), mask = MASK_GRADIENT | (1 << get_data_vectptr(old_p));
+			const int mask = MASK_GRADIENT | (1 << get_data_vectptr(old_p));
 			int j, k, page, errcount = 0;
 
 			enter_task_vect(p);
 
-			for(j=s, page = s >> get_log2_failblock_size(); j<e; page++, j = k)
+			for(j=s, page = s / failblock_size_dbl; j<e; page++, j = k)
 			{
-				int next_j = (j | (fbs - 1)) + 1;
+				int next_j = round_up(j, failblock_size_dbl);
 				if (next_j > e)
 					next_j = e;
 
@@ -310,14 +306,14 @@ void compute_Ap(const Matrix *A, double *p UNUSED UNUSED, double *Ap)
 		// Ap <- A * p
 		PRAGMA_TASK(in(ALL_BLOCKS(p)) out(Ap[s:e-1]) firstprivate(s, e), Axp, 20)
 		{
-			int j, k, l, page = s >> get_log2_failblock_size(), skips;
-			const int fbs = get_failblock_size(), mask = 1 << get_data_vectptr(p);
+			int j, k, l, page, skips;
+			const int mask = 1 << get_data_vectptr(p);
 
 			enter_task(VECT_A_P);
 
-			for(j=s, page = s >> get_log2_failblock_size(); j<e; page++, j = l)
+			for(j=s, page = s / failblock_size_dbl; j<e; page++, j = l)
 			{
-				int next_j = (j | (fbs - 1)) + 1;
+				int next_j = round_up(j, failblock_size_dbl);
 				if (next_j > e)
 					next_j = e;
 
@@ -358,12 +354,12 @@ void update_iterate(double *iterate UNUSED, double *p, double *alpha)
 		{
 			enter_task(VECT_ITERATE);
 
-			const int fbs = get_failblock_size(), mask = (1 << get_data_vectptr(p));
+			const int mask = (1 << get_data_vectptr(p));
 			int j, k, page;
 
-			for(j=s, page = s >> get_log2_failblock_size(); j<e; page++, j = k)
+			for(j=s, page = s / failblock_size_dbl; j<e; page++, j = k)
 			{
-				int next_j = (j | (fbs - 1)) + 1;
+				int next_j = round_up(j, failblock_size_dbl);
 				if (next_j > e)
 					next_j = e;
 
