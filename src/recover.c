@@ -4,6 +4,7 @@
 #include <signal.h>
 #include <setjmp.h>
 #include <errno.h>
+#include <err.h>
 
 #ifdef _OMPSS
 	#include <nanos_omp.h>
@@ -192,6 +193,8 @@ void do_interpolation(const Matrix *A, const double *b, const double *g, double 
 
 	// from csparse
 	cs *submatrix = cs_calloc(1, sizeof(cs));
+	if (submatrix == NULL)
+		err(1, "Failed to allocate submatrix for inversion");
 	submatrix->m = recup.m;
 	submatrix->n = recup.n;
 	submatrix->nzmax = recup.nnz;

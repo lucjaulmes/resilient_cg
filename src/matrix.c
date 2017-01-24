@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <err.h>
 
 #include "global.h"
 #include "debug.h"
@@ -89,7 +90,11 @@ void read_matrix(const int n, const int m, const int nnz, const int symmetric, M
 	double val;
 
 	if(symmetric)
+	{
 		nb_subdiagonals = (int*)calloc(n, sizeof(int));
+		if(nb_subdiagonals == NULL)
+			err(1, "calloc() for subdiagonal count failed");
+	}
 
 	A->n = n;
 	A->m = m;
@@ -130,6 +135,8 @@ void read_matrix(const int n, const int m, const int nnz, const int symmetric, M
 	{
 		// now let's fill in the subdiagonal part
 		int *fill_row = malloc(n * sizeof(int));
+		if (fill_row == NULL)
+			err(1, "malloc() for fill_row failed");
 
 		for(j=0; j<A->n; j++)
 			fill_row[j] = A->r[j];
@@ -166,12 +173,6 @@ void allocate_matrix(const int n, const int m, const int nnz, Matrix *A, int ali
 
 	A->c = (int*)aligned_calloc(align_bytes, nnz * sizeof(int));
 	A->v = (double*)aligned_calloc(align_bytes, nnz * sizeof(double));
-
-	if(! A->v || ! A->c || ! A->r)
-	{
-		fprintf(stderr, "Allocating sparse matrix of size %d rows and %d non-zeros failed !\n", n, nnz);
-		exit(2);
-	}
 }
 
 void deallocate_matrix(Matrix *A)

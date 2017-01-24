@@ -9,6 +9,7 @@
 #include <sys/mman.h>
 #include <pthread.h>
 #include <limits.h>
+#include <err.h>
 
 #include "global.h"
 #include "debug.h"
@@ -75,21 +76,29 @@ void setup_resilience(const Matrix *A UNUSED, const int nb, magic_pointers *mp)
 	#if DUE
 	// neighbourhood stuff in errinfo
 	errinfo.neighbours = (Matrix*)calloc( 1, sizeof(Matrix) );
+	if (errinfo.neighbours == NULL)
+		err(1, "Failed to allocate errinfo.neighbours");
 	// don't want A->v so we allocate manually
 	errinfo.neighbours->nnz = errinfo.nb_failblocks * errinfo.nb_failblocks;
 	errinfo.neighbours->n = errinfo.neighbours->m = errinfo.nb_failblocks;
 	errinfo.neighbours->r = (int*)calloc( (errinfo.nb_failblocks+1), sizeof(int) );
 	errinfo.neighbours->c = (int*)calloc( errinfo.nb_failblocks * errinfo.nb_failblocks, sizeof(int) );
 	errinfo.neighbours->v = NULL;
+	if (errinfo.neighbours->r == NULL || errinfo.neighbours->c == NULL)
+		err(1, "Failed to allocate errinfo.neighbours");
 
 	compute_neighbourhoods(A, errinfo.failblock_size, errinfo.neighbours);
 
 	// now for storing infos about errors
 	errinfo.skipped_blocks = (int*)calloc( errinfo.nb_failblocks, sizeof(int) );
+	if (errinfo.skipped_blocks == NULL)
+		err(1, "Failed to allocate errinfo.skipped_blocks");
 	#endif
 
 	#if DUE == DUE_ASYNC || DUE == DUE_IN_PATH
 	mp->shared_page_reductions = (double*)calloc(2 * nb_blocks, sizeof(double));
+	if (mp->shared_page_reductions == NULL)
+		err(1, "Failed to allocate mp->shared_page_reductions");
 	int b;
 	for (b = 0; b < nb_blocks; b++)
 		if (get_block_end(b) & (errinfo.failblock_size - 1))
@@ -103,6 +112,8 @@ void setup_resilience(const Matrix *A UNUSED, const int nb, magic_pointers *mp)
 	// now using the variable number of args set the pointers in errinfo.data for bit flipping / finding errors
 	errinfo.nb_data = nb;
 	errinfo.data = (double **) calloc(nb, sizeof(double *));
+	if (errinfo.data == NULL)
+		err(1, "Failed to allocate errinfo.data");
 
 	#define X(constant, name) errinfo.data[constant-1] = mp->name;
 	ASSOC_CONST_MP
@@ -220,7 +231,10 @@ void resilience_sighandler(int signum, siginfo_t *info, void *context UNUSED)
 		//memset(page, 0x00, sizeof(double) << get_log2_failblock_size());
 
 		// new : plain replace memory page
-		mmap(page, sizeof(double) << get_log2_failblock_size(), PROT_READ|PROT_WRITE, MAP_FIXED|MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
+		void *ret = mmap(page, sizeof(double) << get_log2_failblock_size(), PROT_READ | PROT_WRITE, MAP_FIXED | MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+
+		if (ret == MAP_FAILED)
+			err(1, "Failed to remap failed page");
 
 
 		log_err(SHOW_DBGINFO, "Error has just been  signaled  on page %3d of vector %s (%d)\n", block, vect_name(vect), vect);
@@ -608,6 +622,8 @@ int get_all_failed_blocks(int mask, int **lost_blocks)
 		return 0;
 
 	*lost_blocks = (int*) calloc( total_skips, sizeof(int) );
+	if (*lost_blocks == NULL)
+		err(1, "Failed to allocate *lost_blocks");
 
 	int i, j = 0;
 	for(i=0; i<errinfo.nb_failblocks && j < total_skips; i++)

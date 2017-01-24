@@ -1,6 +1,10 @@
 #ifndef GLOBAL_H_INCLUDED
 #define GLOBAL_H_INCLUDED
 
+#include <execinfo.h>
+#include <err.h>
+
+
 // things that should be defined globally : constants, functions, etc.
 // these are the possible fault strategies
 
@@ -95,8 +99,15 @@ static inline void* aligned_calloc(size_t alignment, size_t size)
 	void *ptr = aligned_alloc(alignment, aligned_size);
 	if( ptr == NULL )
 	{
-		perror("aligned_alloc failed");
-		exit(errno);
+		warn("mmap (aligned alloc) failed");
+		void *caller[2];
+		size_t n = backtrace(caller, 2);
+		if (n == 2)
+		{
+			char ** str = backtrace_symbols(caller + 1, 1);
+			printf("caller: %s\n", str[0]);
+		}
+		exit(1);
 	}
 	return memset(ptr, 0, aligned_size);
 }

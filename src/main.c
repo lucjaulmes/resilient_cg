@@ -5,6 +5,7 @@
 #include <time.h>
 #include <unistd.h>
 #include <sys/time.h>
+#include <err.h>
 
 #include "global.h"
 
@@ -31,6 +32,8 @@ int *block_ends;
 int set_blocks_sparse(Matrix *A, int *nb_blocks, const int fail_size)
 {
 	block_ends = (int*)malloc(*nb_blocks * sizeof(int));
+	if (block_ends == NULL)
+		err(1, "Failed to allocate array for block boundaries");
 
 	// compute block repartition now we have the matrix, increment by 8 to avoid false sharing
 	int i, pos = 0, next_stop = 0, ideal_bs = (A->nnz + *nb_blocks / 2) / *nb_blocks;

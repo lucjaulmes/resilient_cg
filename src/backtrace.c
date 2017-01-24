@@ -41,8 +41,8 @@ void crit_err_hdlr(int sig_num, siginfo_t * info, void * ucontext)
 
 	size = backtrace(array, 50);
 
-	/* overwrite sigaction with caller's address */
-	array[1] = caller_address;
+	/* overwrite sigaction with caller's address
+	array[1] = caller_address; */
 
 	messages = backtrace_symbols(array, size);
 

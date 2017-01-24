@@ -43,7 +43,7 @@ DESTDIR:=$(subst $(space),_,$(DIR))
 default:ompssall
 
 all ompssall plainall debug ompssdebug plaindebug conv ompssconv plainconv speedup ompssspeedup plainspeedup instr ompssinstr plaininstr: $(DESTDIR)
-	make -C $(DESTDIR) -f ../Makefile.sub "FLAVOUR=$(FLAVOUR)" VPATH=../src $(@)
+	+$(MAKE) -C $(DESTDIR) -f ../Makefile.sub "FLAVOUR=$(FLAVOUR)" VPATH=../src $(@)
 
 clean:
 	rm -rf async_* lossy_* none_* path_* rollback_*
