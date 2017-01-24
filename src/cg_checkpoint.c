@@ -69,7 +69,7 @@ void force_rollback(checkpoint_data *ckpt_data, double *iterate, double *p)
 
 void checkpoint_vectors(checkpoint_data *ckpt_data, int *behaviour, double *iterate, double *p)
 {
-	double *taskwait_for_me = mp.alpha;
+	double *taskwait_for_me __attribute__((unused)) = mp.alpha;
 	int i;
 	for(i=0; i < nb_blocks; i ++)
 	{
