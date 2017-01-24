@@ -453,7 +453,7 @@ int check_block(const int block, int input_mask, int *is_shared)
 	{
 		b = errinfo.skipped_blocks[block];
 	}
-	while( (b & input_mask) && ! __sync_bool_compare_and_swap( &(errinfo.skipped_blocks[block]), b, b | out_mask ) );
+	while ((b & input_mask) && ! __sync_bool_compare_and_swap(errinfo.skipped_blocks + block, b, b | out_mask));
 
 	#if VERBOSE >= SHOW_FAILINFO
 	if(b & input_mask)
@@ -479,7 +479,7 @@ int should_skip_block(const int block, int mask)
 	{
 		b = errinfo.skipped_blocks[block];
 	}
-	while( (b & mask) && ! __sync_bool_compare_and_swap( &(errinfo.skipped_blocks[block]), b, b | out_mask ) );
+	while ((b & mask) && ! __sync_bool_compare_and_swap(errinfo.skipped_blocks + block, b, b | out_mask));
 
 	#if VERBOSE >= SHOW_FAILINFO
 	if( b & mask )
@@ -505,7 +505,7 @@ int count_neighbour_faults(const int block, int mask)
 void mark_to_skip(const int block, int mask)
 {
 	mask &= ~CONSTANT_MASKS;
-	int before = __sync_fetch_and_or( &(errinfo.skipped_blocks[block]), mask );
+	int before = __sync_fetch_and_or(errinfo.skipped_blocks + block, mask);
 
 	if( (before & ~CONSTANT_MASKS) == 0 )
 	{
@@ -523,7 +523,7 @@ void mark_corrected(const int block, int mask)
 {
 	mask &= ~CONSTANT_MASKS;
 	const int complete_mask = COMPLETE_WITH_FAIL(mask);
-	int before = __sync_fetch_and_and( &(errinfo.skipped_blocks[block]), ~complete_mask );
+	int before = __sync_fetch_and_and(errinfo.skipped_blocks + block, ~complete_mask);
 
 	// if last thing skipped for this block was the one we just removed
 	if( (before & ~CONSTANT_MASKS) > 0 && (before & complete_mask) == (before & ~CONSTANT_MASKS) )

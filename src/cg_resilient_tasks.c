@@ -222,7 +222,7 @@ void recompute_gradient_update(double *gradient UNUSED, double *Aiterate, const 
 		PRAGMA_TASK(in(Aiterate[s:e-1]) out(gradient[s:e-1]) firstprivate(s, e), b-AxIt, 10)
 		{
 			// Can't afford to propagate errors from Ax to g ; if they come from a block i of x
-			// then it will be impossible for x_i to be recovered from g_i, x_j (j!=i)
+			// then it will be impossible for x_i to be recovered from g_i, x_j (where j != i)
 
 			int j, k, page;
 
