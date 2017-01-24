@@ -38,7 +38,7 @@ int mm_read_unsymmetric_sparse(const char *fname, int *M_, int *N_, int *nz_,
 
 
 
-	if ( !(mm_is_real(matcode) && mm_is_matrix(matcode) &&
+	if (!(mm_is_real(matcode) && mm_is_matrix(matcode) &&
 			mm_is_sparse(matcode)))
 	{
 		fprintf(stderr, "Sorry, this application does not support ");
@@ -73,7 +73,7 @@ int mm_read_unsymmetric_sparse(const char *fname, int *M_, int *N_, int *nz_,
 	/*   specifier as in "%lg", "%lf", "%le", otherwise errors will occur */
 	/*  (ANSI C X3.159-1989, Sec. 4.9.6.2, p. 136 lines 13-15)		    */
 
-	for (i=0; i<nz; i++)
+	for (i = 0; i<nz; i++)
 	{
 		fscanf(f, "%d %d %lg\n", &I[i], &J[i], &val[i]);
 		I[i]--;  /* adjust from 1-based to 0-based */
@@ -114,10 +114,10 @@ int mm_read_banner(FILE *f, MM_typecode *matcode)
 		storage_scheme) != 5)
 		return MM_PREMATURE_EOF;
 
-	for (p=mtx; *p!='\0'; *p=tolower(*p),p++);  /* convert to lower case */
-	for (p=crd; *p!='\0'; *p=tolower(*p),p++);
-	for (p=data_type; *p!='\0'; *p=tolower(*p),p++);
-	for (p=storage_scheme; *p!='\0'; *p=tolower(*p),p++);
+	for (p = mtx; *p!='\0'; *p=tolower(*p),p++);  /* convert to lower case */
+	for (p = crd; *p!='\0'; *p=tolower(*p),p++);
+	for (p = data_type; *p!='\0'; *p=tolower(*p),p++);
+	for (p = storage_scheme; *p!='\0'; *p=tolower(*p),p++);
 
 	/* check for banner */
 	if (strncmp(banner, MatrixMarketBanner, strlen(MatrixMarketBanner)) != 0)
@@ -269,13 +269,13 @@ int mm_read_mtx_crd_data(FILE *f, int M UNUSED, int N UNUSED, int nz, int I[], i
 	int i;
 	if (mm_is_complex(matcode))
 	{
-		for (i=0; i<nz; i++)
+		for (i = 0; i<nz; i++)
 			if (fscanf(f, "%d %d %lg %lg", &I[i], &J[i], &val[2*i], &val[2*i+1])
 			    != 4) return MM_PREMATURE_EOF;
 	}
 	else if (mm_is_real(matcode))
 	{
-		for (i=0; i<nz; i++)
+		for (i = 0; i<nz; i++)
 		{
 			if (fscanf(f, "%d %d %lg\n", &I[i], &J[i], &val[i])
 			    != 3) return MM_PREMATURE_EOF;
@@ -285,7 +285,7 @@ int mm_read_mtx_crd_data(FILE *f, int M UNUSED, int N UNUSED, int nz, int I[], i
 
 	else if (mm_is_pattern(matcode))
 	{
-		for (i=0; i<nz; i++)
+		for (i = 0; i<nz; i++)
 			if (fscanf(f, "%d %d", &I[i], &J[i])
 			    != 2) return MM_PREMATURE_EOF;
 	}
@@ -391,7 +391,7 @@ int mm_write_banner(FILE *f, MM_typecode matcode)
 
 	ret_code = fprintf(f, "%s %s\n", MatrixMarketBanner, str);
 	free(str);
-	if (ret_code !=2 )
+	if (ret_code !=2)
 		return MM_COULD_NOT_WRITE_FILE;
 	else
 		return 0;
@@ -418,15 +418,15 @@ int mm_write_mtx_crd(char fname[], int M, int N, int nz, int I[], int J[],
 
 	/* print values */
 	if (mm_is_pattern(matcode))
-		for (i=0; i<nz; i++)
+		for (i = 0; i<nz; i++)
 			fprintf(f, "%d %d\n", I[i], J[i]);
 	else
 	if (mm_is_real(matcode))
-		for (i=0; i<nz; i++)
+		for (i = 0; i<nz; i++)
 			fprintf(f, "%d %d %20.16g\n", I[i], J[i], val[i]);
 	else
 	if (mm_is_complex(matcode))
-		for (i=0; i<nz; i++)
+		for (i = 0; i<nz; i++)
 			fprintf(f, "%d %d %20.16g %20.16g\n", I[i], J[i], val[2*i],
 			            val[2*i+1]);
 	else

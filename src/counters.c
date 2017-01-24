@@ -90,7 +90,7 @@ void unset_measure()
 void setup_measure()
 {
 	#ifdef EXTRAE_EVENTS
-	if(!Extrae_is_initialized())
+	if (!Extrae_is_initialized())
 	{
 		Extrae_set_threadid_function ((unsigned int (*)(void))&nanos_omp_get_thread_num);
 		Extrae_set_numthreads_function ((unsigned int (*)(void))&nanos_omp_get_num_threads);
@@ -156,7 +156,7 @@ void stop_measure()
 	#ifdef _OMPSS
 		int i;
 		#pragma omp for schedule(static,1) label(flush)
-		for(i=0;i<nanos_omp_get_num_threads();i++)
+		for (i = 0; i < nanos_omp_get_num_threads(); i++)
 			Extrae_flush();
 	#else
 		Extrae_flush();

@@ -13,30 +13,30 @@ void mult(const Matrix *A,  const double *V, double *W)
 {
 	int i, j;
 
-	for(i=0; i < A->n; i++)
+	for (i = 0; i < A->n; i++)
 	{
 		W[i] = 0;
 
-		for(j=A->r[i]; j < A->r[i+1]; j++)
-			W[i] += A->v[j] * V[ A->c[j] ];
+		for (j = A->r[i]; j < A->r[i+1]; j++)
+			W[i] += A->v[j] * V[A->c[j]];
 	}
 }
 
-// matrix-vector multiplication (W = t(V) x A = t(t(A) x V) )
+// matrix-vector multiplication (W = t(V) x A = t(t(A) x V))
 void mult_transposed(const Matrix *A , const double *V, double *W)
 {
 	int i, j, col;
 
-	for(i=0; i < A->m; i++)
+	for (i = 0; i < A->m; i++)
 		W[i] = 0;
 
-	for(i=0; i < A->n; i++)
+	for (i = 0; i < A->n; i++)
 	{
-		for(j=A->r[i]; j < A->r[i+1]; j++)
+		for (j = A->r[i]; j < A->r[i+1]; j++)
 		{
 			col = A->c[j];
 
-			W[col] += A->v[j] * V[ col ];
+			W[col] += A->v[j] * V[col];
 		}
 	}
 }
@@ -44,11 +44,11 @@ void mult_transposed(const Matrix *A , const double *V, double *W)
 void print_matrix(FILE* f, const Matrix *A)
 {
 	int i, j;
-	for(i=0; i < A->n; i++)
+	for (i = 0; i < A->n; i++)
 	{
 		fprintf(f, "%4d   |  ", i);
 
-		for(j= A->r[i]; j < A->r[i+1]; j++)
+		for (j = A->r[i]; j < A->r[i+1]; j++)
 			fprintf(f, " [%4d ] % 1.2e ", A->c[j], A->v[j]);
 
 		fprintf(f, "\n");
@@ -58,23 +58,23 @@ void print_matrix(FILE* f, const Matrix *A)
 // return pos in matrix (so then you only have to take A->v[pos]), -1 if does not exist
 int find_in_matrix(const int row, const int col, const Matrix *A)
 {
-	if(row > A->n || col > A->m)
+	if (row > A->n || col > A->m)
 		return -1;
 
 	int low = A->r[row], upp = A->r[row+1]-1, mid;
 
-	if(A->c[low] == col)
+	if (A->c[low] == col)
 		return low;
-	if(A->c[upp] == col)
+	if (A->c[upp] == col)
 		return upp;
 
 	while(low+1 < upp)
 	{
 		mid = (low + upp) / 2;
 
-		if(A->c[mid] > col)
+		if (A->c[mid] > col)
 			upp = mid;
-		else if(A->c[mid] < col)
+		else if (A->c[mid] < col)
 			low = mid;
 		else
 			return mid;
@@ -89,32 +89,32 @@ void read_matrix(const int n, const int m, const int nnz, const int symmetric, M
 	int Y, prevY = -1, X, i, j, k, pos = 0, *nb_subdiagonals = NULL;
 	double val;
 
-	if(symmetric)
+	if (symmetric)
 	{
 		nb_subdiagonals = (int*)calloc(n, sizeof(int));
-		if(nb_subdiagonals == NULL)
+		if (nb_subdiagonals == NULL)
 			err(1, "calloc() for subdiagonal count failed");
 	}
 
 	A->n = n;
 	A->m = m;
 
-	for (i=0; i<nnz; i++)
+	for (i = 0; i < nnz; i++)
 	{
 		fscanf(input_file, "%d %d %lg\n", &X, &Y, &val);
 		X--;  /* adjust from 1-based to 0-based */
 		Y--;
 
 		// for debug purposes
-		if(Y >= n || X >= m)
+		if (Y >= n || X >= m)
 			continue;
 
-		if(Y > prevY)
+		if (Y > prevY)
 		{
 			A->r[Y] = pos;
 
 			// leave space for the subdiagonals elements
-			if(symmetric)
+			if (symmetric)
 				pos += nb_subdiagonals[Y];
 
 			prevY = Y;
@@ -124,27 +124,27 @@ void read_matrix(const int n, const int m, const int nnz, const int symmetric, M
 		A->c[pos] = X;
 		pos ++;
 
-		if(symmetric && X > Y)
+		if (symmetric && X > Y)
 			nb_subdiagonals[X]++;
 	}
 
 	A->nnz = pos;
 	A->r[A->n] = pos;
 
-	if(symmetric)
+	if (symmetric)
 	{
 		// now let's fill in the subdiagonal part
 		int *fill_row = malloc(n * sizeof(int));
 		if (fill_row == NULL)
 			err(1, "malloc() for fill_row failed");
 
-		for(j=0; j<A->n; j++)
+		for (j = 0; j<A->n; j++)
 			fill_row[j] = A->r[j];
 
-		for(i=0; i<A->n; i++)
-			for(k = A->r[i] + nb_subdiagonals[i] ; k < A->r[i+1] ; k++)
+		for (i = 0; i<A->n; i++)
+			for (k = A->r[i] + nb_subdiagonals[i] ; k < A->r[i+1] ; k++)
 			{
-				if(i == A->c[k])
+				if (i == A->c[k])
 					continue;
 
 				j = A->c[k];
@@ -180,7 +180,7 @@ void deallocate_matrix(Matrix *A)
 	free(A->r);
 	free(A->c);
 
-	if(A->v)
+	if (A->v)
 		free(A->v);
 }
 
@@ -190,18 +190,18 @@ void get_submatrix(const Matrix *A , const int *rows, const int nr, const int *c
 	int i, ii, j, jj, k, p = 0;
 
 	// i iterates each block of rows, ii each row in A that needs to be copied. Parallelly, k iterates each row in B corresponding to ii.
-	for(i=0, k=0; i<nr; i++)
-		for(ii=rows[i]; ii < rows[i] + bs && ii < A->n && k < B->n ; ii++, k++)
+	for (i = 0, k = 0; i < nr; i++)
+		for (ii = rows[i]; ii < rows[i] + bs && ii < A->n && k < B->n ; ii++, k++)
 		{
 			B->r[k] = p;
 
 			// now j iterates over each element in A, and jj over each block of columns
-			// if j is found to be in a block [ cols[jj], cols[jj] + bs ], we compute the corresponding column in B and copy the value
-			for(j=A->r[ii], jj = 0; j < A->r[ii+1]; j++)
+			// if j is found to be in a block [cols[jj], cols[jj] + bs], we compute the corresponding column in B and copy the value
+			for (j = A->r[ii], jj = 0; j < A->r[ii+1]; j++)
 			{
 				/*
 				// remove above-diagonals, if we need just half the matrix
-				if(ii > A->c[j])
+				if (ii > A->c[j])
 					continue;
 				*/
 
@@ -211,14 +211,14 @@ void get_submatrix(const Matrix *A , const int *rows, const int nr, const int *c
 				// from here on, we are sure that A->c[j] < cols[jj] + bs
 
 				// if we did all the blocks for row ii, go to next row
-				if(jj >= nc)
+				if (jj >= nc)
 					break;
 
-				if(A->c[j] >= cols[jj])
+				if (A->c[j] >= cols[jj])
 				{
 					int col_in_B = jj * bs + (A->c[j] - cols[jj]);
 
-					if(col_in_B > B->m)
+					if (col_in_B > B->m)
 						break;
 
 					B->v[p] = A->v[j];

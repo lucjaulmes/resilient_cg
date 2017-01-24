@@ -30,7 +30,7 @@ void due_checkpoint(checkpoint_data *ckpt_data, double *iterate, double *p)
 	// reuse pragma check
 	#pragma omp task out(*behaviour) inout(*ckpt_data, *alpha, *old_err_sq) label(due_checkpoint) no_copy_deps
 	{
-		if(!aggregate_skips())
+		if (!aggregate_skips())
 		{
 			log_err(SHOW_DBGINFO, "SAVING CHECKPOINT\n");
 
@@ -71,7 +71,7 @@ void checkpoint_vectors(checkpoint_data *ckpt_data, int *behaviour, double *iter
 {
 	double *taskwait_for_me __attribute__((unused)) = mp.alpha;
 	int i;
-	for(i=0; i < nb_blocks; i ++)
+	for (i = 0; i < nb_blocks; i ++)
 	{
 		int s = get_block_start(i), e = get_block_end(i);
 
@@ -80,16 +80,16 @@ void checkpoint_vectors(checkpoint_data *ckpt_data, int *behaviour, double *iter
 			enter_task(CHECKPOINT);
 
 		#if CKPT == CKPT_IN_MEMORY
-			if(*behaviour == SAVE_CHECKPOINT)
+			if (*behaviour == SAVE_CHECKPOINT)
 			{
 				memcpy(ckpt_data->save_x+s,  iterate+s,  (e-s) * sizeof(double));
 				memcpy(ckpt_data->save_p+s,  p+s,        (e-s) * sizeof(double));
 			}
-			else if(*behaviour != DO_NOTHING)
+			else if (*behaviour != DO_NOTHING)
 			{
 				memcpy(iterate+s,  ckpt_data->save_x+s,  (e-s) * sizeof(double));
 
-				if(*behaviour == RELOAD_CHECKPOINT)
+				if (*behaviour == RELOAD_CHECKPOINT)
 					// not restarting, just going back to last checkpoint
 					memcpy(p+s,    ckpt_data->save_p+s,  (e-s) * sizeof(double));
 
@@ -100,12 +100,12 @@ void checkpoint_vectors(checkpoint_data *ckpt_data, int *behaviour, double *iter
 			int ckpt_fd;
 			sprintf(path, "%s%d", ckpt_data->checkpoint_path, i);
 
-			if(*behaviour == SAVE_CHECKPOINT)
+			if (*behaviour == SAVE_CHECKPOINT)
 			{
 				ckpt_fd = open(path, O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
 				log_err(SHOW_TASKINFO, "Open file %s to checkpoint : %d\n", path, ckpt_fd);
 
-				if(ckpt_fd < 0)
+				if (ckpt_fd < 0)
 				{
 					fprintf(stderr, "ERROR Unable to open file %s to write checkpoint.\n", path);
 					perror("open() error message is ");
@@ -118,12 +118,12 @@ void checkpoint_vectors(checkpoint_data *ckpt_data, int *behaviour, double *iter
 				fdatasync(ckpt_fd);
 				close(ckpt_fd);
 			}
-			else if(*behaviour != DO_NOTHING)
+			else if (*behaviour != DO_NOTHING)
 			{
 				ckpt_fd = open(path, O_RDONLY);
 				log_err(SHOW_TASKINFO, "Open file %s to rollback : %d\n", path, ckpt_fd);
 
-				if(ckpt_fd < 0)
+				if (ckpt_fd < 0)
 				{
 					*(mp.err_sq) = 0.0; // fail
 					fprintf(stderr, "ERROR No checkpoint file %s or unable to open : error %d. Exiting.\n", path, errno);
@@ -133,7 +133,7 @@ void checkpoint_vectors(checkpoint_data *ckpt_data, int *behaviour, double *iter
 
 				read(ckpt_fd,  iterate+s,  (e-s) * sizeof(double));
 
-				if(*behaviour == RELOAD_CHECKPOINT)
+				if (*behaviour == RELOAD_CHECKPOINT)
 					// not restarting, just going back to last checkpoint
 					read(ckpt_fd,    p+s,  (e-s) * sizeof(double));
 

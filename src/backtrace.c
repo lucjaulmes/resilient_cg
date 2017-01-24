@@ -64,10 +64,10 @@ void register_sigsegv_handler()
 	sigact.sa_sigaction = crit_err_hdlr;
 	sigact.sa_flags = SA_RESTART | SA_SIGINFO;
 
-	if( sigaction(SIGSEGV, &sigact, (struct sigaction*)NULL) !=  0)
+	if (sigaction(SIGSEGV, &sigact, (struct sigaction*)NULL) != 0)
 		fprintf(stderr, "error setting signal handler for %d (%s)\n", SIGSEGV, strsignal(SIGSEGV));
 
-	if( sigaction(SIGBUS, &sigact, (struct sigaction*)NULL) !=  0)
+	if (sigaction(SIGBUS, &sigact, (struct sigaction*)NULL) != 0)
 		fprintf(stderr, "error setting signal handler for %d (%s)\n", SIGBUS, strsignal(SIGBUS));
 }
 

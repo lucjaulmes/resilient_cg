@@ -53,12 +53,12 @@ static inline const char * vect_name(const int vect)
 #if VERBOSE
 static inline const char * single_mask(const int mask)
 {
-	switch( mask ) // with ffs ~= sizeof(mask) - clz should give this without branching
+	switch(mask) // with ffs ~= sizeof(mask) - clz should give this without branching
 	{
-		case FAIL_GRADIENT : return mask_names[    12     ];
-		case FAIL_A_P      : return mask_names[    13     ];
+		case FAIL_GRADIENT : return mask_names[12];
+		case FAIL_A_P      : return mask_names[13];
 		default            :
-			if( ffs(mask)-1 < 32 )
+			if (ffs(mask)-1 < 32)
 				return mask_names[ffs(mask)-1];
 			else
 				return "??";
@@ -74,7 +74,7 @@ static inline char * str_mask(char * str, const int mask)
 		b = ffs(m) - 1;
 		m ^= 1 << b;
 
-		if( b < 32 )
+		if (b < 32)
 			strcpy(pos, mask_names[b]);
 		else
 			strcpy(pos, "??");
@@ -141,7 +141,7 @@ static inline int get_strategy()
 
 static inline int check_errors_signaled()
 {
-	return __sync_fetch_and_and( &errinfo.errors, 0 );
+	return __sync_fetch_and_and(&errinfo.errors, 0);
 }
 
 static inline int get_nb_failed_blocks()
@@ -191,7 +191,7 @@ int get_all_failed_blocks(const int mask, int **lost_blocks);
 void clear_failed(const int mask);
 void clear_failed_blocks(const int mask, const int start, const int end);
 void clear_failed_vect(const double *vect);
-#define clear_mvm() clear_failed( FAIL_A_P | MASK_A_ITERATE )
+#define clear_mvm() clear_failed(FAIL_A_P | MASK_A_ITERATE)
 
 static inline void enter_task(const int vect)
 {

@@ -34,11 +34,11 @@ int nb_failblocks, failblock_size_bytes, failblock_size_dbl;
 __thread sig_atomic_t out_vect = 0, exception_happened = 0;
 
 // from x a uniform distribution between 0 and 1, the weibull distribution
-// is given by lambda * ( -ln( 1 - x ) )^(1/k)
+// is given by lambda * (-ln(1 - x))^(1/k)
 double weibull(const double lambda, const double k, const double x)
 {
 	double y, inv_k = 1 / k;
-	y = - log1p( - x ); // - log ( 1 - x )
+	y = - log1p(-x); // - log(1 - x)
 	y = pow(y, inv_k);
 	y *= lambda; // where lambda ~ mean time between faults
 
@@ -47,10 +47,10 @@ double weibull(const double lambda, const double k, const double x)
 
 // lambda is as in weibull (so inverse to usual in exp) ~ mtbf
 // (i.e. scale parameter, not rate)
-// so if x uniform between 0 and 1, return - lambda * log ( 1 - x )
+// so if x uniform between 0 and 1, return - lambda * log(1 - x)
 double exponential(const double lambda, const double x)
 {
-	double y = - log1p( - x ); // - log ( 1 - x )
+	double y = - log1p(-x); // - log(1 - x)
 	y *= lambda;
 
 	return y;
@@ -80,14 +80,14 @@ void setup_resilience(const Matrix *A UNUSED, const int nb, magic_pointers *mp)
 
 	#if DUE
 	// neighbourhood stuff in errinfo
-	errinfo.neighbours = (Matrix*)calloc( 1, sizeof(Matrix) );
+	errinfo.neighbours = (Matrix*)calloc(1, sizeof(Matrix));
 	if (errinfo.neighbours == NULL)
 		err(1, "Failed to allocate errinfo.neighbours");
 	// don't want A->v so we allocate manually
 	errinfo.neighbours->nnz = nb_failblocks * nb_failblocks;
 	errinfo.neighbours->n = errinfo.neighbours->m = nb_failblocks;
-	errinfo.neighbours->r = (int*)calloc( (nb_failblocks+1), sizeof(int) );
-	errinfo.neighbours->c = (int*)calloc( nb_failblocks * nb_failblocks, sizeof(int) );
+	errinfo.neighbours->r = (int*)calloc((nb_failblocks+1), sizeof(int));
+	errinfo.neighbours->c = (int*)calloc(nb_failblocks * nb_failblocks, sizeof(int));
 	errinfo.neighbours->v = NULL;
 	if (errinfo.neighbours->r == NULL || errinfo.neighbours->c == NULL)
 		err(1, "Failed to allocate errinfo.neighbours");
@@ -95,7 +95,7 @@ void setup_resilience(const Matrix *A UNUSED, const int nb, magic_pointers *mp)
 	compute_neighbourhoods(A, errinfo.neighbours);
 
 	// now for storing infos about errors
-	errinfo.skipped_blocks = (int*)calloc( nb_failblocks, sizeof(int) );
+	errinfo.skipped_blocks = (int*)calloc(nb_failblocks, sizeof(int));
 	if (errinfo.skipped_blocks == NULL)
 		err(1, "Failed to allocate errinfo.skipped_blocks");
 	#endif
@@ -135,16 +135,16 @@ void setup_resilience(const Matrix *A UNUSED, const int nb, magic_pointers *mp)
 	sigact.sa_flags = SA_SIGINFO;
 	sigemptyset(&sigact.sa_mask);
 
-	if( sigaction(SIGBUS, &sigact, NULL) !=  0)
+	if (sigaction(SIGBUS, &sigact, NULL) != 0)
 		fprintf(stderr, "error setting signal handler for %d (%s)\n", SIGBUS, strsignal(SIGBUS));
-	if( sigaction(SIGSEGV, &sigact, NULL) !=  0)
+	if (sigaction(SIGSEGV, &sigact, NULL) != 0)
 		fprintf(stderr, "error setting signal handler for %d (%s)\n", SIGSEGV, strsignal(SIGSEGV));
 
 	// start semaphore locked : released in release_error_injection
 	sem_init(&sim_err.start_sim, 0, 0);
 
 	// if simulating faults, create thread to do so
-	if( sim_err.lambda != 0 )
+	if (sim_err.lambda != 0)
 		pthread_create(&sim_err.th, NULL, &simulate_failures, (void*)&sim_err);
 }
 
@@ -155,7 +155,7 @@ void start_error_injection()
 
 void unset_resilience(magic_pointers *mp UNUSED)
 {
-	if( sim_err.lambda != 0 && sim_err.th )
+	if (sim_err.lambda != 0 && sim_err.th)
 	{
 		pthread_cancel(sim_err.th);
 		pthread_join(sim_err.th, NULL);
@@ -166,7 +166,7 @@ void unset_resilience(magic_pointers *mp UNUSED)
 	// undo all potentially undetected but already injected errors in memory from previous runs
 	int i;
 	const intptr_t vect_size = nb_failblocks * failblock_size_bytes;
-	for(i=0; i<errinfo.nb_data; i++)
+	for (i = 0; i < errinfo.nb_data; i++)
 		mprotect(errinfo.data[i], vect_size, PROT_READ | PROT_WRITE);
 
 	// now stop handling errors
@@ -195,8 +195,8 @@ void unset_resilience(magic_pointers *mp UNUSED)
 
 void resilience_sighandler(int signum, siginfo_t *info, void *context UNUSED)
 {
-	if( (signum == SIGBUS /* && (info->si_code == BUS_MCEER_AR || info->si_code == BUS_MCEER_A0 )*/) ||
-		(signum == SIGSEGV && info->si_code == SEGV_ACCERR) )
+	if ((signum == SIGBUS /* && (info->si_code == BUS_MCEER_AR || info->si_code == BUS_MCEER_A0)*/) ||
+		(signum == SIGSEGV && info->si_code == SEGV_ACCERR))
 	{
 		void * page = (void*)((long)info->si_addr - ((long)info->si_addr % failblock_size_bytes));
 		//info.si_add_lsb contains lsb of corrupted data, e.g. log2(sysconf(_SC_PAGESIZE)) for a full page
@@ -206,7 +206,7 @@ void resilience_sighandler(int signum, siginfo_t *info, void *context UNUSED)
 		// check if error was in data that we know to recover
 		int block, vect = get_data_blockptr(page, &block);
 
-		if( vect < 0 )
+		if (vect < 0)
 		{
 			fprintf(stderr, "Error happened in memory that is not recoverable data : %p\n", page);
 			crit_err_hdlr(signum, info, context);
@@ -215,8 +215,8 @@ void resilience_sighandler(int signum, siginfo_t *info, void *context UNUSED)
 
 	#if DUE
 		// mark vector of error and (pseudo-?)vector of output with error
-		// TODO shouldn't it be this ? mark_to_skip(block, COMPLETE_WITH_FAIL(((1 << out_vect) | (1 << vect))) );
-		mark_to_skip(block, (1 << out_vect) | (1 << vect) );
+		// TODO shouldn't it be this ? mark_to_skip(block, COMPLETE_WITH_FAIL(((1 << out_vect) | (1 << vect))));
+		mark_to_skip(block, (1 << out_vect) | (1 << vect));
 	#endif
 
 		// notify globally
@@ -225,13 +225,13 @@ void resilience_sighandler(int signum, siginfo_t *info, void *context UNUSED)
 	#if DUE
 		// notify this thread
 		exception_happened++;
-		if( out_vect == RECOVERY || out_vect == CHECKPOINT )
+		if (out_vect == RECOVERY || out_vect == CHECKPOINT)
 			errinfo.in_recovery_errors++;
 	#endif
 
 
 		// old : unprotect, mess with data in the page
-		//if( signum == SIGSEGV )
+		//if (signum == SIGSEGV)
 		//	mprotect(page, failblock_size_bytes, PROT_READ | PROT_WRITE);
 		//memset(page, 0x00, failblock_size_bytes);
 
@@ -254,7 +254,7 @@ void resilience_sighandler(int signum, siginfo_t *info, void *context UNUSED)
 void silent_deallocating_sighandler(int signum, siginfo_t *info, void *context UNUSED)
 {
 	// handler to silently deallocate memory even where we removed authorizations
-	if(signum == SIGSEGV && info->si_code == SEGV_ACCERR)
+	if (signum == SIGSEGV && info->si_code == SEGV_ACCERR)
 	{
 		int block, vect = get_data_blockptr(info->si_addr, &block), r;
 		void * page = (void*)((long)info->si_addr - ((long)info->si_addr % failblock_size_bytes));
@@ -277,12 +277,12 @@ void sleep_ns(long long ns)
 	next_sim_fault.tv_nsec = ns % (long long)(1e9); // nanosecs to next fault
 
 	int r = nanosleep(&next_sim_fault, &remainder);
-	if( r != 0 )
+	if (r != 0)
 	{
 		perror("nanosleep interrupted ");
 		r = nanosleep(&remainder, &remainder2);
 
-		if( r != 0 )
+		if (r != 0)
 			fprintf(stderr, "Nanosleep skipped %d.%09d of %d.%09d sleeping time because of 2 successive interruptions\n",
 					(int)remainder2.tv_sec, (int)remainder2.tv_nsec, (int)next_sim_fault.tv_sec, (int)next_sim_fault.tv_nsec);
 	}
@@ -299,7 +299,7 @@ void* simulate_failures(void* ptr)
 	int i, nerr = sim_err->nerr;
 	long long faults_nsec[nerr+1];
 
-	if(nerr)
+	if (nerr)
 	{
 		double total_time = 0, mtbe = sim_err->lambda / (double)nerr, faults_unscaled[nerr+1];
 
@@ -307,7 +307,7 @@ void* simulate_failures(void* ptr)
 				", and time scaled back for %d errors in duration %e\n", mtbe, nerr, sim_err->lambda);
 
 		// at first, create unscaled intervals between evenst (start, {faults}, end)
-		for(i=0; i<nerr+1; i++)
+		for (i = 0; i < nerr+1; i++)
 		{
 			faults_unscaled[i] = exponential(mtbe, (double)rand()/(double)RAND_MAX);
 			total_time += faults_unscaled[i];
@@ -315,17 +315,17 @@ void* simulate_failures(void* ptr)
 
 		// now scale back total time interval to time given as parameter (in ns for sleep function)
 		const double factor = sim_err->lambda * 1e3 / total_time;
-		for(i=0; i<=nerr; i++)
+		for (i = 0; i <= nerr; i++)
 			faults_nsec[i] = (long long)(factor * faults_unscaled[i] + 0.5);
 
 		#if VERBOSE >= SHOW_FAILINFO
 		char str[12*nerr]; str[0] = '\0';
-		for(i=0; i<nerr; i++)
+		for (i = 0; i < nerr; i++)
 			sprintf(str + strlen(str), ", %lld", faults_nsec[i]);
 		log_err(SHOW_FAILINFO, "Intervals in ns between error injections are %s\n", str+2);
 		#endif
 
-		i=0;
+		i = 0;
 	}
 	else
 		log_err(SHOW_FAILINFO, "Error is going to be simulated with exponential distribution (e^(-x/lambda))/lambda microseconds, lambda [~mtbe] = %e\n", sim_err->lambda);
@@ -336,9 +336,9 @@ void* simulate_failures(void* ptr)
 	// Release immediately so thread can be cancelled without problems to destroy semaphore
 	sem_post(&sim_err->start_sim);
 
-	for(i=0; nerr == 0 || i<nerr; i++)
+	for (i = 0; nerr == 0 || i < nerr; i++)
 	{
-		if(nerr)
+		if (nerr)
 			sleep_ns(faults_nsec[i]);
 		else
 			sleep_ns((long long)(exponential(sim_err->lambda, (double)rand()/(double)RAND_MAX) * 1e3));
@@ -347,7 +347,7 @@ void* simulate_failures(void* ptr)
 		//flip_a_bit(sim_err->info);
 	}
 
-	if(nerr)
+	if (nerr)
 	{
 		sleep_ns(faults_nsec[nerr]);
 		#if CKPT
@@ -361,7 +361,7 @@ void* simulate_failures(void* ptr)
 void cause_mpr(error_sim_data *sim_err)
 {
 	int rand_page = (int)(((double)rand() / (double)RAND_MAX) * nb_failblocks);
-	int vect      = (int)( ((double)rand() / (double)RAND_MAX) * sim_err->info->nb_data ) ;
+	int vect      = (int)(((double)rand() / (double)RAND_MAX) * sim_err->info->nb_data);
 
 	double* addr = sim_err->info->data[vect] + rand_page * failblock_size_dbl;
 
@@ -376,13 +376,13 @@ void cause_mpr(error_sim_data *sim_err)
 void flip_a_bit(analyze_err *info)
 {
 	int flip_pos = (int)(((double)rand() / (double)RAND_MAX) * nb_failblocks * failblock_size_dbl);
-	int vect     = (int)( ((double)rand() / (double)RAND_MAX) * info->nb_data ) ;
+	int vect     = (int)(((double)rand() / (double)RAND_MAX) * info->nb_data);
 	int flip_bit = (int)(((double)rand() / (double)RAND_MAX) * sizeof(double) * CHAR_BIT);
 
-	long long *victim = ((long long*)info->data[ vect ]) + flip_pos;
+	long long *victim = ((long long*)info->data[vect]) + flip_pos;
 
 	#if VERBOSE >= SHOW_DBGINFO
-	double before = info->data[ vect ][ flip_pos ];
+	double before = info->data[vect][flip_pos];
 	#endif
 
 	(*victim) ^= (long long)(1 << flip_bit);
@@ -391,7 +391,7 @@ void flip_a_bit(analyze_err *info)
 
 	log_err(SHOW_DBGINFO,"Flipped bit %2d of double %5d (page %2d) in vect %2s :\t% .14e -> % .14e\tdiff = %e\n",
 			flip_bit, flip_pos, flip_pos/failblock_size_bytes, mask_names[vect+1],
-			before, info->data[ vect ][ flip_pos ], fabs(before - info->data[ vect ][ flip_pos ]));
+			before, info->data[vect][flip_pos], fabs(before - info->data[vect][flip_pos]));
 }
 
 int get_data_blockptr(const void *vect, int *block)
@@ -401,11 +401,11 @@ int get_data_blockptr(const void *vect, int *block)
 	const intptr_t max_vect_size = nb_failblocks * failblock_size_bytes;
 
 
-	for(i=0; i<errinfo.nb_data; i++)
+	for (i = 0; i < errinfo.nb_data; i++)
 	{
 		pos = ptr - (intptr_t)errinfo.data[i];
 
-		if( pos >= 0 && pos < max_vect_size )
+		if (pos >= 0 && pos < max_vect_size)
 		{
 			*block = (int)(pos / failblock_size_bytes);
 			return i+1;
@@ -418,8 +418,8 @@ int get_data_blockptr(const void *vect, int *block)
 int get_data_vectptr(const double *vect)
 {
 	int i;
-	for(i=0; i<errinfo.nb_data; i++)
-		if( errinfo.data[i] == vect )
+	for (i = 0; i < errinfo.nb_data; i++)
+		if (errinfo.data[i] == vect)
 			return i+1;
 
 	return -1;
@@ -436,7 +436,7 @@ int check_recovery_errors()
 int check_block(const int block, int input_mask, int *is_shared)
 {
 	// if fault happened in this task/thread, it is already marked with out_mask : nothing more to do
-	if( check_for_exceptions() )
+	if (check_for_exceptions())
 	{
 		return 1;
 		log_err(SHOW_FAILINFO, "\tMask %s skips block %2d, failed in this task [after  computing]\n", single_mask(COMPLETE_WITH_FAIL(1 << out_vect)), block);
@@ -456,9 +456,9 @@ int check_block(const int block, int input_mask, int *is_shared)
 	while ((b & input_mask) && ! __sync_bool_compare_and_swap(errinfo.skipped_blocks + block, b, b | out_mask));
 
 	#if VERBOSE >= SHOW_FAILINFO
-	if(b & input_mask)
+	if (b & input_mask)
 	{
-		char mask_str[ 30 ];
+		char mask_str[30];
 		log_err(SHOW_FAILINFO, "\tMask %s skips block %2d (was %s : %x) [after  computing]\n", single_mask(out_mask), block, str_mask(mask_str, b), b);
 	}
 	#endif
@@ -482,14 +482,14 @@ int should_skip_block(const int block, int mask)
 	while ((b & mask) && ! __sync_bool_compare_and_swap(errinfo.skipped_blocks + block, b, b | out_mask));
 
 	#if VERBOSE >= SHOW_FAILINFO
-	if( b & mask )
+	if (b & mask)
 	{
-		char mask_str[ 30 ];
+		char mask_str[30];
 		log_err(SHOW_FAILINFO, "\tMask %s skips block %2d (was %s : %x) [before computing]\n", single_mask(out_mask), block, str_mask(mask_str, b), b);
 	}
 	#endif
 
-	return ( b & mask );
+	return (b & mask);
 }
 
 int count_neighbour_faults(const int block, int mask)
@@ -497,8 +497,8 @@ int count_neighbour_faults(const int block, int mask)
 	mask &= ~CONSTANT_MASKS;
 	int r = 0, i;
 
-	for(i=errinfo.neighbours->r[block]; i<errinfo.neighbours->r[block+1]; i++)
-		r += ((errinfo.skipped_blocks[ errinfo.neighbours->c[i] ] & mask) > 0);
+	for (i = errinfo.neighbours->r[block]; i < errinfo.neighbours->r[block+1]; i++)
+		r += ((errinfo.skipped_blocks[errinfo.neighbours->c[i]] & mask) > 0);
 	return r;
 }
 
@@ -507,14 +507,14 @@ void mark_to_skip(const int block, int mask)
 	mask &= ~CONSTANT_MASKS;
 	int before = __sync_fetch_and_or(errinfo.skipped_blocks + block, mask);
 
-	if( (before & ~CONSTANT_MASKS) == 0 )
+	if ((before & ~CONSTANT_MASKS) == 0)
 	{
 		#pragma omp atomic
 			errinfo.skips ++ ;
 	}
 
 	#if VERBOSE >= SHOW_FAILINFO
-	char mask_str[ 30 ];
+	char mask_str[30];
 	log_err(SHOW_FAILINFO, "\tblock %2d marked as skipped/for skipping with mask %s : %x (was %x)\n", block, str_mask(mask_str, mask), mask, before);
 	#endif
 }
@@ -526,14 +526,14 @@ void mark_corrected(const int block, int mask)
 	int before = __sync_fetch_and_and(errinfo.skipped_blocks + block, ~complete_mask);
 
 	// if last thing skipped for this block was the one we just removed
-	if( (before & ~CONSTANT_MASKS) > 0 && (before & complete_mask) == (before & ~CONSTANT_MASKS) )
+	if ((before & ~CONSTANT_MASKS) > 0 && (before & complete_mask) == (before & ~CONSTANT_MASKS))
 	{
 		#pragma omp atomic
 			errinfo.skips -- ;
 	}
 
 	#if VERBOSE >= SHOW_FAILINFO
-	char mask_str[ 30 ];
+	char mask_str[30];
 	log_err(SHOW_FAILINFO, "Before correction marked (with mask %s : %x), skipped block %2d is %s : %x\n", single_mask(mask), mask, block, str_mask(mask_str, before), before);
 	#endif
 }
@@ -541,7 +541,7 @@ void mark_corrected(const int block, int mask)
 int aggregate_skips()
 {
 	int i, r = 0;
-	for(i=0; i<nb_failblocks; i++)
+	for (i = 0; i < nb_failblocks; i++)
 		r |= errinfo.skipped_blocks[i];
 
 	return r & (~CONSTANT_MASKS);
@@ -551,8 +551,8 @@ int has_skipped_blocks(int mask)
 {
 	mask &= ~CONSTANT_MASKS;
 	int i, r = 0;
-	for(i=0; i<nb_failblocks; i++)
-		if( errinfo.skipped_blocks[i] & mask )
+	for (i = 0; i < nb_failblocks; i++)
+		if (errinfo.skipped_blocks[i] & mask)
 		{
 			r++;
 			break;
@@ -583,10 +583,10 @@ int overlapping_faults(int mask_v, int mask_w)
 	mask_w &= ~CONSTANT_MASKS;
 	int i, r = 0, block;
 
-	for(i=0; i<nb_failblocks; i++)
+	for (i = 0; i < nb_failblocks; i++)
 	{
 		block = errinfo.skipped_blocks[i];
-		if( block & mask_v && block & mask_w )
+		if (block & mask_v && block & mask_w)
 		{
 			r++;
 			break;
@@ -600,8 +600,8 @@ void clear_failed_blocks(int mask, const int start, const int end)
 {
 	mask &= ~CONSTANT_MASKS;
 	int i;
-	for(i = start / failblock_size_dbl; i < end / failblock_size_dbl; i++)
-		if( errinfo.skipped_blocks[i] & mask )
+	for (i = start / failblock_size_dbl; i < end / failblock_size_dbl; i++)
+		if (errinfo.skipped_blocks[i] & mask)
 			__sync_fetch_and_and(&(errinfo.skipped_blocks[i]), ~mask);
 }
 
@@ -609,14 +609,14 @@ void clear_failed(int mask)
 {
 	mask &= ~CONSTANT_MASKS;
 	int i;
-	for(i=0; i<nb_failblocks; i++)
-		if( errinfo.skipped_blocks[i] & mask )
+	for (i = 0; i < nb_failblocks; i++)
+		if (errinfo.skipped_blocks[i] & mask)
 			__sync_fetch_and_and(&(errinfo.skipped_blocks[i]), ~mask);
 }
 
 void clear_failed_vect(const double *vect)
 {
-	clear_failed( 1 << get_data_vectptr(vect) );
+	clear_failed(1 << get_data_vectptr(vect));
 }
 
 int get_all_failed_blocks(int mask, int **lost_blocks_ptr)
@@ -644,7 +644,7 @@ int get_all_failed_blocks_vect(const double *v, int **lost_blocks)
 {
 	int vect = get_data_vectptr(v);
 
-	if( vect >= 0 )
+	if (vect >= 0)
 		return get_all_failed_blocks(1 << vect, lost_blocks);
 	else
 		return 0;
@@ -655,22 +655,22 @@ void get_recovering_blocks_bounds(int *start, int *end, const int *lost, const i
 {
 	int min_block = nb_failblocks + 1, max_block = -1, i, b;
 
-	for(i=0; i<nb_lost; i++)
+	for (i = 0; i < nb_lost; i++)
 	{
-		if( lost[i] < min_block )
+		if (lost[i] < min_block)
 			min_block = lost[i];
-		if( lost[i] > max_block )
+		if (lost[i] > max_block)
 			max_block = lost[i];
 	}
 
 	int min_lost_item = min_block * failblock_size_dbl, max_lost_item = ((max_block + 1) * failblock_size_dbl) -1;
 
 	// link to blocks
-	for(b=0; b<nb_blocks; b++)
+	for (b = 0; b < nb_blocks; b++)
 	{
-		if( min_lost_item >= get_block_start(b) && min_lost_item < get_block_end(b) )
+		if (min_lost_item >= get_block_start(b) && min_lost_item < get_block_end(b))
 			*start = get_block_start(b);
-		if( max_lost_item >= get_block_start(b) && max_lost_item < get_block_end(b) )
+		if (max_lost_item >= get_block_start(b) && max_lost_item < get_block_end(b))
 			*end = get_block_end(b);
 	}
 }
@@ -700,7 +700,7 @@ int get_failed_neighbourset(const int *all_lost, const int nb_lost, int *set, co
 			if (added[neighbour])
 				continue;
 
-			for(j=0; j<nb_lost; j++)
+			for (j = 0; j < nb_lost; j++)
 				if (all_lost[j] == neighbour)
 				{
 					added[neighbour] = 1;

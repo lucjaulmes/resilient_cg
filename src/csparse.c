@@ -35,7 +35,7 @@ cs *cs_add ( const cs *A, const cs *B, double alpha, double beta )
 		return (cs_done (C, w, x, 0)) ;
 
 	Cp = C->p ; Ci = C->i ; Cx = C->x ;
-	for (j = 0 ; j < n ; j++)
+	for (j = 0; j < n ; j++)
 	{
 		Cp [j] = nz ;			/* column j of C starts here */
 		nz = cs_scatter (A, j, alpha, w, x, j+1, C, nz) ;   /* alpha*A(:,j)*/
@@ -66,7 +66,7 @@ static int cs_wclear (int mark, int lemax, int *w, int n)
 	int k ;
 	if (mark < 2 || (mark + lemax < 0))
 	{
-		for (k = 0 ; k < n ; k++)
+		for (k = 0; k < n ; k++)
 			if (w [k] != 0)
 				w [k] = 1 ;
 		mark = 2 ;
@@ -152,11 +152,11 @@ int *cs_amd ( const cs *A, int order )
 	cnz = Cp [n] ;
 	if (!cs_sprealloc (C, cnz+cnz/5+2*n)) return (cs_idone (P, C, ww, 0)) ;
 	/* --- Initialize quotient graph ---------------------------------------- */
-	for (k = 0 ; k < n ; k++) len [k] = Cp [k+1] - Cp [k] ;
+	for (k = 0; k < n ; k++) len [k] = Cp [k+1] - Cp [k] ;
 	len [n] = 0 ;
 	nzmax = C->nzmax ;
 	Ci = C->i ;
-	for (i = 0 ; i <= n ; i++)
+	for (i = 0; i <= n ; i++)
 	{
 		head [i] = -1 ;			    /* degree list i is empty */
 		last [i] = -1 ;
@@ -172,7 +172,7 @@ int *cs_amd ( const cs *A, int order )
 	Cp [n] = -1 ;			    /* n is a root of assembly tree */
 	w [n] = 0 ;				    /* n is a dead element */
 	/* --- Initialize degree lists ------------------------------------------ */
-	for (i = 0 ; i < n ; i++)
+	for (i = 0; i < n ; i++)
 	{
 		d = degree [i] ;
 		if (d == 0)			    /* node i is empty */
@@ -209,7 +209,7 @@ int *cs_amd ( const cs *A, int order )
 		/* --- Garbage collection ------------------------------------------- */
 		if (elenk > 0 && cnz + mindeg >= nzmax)
 		{
-			for (j = 0 ; j < n ; j++)
+			for (j = 0; j < n ; j++)
 			{
 				if ((p = Cp [j]) >= 0)	    /* j is a live node or element */
 				{
@@ -278,7 +278,7 @@ int *cs_amd ( const cs *A, int order )
 		elen [k] = -2 ;			    /* k is now an element */
 		/* --- Find set differences ----------------------------------------- */
 		mark = cs_wclear (mark, lemax, w, n) ;	/* clear w if necessary */
-		for (pk = pk1 ; pk < pk2 ; pk++)    /* scan 1: find |Le\Lk| */
+		for (pk = pk1; pk < pk2 ; pk++)    /* scan 1: find |Le\Lk| */
 		{
 			i = Ci [pk] ;
 			if ((eln = elen [i]) <= 0) continue ;/* skip if elen[i] empty */
@@ -298,7 +298,7 @@ int *cs_amd ( const cs *A, int order )
 			}
 		}
 		/* --- Degree update ------------------------------------------------ */
-		for (pk = pk1 ; pk < pk2 ; pk++)    /* scan2: degree update */
+		for (pk = pk1; pk < pk2 ; pk++)    /* scan2: degree update */
 		{
 			i = Ci [pk] ;		    /* consider node i in Lk */
 			p1 = Cp [i] ;
@@ -361,7 +361,7 @@ int *cs_amd ( const cs *A, int order )
 		lemax = CS_MAX (lemax, dk) ;
 		mark = cs_wclear (mark+lemax, lemax, w, n) ;	/* clear w */
 		/* --- Supernode detection ------------------------------------------ */
-		for (pk = pk1 ; pk < pk2 ; pk++)
+		for (pk = pk1; pk < pk2 ; pk++)
 		{
 			i = Ci [pk] ;
 			if (nv [i] >= 0) continue ;		/* skip if i is dead */
@@ -423,15 +423,15 @@ int *cs_amd ( const cs *A, int order )
 		if (elenk != 0) cnz = p ;	    /* free unused space in Lk */
 	}
 	/* --- Postordering ----------------------------------------------------- */
-	for (i = 0 ; i < n ; i++) Cp [i] = CS_FLIP (Cp [i]) ;/* fix assembly tree */
-	for (j = 0 ; j <= n ; j++) head [j] = -1 ;
-	for (j = n ; j >= 0 ; j--)		    /* place unordered nodes in lists */
+	for (i = 0; i < n ; i++) Cp [i] = CS_FLIP (Cp [i]) ;/* fix assembly tree */
+	for (j = 0; j <= n ; j++) head [j] = -1 ;
+	for (j = n; j >= 0 ; j--)		    /* place unordered nodes in lists */
 	{
 		if (nv [j] > 0) continue ;	    /* skip if j is an element */
 		next [j] = head [Cp [j]] ;	    /* place j in list of its parent */
 		head [Cp [j]] = j ;
 	}
-	for (e = n ; e >= 0 ; e--)		    /* place elements in lists */
+	for (e = n; e >= 0 ; e--)		    /* place elements in lists */
 	{
 		if (nv [e] <= 0) continue ;	    /* skip unless e is an element */
 		if (Cp [e] != -1)
@@ -459,7 +459,7 @@ int cs_ereach (const cs *A, int k, const int *parent, int *s, int *w,
 		i = Ai [p] ;		    /* A(i,k) is nonzero */
 		if (i > k) continue ;	    /* only use upper triangular part of A */
 		x [i] = Ax [p] ;	    /* x(i) = A(i,k) */
-		for (len = 0 ; w [i] != k ; i = parent [i]) /* traverse up etree */
+		for (len = 0; w [i] != k ; i = parent [i]) /* traverse up etree */
 		{
 			s [len++] = i ;	    /* L(k,i) is nonzero */
 			w [i] = k ;		    /* mark i as visited */
@@ -488,7 +488,7 @@ csn *cs_chol (const cs *A, const css *S)
 	N->L = L = cs_spalloc (n, n, cp [n], 1, 0) ;
 	if (!L) return (cs_ndone (N, E, w, x, 0)) ;
 	Lp = L->p ; Li = L->i ; Lx = L->x ;
-	for (k = 0 ; k < n ; k++)
+	for (k = 0; k < n ; k++)
 	{
 		/* --- Nonzero pattern of L(k,:) ------------------------------------ */
 		Lp [k] = c [k] = cp [k] ;   /* column k of L starts here */
@@ -561,8 +561,8 @@ static void cs_cedge (int j, int i, const int *first, int *maxfirst, int *delta,
 	if (jprev != -1)
 	{
 		/* q = least common ancestor of jprev and j */
-		for (q = jprev ; q != ancestor [q] ; q = ancestor [q]) ;
-		for (s = jprev ; s != q ; s = sparent)
+		for (q = jprev; q != ancestor [q] ; q = ancestor [q]) ;
+		for (s = jprev; s != q ; s = sparent)
 		{
 			sparent = ancestor [s] ;	/* path compression */
 			ancestor [s] = q ;
@@ -586,8 +586,8 @@ int *cs_counts (const cs *A, const int *parent, const int *post, int ata)
 	delta = colcount = cs_malloc (n, sizeof (int)) ;	/* allocate result */
 	AT = cs_transpose (A, 0) ;
 	if (!AT || !colcount || !w) return (cs_idone (colcount, AT, w, 1)) ;
-	for (k = 0 ; k < s ; k++) w [k] = -1 ;	/* clear workspace w [0..s-1] */
-	for (k = 0 ; k < n ; k++)			/* find first [j] */
+	for (k = 0; k < s ; k++) w [k] = -1 ;	/* clear workspace w [0..s-1] */
+	for (k = 0; k < n ; k++)			/* find first [j] */
 	{
 		j = post [k] ;
 		delta [j] = (first [j] == -1) ? 1 : 0 ;  /* delta[j]=1 if j is a leaf */
@@ -597,8 +597,8 @@ int *cs_counts (const cs *A, const int *parent, const int *post, int ata)
 	if (ata)
 	{
 		head = w+4*n ; next = w+5*n+1 ;
-		for (k = 0 ; k < n ; k++) w [post [k]] = k ;    /* invert post */
-		for (i = 0 ; i < m ; i++)
+		for (k = 0; k < n ; k++) w [post [k]] = k ;    /* invert post */
+		for (i = 0; i < m ; i++)
 		{
 			k = n ;		    /* k = least postordered column in row i */
 			for (p = ATp [i] ; p < ATp [i+1] ; p++) k = CS_MIN (k, w [ATi [p]]);
@@ -606,8 +606,8 @@ int *cs_counts (const cs *A, const int *parent, const int *post, int ata)
 			head [k] = i ;
 		}
 	}
-	for (i = 0 ; i < n ; i++) ancestor [i] = i ; /* each node in its own set */
-	for (k = 0 ; k < n ; k++)
+	for (i = 0; i < n ; i++) ancestor [i] = i ; /* each node in its own set */
+	for (k = 0; k < n ; k++)
 	{
 		j = post [k] ;		/* j is the kth node in postordered etree */
 		if (parent [j] != -1) delta [parent [j]]-- ;	/* j is not a root */
@@ -628,7 +628,7 @@ int *cs_counts (const cs *A, const int *parent, const int *post, int ata)
 		}
 		if (parent [j] != -1) ancestor [j] = parent [j] ;
 	}
-	for (j = 0 ; j < n ; j++)		/* sum up delta's of each child */
+	for (j = 0; j < n ; j++)		/* sum up delta's of each child */
 	{
 		if (parent [j] != -1) colcount [parent [j]] += colcount [j] ;
 	}
@@ -640,7 +640,7 @@ int cs_cumsum (int *p, int *c, int n)
 {
 	int i, nz = 0 ;
 	if (!p || !c) return (-1) ;	    /* check inputs */
-	for (i = 0 ; i < n ; i++)
+	for (i = 0; i < n ; i++)
 	{
 		p [i] = nz ;
 		nz += c [i] ;
@@ -692,7 +692,7 @@ static int cs_bfs (const cs *A, int n, int *wi, int *wj, int *queue,
 {
 	int *Ap, *Ai, head = 0, tail = 0, j, i, p, j2 ;
 	cs *C ;
-	for (j = 0 ; j < n ; j++)		/* place all unmatched nodes in queue */
+	for (j = 0; j < n ; j++)		/* place all unmatched nodes in queue */
 	{
 		if (imatch [j] >= 0) continue ;	/* skip j if matched */
 		wj [j] = 0 ;			/* j in set C0 (R0 if transpose) */
@@ -726,7 +726,7 @@ static void cs_matched (int m, const int *wi, const int *jmatch, int *P, int *Q,
 {
 	int kc = cc [set], i ;
 	int kr = rr [set-1] ;
-	for (i = 0 ; i < m ; i++)
+	for (i = 0; i < m ; i++)
 	{
 		if (wi [i] != mark) continue ;	    /* skip if i is not in R set */
 		P [kr++] = i ;
@@ -745,7 +745,7 @@ static void cs_unmatched (int m, const int *wi, int *P, int *rr, int set)
 	 */
 {
 	int i, kr = rr [set] ;
-	for (i = 0 ; i < m ; i++) if (wi [i] == 0) P [kr++] = i ;
+	for (i = 0; i < m ; i++) if (wi [i] == 0) P [kr++] = i ;
 	rr [set+1] = kr ;
 }
 
@@ -774,8 +774,8 @@ csd *cs_dmperm (const cs *A)
 	if (!jmatch) return (cs_ddone (D, NULL, jmatch, 0)) ;
 	/* --- Coarse decomposition --------------------------------------------- */
 	wi = R ; wj = S ;				/* use R and S as workspace */
-	for (j = 0 ; j < n ; j++) wj [j] = -1 ;	/* unmark all cols for bfs */
-	for (i = 0 ; i < m ; i++) wi [i] = -1 ;	/* unmark all rows for bfs */
+	for (j = 0; j < n ; j++) wj [j] = -1 ;	/* unmark all cols for bfs */
+	for (i = 0; i < m ; i++) wi [i] = -1 ;	/* unmark all rows for bfs */
 	cs_bfs (A, n, wi, wj, Q, imatch, jmatch, 1) ;	/* find C0, C1, R1 */
 	ok = cs_bfs (A, m, wj, wi, P, jmatch, imatch, 3) ;	/* find R0, R3, C3 */
 	if (!ok) return (cs_ddone (D, NULL, jmatch, 0)) ;
@@ -799,7 +799,7 @@ csd *cs_dmperm (const cs *A)
 	{
 		cs_fkeep (C, cs_rprune, rr) ;
 		cnz = Cp [nc] ;
-		if (rr [1] > 0) for (p = 0 ; p < cnz ; p++) Ci [p] -= rr [1] ;
+		if (rr [1] > 0) for (p = 0; p < cnz ; p++) Ci [p] -= rr [1] ;
 	}
 	C->m = nc ;
 	scc = cs_scc (C) ;		    /* find strongly-connected components of C*/
@@ -808,15 +808,15 @@ csd *cs_dmperm (const cs *A)
 	Ps = scc->P ;		    /* C(Ps,Ps) is the permuted matrix */
 	Rs = scc->R ;		    /* kth block is Rs[k]..Rs[k+1]-1 */
 	nb1 = scc->nb  ;		    /* # of blocks of A(*/
-	for (k = 0 ; k < nc ; k++) wj [k] = Q [Ps [k] + cc [2]] ;	/* combine */
-	for (k = 0 ; k < nc ; k++) Q [k + cc [2]] = wj [k] ;
-	for (k = 0 ; k < nc ; k++) wi [k] = P [Ps [k] + rr [1]] ;
-	for (k = 0 ; k < nc ; k++) P [k + rr [1]] = wi [k] ;
+	for (k = 0; k < nc ; k++) wj [k] = Q [Ps [k] + cc [2]] ;	/* combine */
+	for (k = 0; k < nc ; k++) Q [k + cc [2]] = wj [k] ;
+	for (k = 0; k < nc ; k++) wi [k] = P [Ps [k] + rr [1]] ;
+	for (k = 0; k < nc ; k++) P [k + rr [1]] = wi [k] ;
 	nb2 = 0 ;			    /* create the fine block partitions */
 	R [0] = 0 ;
 	S [0] = 0 ;
 	if (cc [2] > 0) nb2++ ;	    /* leading coarse block A (R1, [C0 C1]) */
-	for (k = 0 ; k < nb1 ; k++)	    /* coarse block A (R2,C2) */
+	for (k = 0; k < nb1 ; k++)	    /* coarse block A (R2,C2) */
 	{
 		R [nb2] = Rs [k] + rr [1] ; /* A (R2,C2) splits into nb1 fine blocks */
 		S [nb2] = Rs [k] + cc [2] ;
@@ -871,8 +871,8 @@ int cs_dupl (cs *A)
 	m = A->m ; n = A->n ; Ap = A->p ; Ai = A->i ; Ax = A->x ;
 	w = cs_malloc (m, sizeof (int)) ;		/* get workspace */
 	if (!w) return (0) ;			/* out of memory */
-	for (i = 0 ; i < m ; i++) w [i] = -1 ;	/* row i not yet seen */
-	for (j = 0 ; j < n ; j++)
+	for (i = 0; i < m ; i++) w [i] = -1 ;	/* row i not yet seen */
+	for (j = 0; j < n ; j++)
 	{
 		q = nz ;				/* column j will start at q */
 		for (p = Ap [j] ; p < Ap [j+1] ; p++)
@@ -918,8 +918,8 @@ int *cs_etree (const cs *A, int ata)
 	w = cs_malloc (n + (ata ? m : 0), sizeof (int)) ;
 	ancestor = w ; prev = w + n ;
 	if (!w || !parent) return (cs_idone (parent, NULL, w, 0)) ;
-	if (ata) for (i = 0 ; i < m ; i++) prev [i] = -1 ;
-	for (k = 0 ; k < n ; k++)
+	if (ata) for (i = 0; i < m ; i++) prev [i] = -1 ;
+	for (k = 0; k < n ; k++)
 	{
 		parent [k] = -1 ;		    /* node k has no parent yet */
 		ancestor [k] = -1 ;		    /* nor does k have an ancestor */
@@ -945,7 +945,7 @@ int cs_fkeep (cs *A, int (*fkeep) (int, int, double, void *), void *other)
 	double *Ax ;
 	if (!A || !fkeep) return (-1) ;	    /* check inputs */
 	n = A->n ; Ap = A->p ; Ai = A->i ; Ax = A->x ;
-	for (j = 0 ; j < n ; j++)
+	for (j = 0; j < n ; j++)
 	{
 		p = Ap [j] ;			    /* get current location of col j */
 		Ap [j] = nz ;			    /* record new location of col j */
@@ -968,7 +968,7 @@ int cs_gaxpy (const cs *A, const double *x, double *y)
 	double *Ax ;
 	if (!A || !x || !y) return (0) ;	    /* check inputs */
 	n = A->n ; Ap = A->p ; Ai = A->i ; Ax = A->x ;
-	for (j = 0 ; j < n ; j++)
+	for (j = 0; j < n ; j++)
 	{
 		for (p = Ap [j] ; p < Ap [j+1] ; p++)
 		{
@@ -1004,7 +1004,7 @@ double cs_house (double *x, double *beta, int n)
 	double s, sigma = 0 ;
 	int i ;
 	if (!x || !beta) return (-1) ;	    /* check inputs */
-	for (i = 1 ; i < n ; i++) sigma += x [i] * x [i] ;
+	for (i = 1; i < n ; i++) sigma += x [i] * x [i] ;
 	if (sigma == 0)
 	{
 		s = fabs (x [0]) ;		    /* s = |x(0)| */
@@ -1025,7 +1025,7 @@ int cs_ipvec (int n, const int *P, const double *b, double *x)
 {
 	int k ;
 	if (!x || !b) return (0) ;				    /* check inputs */
-	for (k = 0 ; k < n ; k++) x [P ? P [k] : k] = b [k] ;
+	for (k = 0; k < n ; k++) x [P ? P [k] : k] = b [k] ;
 	return (1) ;
 }
 cs *cs_load ( FILE *f )
@@ -1073,7 +1073,7 @@ int cs_lsolve ( const cs *L, double *x )
 	double *Lx ;
 	if (!L || !x) return (0) ;				    /* check inputs */
 	n = L->n ; Lp = L->p ; Li = L->i ; Lx = L->x ;
-	for (j = 0 ; j < n ; j++)
+	for (j = 0; j < n ; j++)
 	{
 		x [j] /= Lx [Lp [j]] ;
 		for (p = Lp [j]+1 ; p < Lp [j+1] ; p++)
@@ -1134,11 +1134,11 @@ csn *cs_lu (const cs *A, const css *S, double tol)
 	N->Pinv = Pinv = cs_malloc (n, sizeof (int)) ;
 	if (!L || !U || !Pinv) return (cs_ndone (N, NULL, xi, x, 0)) ;
 	Lp = L->p ; Up = U->p ;
-	for (i = 0 ; i < n ; i++) x [i] = 0 ;	    /* clear workspace */
-	for (i = 0 ; i < n ; i++) Pinv [i] = -1 ;	    /* no rows pivotal yet */
-	for (k = 0 ; k <= n ; k++) Lp [k] = 0 ;	    /* no cols of L yet */
+	for (i = 0; i < n ; i++) x [i] = 0 ;	    /* clear workspace */
+	for (i = 0; i < n ; i++) Pinv [i] = -1 ;	    /* no rows pivotal yet */
+	for (k = 0; k <= n ; k++) Lp [k] = 0 ;	    /* no cols of L yet */
 	lnz = unz = 0 ;
-	for (k = 0 ; k < n ; k++)	    /* compute L(:,k) and U(:,k) */
+	for (k = 0; k < n ; k++)	    /* compute L(:,k) and U(:,k) */
 	{
 		/* --- Triangular solve --------------------------------------------- */
 		Lp [k] = lnz ;		    /* L(:,k) starts here */
@@ -1154,7 +1154,7 @@ csn *cs_lu (const cs *A, const css *S, double tol)
 		/* --- Find pivot --------------------------------------------------- */
 		ipiv = -1 ;
 		a = -1 ;
-		for (p = top ; p < n ; p++)
+		for (p = top; p < n ; p++)
 		{
 			i = xi [p] ;	    /* x(i) is nonzero */
 			if (Pinv [i] < 0)	    /* row i is not pivotal */
@@ -1180,7 +1180,7 @@ csn *cs_lu (const cs *A, const css *S, double tol)
 		Pinv [ipiv] = k ;	    /* ipiv is the kth pivot row */
 		Li [lnz] = ipiv ;	    /* first entry in L(:,k) is L(k,k) = 1 */
 		Lx [lnz++] = 1 ;
-		for (p = top ; p < n ; p++) /* L(k+1:n,k) = x / pivot */
+		for (p = top; p < n ; p++) /* L(k+1:n,k) = x / pivot */
 		{
 			i = xi [p] ;
 			if (Pinv [i] < 0)	    /* x(i) is an entry in L(:,k) */
@@ -1195,7 +1195,7 @@ csn *cs_lu (const cs *A, const css *S, double tol)
 	Lp [n] = lnz ;
 	Up [n] = unz ;
 	Li = L->i ;			    /* fix row indices of L for final Pinv */
-	for (p = 0 ; p < lnz ; p++) Li [p] = Pinv [Li [p]] ;
+	for (p = 0; p < lnz ; p++) Li [p] = Pinv [Li [p]] ;
 	cs_sprealloc (L, 0) ;	    /* remove extra space from L and U */
 	cs_sprealloc (U, 0) ;
 	return (cs_ndone (N, NULL, xi, x, 1)) ;	/* success */
@@ -1302,7 +1302,7 @@ static void cs_augment (int k, const cs *A, int *jmatch, int *cheap, int *w,
 		}
 		if (p == Ap [j+1]) head-- ;	/* node j is done; pop from stack */
 	}					/* augment the match if path found: */
-	if (found) for (p = head ; p >= 0 ; p--) jmatch [is [p]] = js [p] ;
+	if (found) for (p = head; p >= 0 ; p--) jmatch [is [p]] = js [p] ;
 }
 
 /* find a maximum transveral */
@@ -1315,12 +1315,12 @@ int *cs_maxtrans (const cs *A)   /* returns jmatch [0..m-1]; imatch [0..n-1] */
 	n = A->n ; m = A->m ; Ap = A->p ; Ai = A->i ;
 	w = jimatch = cs_calloc (m+n, sizeof (int)) ;   /* allocate result */
 	if (!jimatch) return (NULL) ;
-	for (j = 0 ; j < n ; j++)		/* count non-empty rows and columns */
+	for (j = 0; j < n ; j++)		/* count non-empty rows and columns */
 	{
 		n2 += (Ap [j] < Ap [j+1]) ;
 		for (p = Ap [j] ; p < Ap [j+1] ; p++) w [Ai [p]] = 1 ;
 	}
-	for (i = 0 ; i < m ; i++) m2 += w [i] ;
+	for (i = 0; i < m ; i++) m2 += w [i] ;
 	C = (m2 < n2) ? cs_transpose (A,0) : ((cs *) A) ; /* transpose if needed */
 	if (!C) return (cs_idone (jimatch, (m2 < n2) ? C : NULL, NULL, 0)) ;
 	n = C->n ; m = C->m ; Cp = C->p ;
@@ -1329,12 +1329,12 @@ int *cs_maxtrans (const cs *A)   /* returns jmatch [0..m-1]; imatch [0..n-1] */
 	w = cs_malloc (5*n, sizeof (int)) ;		    /* allocate workspace */
 	if (!w) return (cs_idone (jimatch, (m2 < n2) ? C : NULL, w, 0)) ;
 	cheap = w + n ; js = w + 2*n ; is = w + 3*n ; ps = w + 4*n ;
-	for (j = 0 ; j < n ; j++) cheap [j] = Cp [j] ;  /* for cheap assignment */
-	for (j = 0 ; j < n ; j++) w [j] = -1 ;	    /* all columns unflagged */
-	for (i = 0 ; i < m ; i++) jmatch [i] = -1 ;	    /* nothing matched yet */
-	for (k = 0 ; k < n ; k++) cs_augment (k, C, jmatch, cheap, w, js, is, ps) ;
-	for (j = 0 ; j < n ; j++) imatch [j] = -1 ;	    /* find row match */
-	for (i = 0 ; i < m ; i++) if (jmatch [i] >= 0) imatch [jmatch [i]] = i ;
+	for (j = 0; j < n ; j++) cheap [j] = Cp [j] ;  /* for cheap assignment */
+	for (j = 0; j < n ; j++) w [j] = -1 ;	    /* all columns unflagged */
+	for (i = 0; i < m ; i++) jmatch [i] = -1 ;	    /* nothing matched yet */
+	for (k = 0; k < n ; k++) cs_augment (k, C, jmatch, cheap, w, js, is, ps) ;
+	for (j = 0; j < n ; j++) imatch [j] = -1 ;	    /* find row match */
+	for (i = 0; i < m ; i++) if (jmatch [i] >= 0) imatch [jmatch [i]] = i ;
 	return (cs_idone (jimatch, (m2 < n2) ? C : NULL, w, 1)) ;
 }
 
@@ -1353,7 +1353,7 @@ cs *cs_multiply (const cs *A, const cs *B)
 	C = cs_spalloc (m, n, anz + bnz, values, 0) ;
 	if (!C || !w || (values && !x)) return (cs_done (C, w, x, 0)) ;
 	Cp = C->p ;
-	for (j = 0 ; j < n ; j++)
+	for (j = 0; j < n ; j++)
 	{
 		if (nz + m > C->nzmax && !cs_sprealloc (C, 2*(C->nzmax)+m))
 		{
@@ -1379,7 +1379,7 @@ double cs_norm (const cs *A)
 	double *Ax,  norm = 0, s ;
 	if (!A || !A->x) return (-1) ;		/* check inputs */
 	n = A->n ; Ap = A->p ; Ax = A->x ;
-	for (j = 0 ; j < n ; j++)
+	for (j = 0; j < n ; j++)
 	{
 		for (s = 0, p = Ap [j] ; p < Ap [j+1] ; p++) s += fabs (Ax [p]) ;
 		norm = CS_MAX (norm, s) ;
@@ -1398,7 +1398,7 @@ cs *cs_permute (const cs *A, const int *Pinv, const int *Q, int values)
 	C = cs_spalloc (m, n, Ap [n], values && Ax != NULL, 0) ;
 	if (!C) return (cs_done (C, NULL, NULL, 0)) ;   /* out of memory */
 	Cp = C->p ; Ci = C->i ; Cx = C->x ;
-	for (k = 0 ; k < n ; k++)
+	for (k = 0; k < n ; k++)
 	{
 		Cp [k] = nz ;			/* column k of C is column Q[k] of A */
 		j = Q ? (Q [k]) : k ;
@@ -1419,7 +1419,7 @@ int *cs_pinv (int const *P, int n)
 	if (!P) return (NULL) ;			/* P = NULL denotes identity */
 	Pinv = cs_malloc (n, sizeof (int)) ;	/* allocate resuult */
 	if (!Pinv) return (NULL) ;			/* out of memory */
-	for (k = 0 ; k < n ; k++) Pinv [P [k]] = k ;/* invert the permutation */
+	for (k = 0; k < n ; k++) Pinv [P [k]] = k ;/* invert the permutation */
 	return (Pinv) ;				/* return result */
 }
 
@@ -1432,14 +1432,14 @@ int *cs_post (int n, const int *parent)
 	w = cs_malloc (3*n, sizeof (int)) ;			/* 3*n workspace */
 	head = w ; next = w + n ; stack = w + 2*n ;
 	if (!w || !post) return (cs_idone (post, NULL, w, 0)) ;
-	for (j = 0 ; j < n ; j++) head [j] = -1 ;		/* empty link lists */
+	for (j = 0; j < n ; j++) head [j] = -1 ;		/* empty link lists */
 	for (j = n-1 ; j >= 0 ; j--)	    /* traverse nodes in reverse order*/
 	{
 		if (parent [j] == -1) continue ;    /* j is a root */
 		next [j] = head [parent [j]] ;	    /* add j to list of its parent */
 		head [parent [j]] = j ;
 	}
-	for (j = 0 ; j < n ; j++)
+	for (j = 0; j < n ; j++)
 	{
 		if (parent [j] != -1) continue ;    /* skip j if it is not a root */
 		k = cs_tdfs (j, k, head, next, post, stack) ;
@@ -1461,7 +1461,7 @@ int cs_print (const cs *A, int brief)
 	{
 		printf ("%d-by-%d, nzmax: %d nnz: %d, 1-norm: %g\n", m, n, nzmax,
 				Ap [n], cs_norm (A)) ;
-		for (j = 0 ; j < n ; j++)
+		for (j = 0; j < n ; j++)
 		{
 			printf ("    col %d : locations %d to %d\n", j, Ap [j], Ap [j+1]-1);
 			for (p = Ap [j] ; p < Ap [j+1] ; p++)
@@ -1474,7 +1474,7 @@ int cs_print (const cs *A, int brief)
 	else
 	{
 		printf ("triplet: %d-by-%d, nzmax: %d nnz: %d\n", m, n, nzmax, nz) ;
-		for (p = 0 ; p < nz ; p++)
+		for (p = 0; p < nz ; p++)
 		{
 			printf ("    %d %d : %g\n", Ai [p], Ap [p], Ax ? Ax [p] : 1) ;
 			if (brief && p > 20) { printf ("  ...\n") ; return (1) ; }
@@ -1488,7 +1488,7 @@ int cs_pvec (int n, const int *P, const double *b, double *x)
 {
 	int k ;
 	if (!x || !b) return (0) ;				    /* check inputs */
-	for (k = 0 ; k < n ; k++) x [k] = b [P ? P [k] : k] ;
+	for (k = 0; k < n ; k++) x [k] = b [P ? P [k] : k] ;
 	return (1) ;
 }
 
@@ -1510,16 +1510,16 @@ csn *cs_qr (const cs *A, const css *S)
 	N = cs_calloc (1, sizeof (csn)) ;
 	if (!w || !x || !N) return (cs_ndone (N, NULL, w, x, 0)) ;
 	s = w + m2 ;				/* size n */
-	for (k = 0 ; k < m2 ; k++) x [k] = 0 ;	/* clear workspace x */
+	for (k = 0; k < m2 ; k++) x [k] = 0 ;	/* clear workspace x */
 	N->L = V = cs_spalloc (m2, n, vnz, 1, 0) ;	/* allocate V */
 	N->U = R = cs_spalloc (m2, n, rnz, 1, 0) ;	/* allocate R, m2-by-n */
 	N->B = Beta = cs_malloc (n, sizeof (double)) ;
 	if (!R || !V || !Beta) return (cs_ndone (N, NULL, w, x, 0)) ;
 	Rp = R->p ; Ri = R->i ; Rx = R->x ;
 	Vp = V->p ; Vi = V->i ; Vx = V->x ;
-	for (i = 0 ; i < m2 ; i++) w [i] = -1 ;	/* clear w, to mark nodes */
+	for (i = 0; i < m2 ; i++) w [i] = -1 ;	/* clear w, to mark nodes */
 	rnz = 0 ; vnz = 0 ;
-	for (k = 0 ; k < n ; k++)		    /* compute V and R */
+	for (k = 0; k < n ; k++)		    /* compute V and R */
 	{
 		Rp [k] = rnz ;			    /* R(:,k) starts here */
 		Vp [k] = p1 = vnz ;		    /* V(:,k) starts here */
@@ -1530,7 +1530,7 @@ csn *cs_qr (const cs *A, const css *S)
 		for (p = Ap [col] ; p < Ap [col+1] ; p++)   /* find R(:,k) pattern */
 		{
 			i = leftmost [Ai [p]] ;	    /* i = min(find(A(i,Q))) */
-			for (len = 0 ; w [i] != k ; i = parent [i])	/* traverse up to k */
+			for (len = 0; w [i] != k ; i = parent [i])	/* traverse up to k */
 			{
 				s [len++] = i ;
 				w [i] = k ;
@@ -1544,7 +1544,7 @@ csn *cs_qr (const cs *A, const css *S)
 				w [i] = k ;
 			}
 		}
-		for (p = top ; p < n ; p++) /* for each i in pattern of R(:,k) */
+		for (p = top; p < n ; p++) /* for each i in pattern of R(:,k) */
 		{
 			i = s [p] ;			    /* R(i,k) is nonzero */
 			cs_happly (V, i, Beta [i], x) ; /* apply (V(i),Beta(i)) to x */
@@ -1553,7 +1553,7 @@ csn *cs_qr (const cs *A, const css *S)
 			x [i] = 0 ;
 			if (parent [i] == k) vnz = cs_scatter (V, i, 0, w, NULL, k, V, vnz);
 		}
-		for (p = p1 ; p < vnz ; p++)	    /* gather V(:,k) = x */
+		for (p = p1; p < vnz ; p++)	    /* gather V(:,k) = x */
 		{
 			Vx [p] = x [Vi [p]] ;
 			x [Vi [p]] = 0 ;
@@ -1586,7 +1586,7 @@ int cs_qrsol (const cs *A, double *b, int order)
 		if (ok)
 		{
 			cs_ipvec (m, S->Pinv, b, x) ;   /* x(0:m-1) = P*b(0:m-1) */
-			for (k = 0 ; k < n ; k++)	    /* apply Householder refl. to x */
+			for (k = 0; k < n ; k++)	    /* apply Householder refl. to x */
 			{
 				cs_happly (N->L, k, N->B [k], x) ;
 			}
@@ -1634,7 +1634,7 @@ int cs_reach (cs *L, const cs *B, int k, int *xi, const int *Pinv)
 			top = cs_dfs (Bi [p], L, top, xi, xi+n, Pinv) ;
 		}
 	}
-	for (p = top ; p < n ; p++) CS_MARK (Lp, xi [p]) ;	/* restore L */
+	for (p = top; p < n ; p++) CS_MARK (Lp, xi [p]) ;	/* restore L */
 	return (top) ;
 }
 
@@ -1675,14 +1675,14 @@ csd *cs_scc (cs *A)	/* matrix A temporarily modified, then restored */
 	if (!D || !AT || !xi) return (cs_ddone (D, AT, xi, 0)) ;
 	P = D->P ; R = D->R ; ATp = AT->p ;
 	top = n ;
-	for (i = 0 ; i < n ; i++)	/* first dfs(A) to find finish times (xi) */
+	for (i = 0; i < n ; i++)	/* first dfs(A) to find finish times (xi) */
 	{
 		if (!CS_MARKED (Ap,i)) top = cs_dfs (i, A, top, xi, pstack, NULL) ;
 	}
-	for (i = 0 ; i < n ; i++) CS_MARK (Ap, i) ;	/* restore A; unmark all nodes*/
+	for (i = 0; i < n ; i++) CS_MARK (Ap, i) ;	/* restore A; unmark all nodes*/
 	top = n ;
 	b = n ;
-	for (k = 0 ; k < n ; k++)	/* dfs(A') to find strongly connnected comp. */
+	for (k = 0; k < n ; k++)	/* dfs(A') to find strongly connnected comp. */
 	{
 		i = xi [k] ;		/* get i in reverse order of finish times */
 		if (CS_MARKED (ATp,i)) continue ;  /* skip node i if already ordered */
@@ -1690,7 +1690,7 @@ csd *cs_scc (cs *A)	/* matrix A temporarily modified, then restored */
 		top = cs_dfs (i, AT, top, P, pstack, NULL) ;
 	}
 	R [b] = 0 ;			/* first block starts at zero; shift R up */
-	for (k = b ; k <= n ; k++) R [k-b] = R [k] ;
+	for (k = b; k <= n ; k++) R [k-b] = R [k] ;
 	D->nb = R [n+1] = b = n-b ;	/* b = # of strongly connected components */
 	return (cs_ddone (D, AT, xi, 1)) ;
 }
@@ -1730,9 +1730,9 @@ int cs_splsolve (cs *L, const cs *B, int k, int *xi, double *x, const int *Pinv)
 	Lp = L->p ; Li = L->i ; Lx = L->x ; n = L->n ;
 	Bp = B->p ; Bi = B->i ; Bx = B->x ;
 	top = cs_reach (L, B, k, xi, Pinv) ;	/* xi[top..n-1]=Reach(B(:,k)) */
-	for (p = top ; p < n ; p++) x [xi [p]] = 0 ;/* clear x */
+	for (p = top; p < n ; p++) x [xi [p]] = 0 ;/* clear x */
 	for (p = Bp [k] ; p < Bp [k+1] ; p++) x [Bi [p]] = Bx [p] ;	/* scatter B */
-	for (px = top ; px < n ; px++)
+	for (px = top; px < n ; px++)
 	{
 		j = xi [px] ;				/* x(j) is nonzero */
 		jnew = Pinv ? (Pinv [j]) : j ;		/* j is column jnew of L */
@@ -1753,10 +1753,10 @@ static int *cs_vcount (const cs *A, const int *parent, int *m2, int *vnz)
 	int *w = cs_malloc (m+3*n, sizeof (int)) ;
 	int *next = w, *head = w + m, *tail = w + m + n, *nque = w + m + 2*n ;
 	if (!Pinv || !w) return (cs_idone (Pinv, NULL, w, 0)) ;
-	for (k = 0 ; k < n ; k++) head [k] = -1 ;	/* queue k is empty */
-	for (k = 0 ; k < n ; k++) tail [k] = -1 ;
-	for (k = 0 ; k < n ; k++) nque [k] = 0 ;
-	for (i = 0 ; i < m ; i++) leftmost [i] = -1 ;
+	for (k = 0; k < n ; k++) head [k] = -1 ;	/* queue k is empty */
+	for (k = 0; k < n ; k++) tail [k] = -1 ;
+	for (k = 0; k < n ; k++) nque [k] = 0 ;
+	for (i = 0; i < m ; i++) leftmost [i] = -1 ;
 	for (k = n-1 ; k >= 0 ; k--)
 	{
 		for (p = Ap [k] ; p < Ap [k+1] ; p++)
@@ -1775,7 +1775,7 @@ static int *cs_vcount (const cs *A, const int *parent, int *m2, int *vnz)
 	}
 	(*vnz) = 0 ;
 	(*m2) = m ;
-	for (k = 0 ; k < n ; k++)		    /* find row permutation and nnz(V)*/
+	for (k = 0; k < n ; k++)		    /* find row permutation and nnz(V)*/
 	{
 		i = head [k] ;			    /* remove row i from queue k */
 		(*vnz)++ ;			    /* count V(k,k) as nonzero */
@@ -1791,7 +1791,7 @@ static int *cs_vcount (const cs *A, const int *parent, int *m2, int *vnz)
 			nque [pa] += nque [k] ;
 		}
 	}
-	for (i = 0 ; i < m ; i++) if (Pinv [i] < 0) Pinv [i] = k++ ;
+	for (i = 0; i < m ; i++) if (Pinv [i] < 0) Pinv [i] = k++ ;
 	return (cs_idone (Pinv, NULL, w, 1)) ;
 }
 
@@ -1839,7 +1839,7 @@ cs *cs_symperm (const cs *A, const int *Pinv, int values)
 	w = cs_calloc (n, sizeof (int)) ;
 	if (!C || !w) return (cs_done (C, w, NULL, 0)) ;	/* out of memory */
 	Cp = C->p ; Ci = C->i ; Cx = C->x ;
-	for (j = 0 ; j < n ; j++)		/* count entries in each column of C */
+	for (j = 0; j < n ; j++)		/* count entries in each column of C */
 	{
 		j2 = Pinv ? Pinv [j] : j ;	/* column j of A is column j2 of C */
 		for (p = Ap [j] ; p < Ap [j+1] ; p++)
@@ -1851,7 +1851,7 @@ cs *cs_symperm (const cs *A, const int *Pinv, int values)
 		}
 	}
 	cs_cumsum (Cp, w, n) ;		/* compute column pointers of C */
-	for (j = 0 ; j < n ; j++)
+	for (j = 0; j < n ; j++)
 	{
 		j2 = Pinv ? Pinv [j] : j ;	/* column j of A is column j2 of C */
 		for (p = Ap [j] ; p < Ap [j+1] ; p++)
@@ -1902,9 +1902,9 @@ cs *cs_transpose (const cs *A, int values)
 	w = cs_calloc (m, sizeof (int)) ;
 	if (!C || !w) return (cs_done (C, w, NULL, 0)) ;	   /* out of memory */
 	Cp = C->p ; Ci = C->i ; Cx = C->x ;
-	for (p = 0 ; p < Ap [n] ; p++) w [Ai [p]]++ ;	   /* row counts */
+	for (p = 0; p < Ap [n] ; p++) w [Ai [p]]++ ;	   /* row counts */
 	cs_cumsum (Cp, w, m) ;				   /* row pointers */
-	for (j = 0 ; j < n ; j++)
+	for (j = 0; j < n ; j++)
 	{
 		for (p = Ap [j] ; p < Ap [j+1] ; p++)
 		{
@@ -1927,9 +1927,9 @@ cs *cs_triplet (const cs *T)
 	w = cs_calloc (n, sizeof (int)) ;			/* get workspace */
 	if (!C || !w) return (cs_done (C, w, NULL, 0)) ;	/* out of memory */
 	Cp = C->p ; Ci = C->i ; Cx = C->x ;
-	for (k = 0 ; k < nz ; k++) w [Tj [k]]++ ;		/* column counts */
+	for (k = 0; k < nz ; k++) w [Tj [k]]++ ;		/* column counts */
 	cs_cumsum (Cp, w, n) ;				/* column pointers */
-	for (k = 0 ; k < nz ; k++)
+	for (k = 0; k < nz ; k++)
 	{
 		Ci [p = w [Tj [k]]++] = Ti [k] ;    /* A(i,j) is the pth entry in C */
 		if (Cx) Cx [p] = Tx [k] ;
@@ -1950,9 +1950,9 @@ int cs_updown (cs *L, int sigma, const cs *C, const int *parent)
 	if (!w) return (0) ;
 	f = Ci [p] ;
 	for ( ; p < Cp [1] ; p++) f = CS_MIN (f, Ci [p]) ;	/* f = min (find (C)) */
-	for (j = f ; j != -1 ; j = parent [j]) w [j] = 0 ;	/* clear workspace w */
+	for (j = f; j != -1 ; j = parent [j]) w [j] = 0 ;	/* clear workspace w */
 	for (p = Cp [0] ; p < Cp [1] ; p++) w [Ci [p]] = Cx [p] ; /* w = C */
-	for (j = f ; j != -1 ; j = parent [j])	    /* walk path f up to root */
+	for (j = f; j != -1 ; j = parent [j])	    /* walk path f up to root */
 	{
 		p = Lp [j] ;
 		alpha = w [j] / Lx [p] ;		    /* alpha = w(j) / L(j,j) */
@@ -2117,7 +2117,7 @@ int cs_utsolve (const cs *U, double *x)
 	double *Ux ;
 	if (!U || !x) return (0) ;				    /* check inputs */
 	n = U->n ; Up = U->p ; Ui = U->i ; Ux = U->x ;
-	for (j = 0 ; j < n ; j++)
+	for (j = 0; j < n ; j++)
 	{
 		for (p = Up [j] ; p < Up [j+1]-1 ; p++)
 		{

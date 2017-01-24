@@ -37,9 +37,9 @@ void compute_beta(const double *err_sq, const double *old_err_sq, double *beta, 
 
 	#if DUE == DUE_ASYNC || DUE == DUE_IN_PATH
 	int state = aggregate_skips();
-	if( state & (MASK_GRADIENT | MASK_NORM_G | MASK_RECOVERY | (recomputed ? MASK_ITERATE : 0)) )
+	if (state & (MASK_GRADIENT | MASK_NORM_G | MASK_RECOVERY | (recomputed ? MASK_ITERATE : 0)))
 	{
-		if( state & MASK_RECOVERY )
+		if (state & MASK_RECOVERY)
 			fprintf(stderr, "Error discovered during recovery\n");
 		else
 			fprintf(stderr, "Error remaining or discovered post recovery\n");
@@ -64,7 +64,7 @@ void compute_alpha(double *err_sq, double *normA_p_sq, double *old_err_sq, doubl
 	#if DUE
 	int state = aggregate_skips();
 	#if DUE == DUE_LOSSY
-	if( state )
+	if (state)
 	{
 		log_err(SHOW_FAILINFO, "There was an error, restarting (eventual lossy x interpolation)");
 		hard_reset(&mp);
@@ -73,9 +73,9 @@ void compute_alpha(double *err_sq, double *normA_p_sq, double *old_err_sq, doubl
 		state = aggregate_skips() > 0 ? (aggregate_skips() | MASK_RECOVERY) : 0;
 	}
 	#endif
-	if( state & (MASK_ITERATE | MASK_P | MASK_OLD_P | MASK_A_P | MASK_NORM_A_P | MASK_RECOVERY) )
+	if (state & (MASK_ITERATE | MASK_P | MASK_OLD_P | MASK_A_P | MASK_NORM_A_P | MASK_RECOVERY))
 	{
-		if( state & MASK_RECOVERY )
+		if (state & MASK_RECOVERY)
 			fprintf(stderr, "Error discovered during recovery\n");
 		else
 			fprintf(stderr, "Error remaining or discovered post recovery\n");
@@ -157,9 +157,9 @@ void solve_cg(const Matrix *A, const double *b, double *iterate, double converge
 
 	// real work starts here
 
-	for(r=0; r < MAXIT ; r++)
+	for (r = 0; r < MAXIT ; r++)
 	{
-		if( --do_update_gradient > 0 )
+		if (--do_update_gradient > 0)
 		{
 
 			update_gradient(gradient, Ap, &alpha);
@@ -177,7 +177,7 @@ void solve_cg(const Matrix *A, const double *b, double *iterate, double converge
 		}
 		else
 		{
-			if( r > 0 )
+			if (r > 0)
 				update_iterate(iterate, old_p, &alpha);
 
 			recompute_gradient_mvm(A, iterate, Aiterate);
@@ -187,7 +187,7 @@ void solve_cg(const Matrix *A, const double *b, double *iterate, double converge
 			norm_task(gradient, &err_sq);
 
 			#if CKPT
-			if( r == 0 )
+			if (r == 0)
 				force_checkpoint(&ckpt_data, iterate, old_p);
 			#endif
 
@@ -199,7 +199,7 @@ void solve_cg(const Matrix *A, const double *b, double *iterate, double converge
 
 			// after first beta, we are sure to have the first x, g, and checkpoint
 			// so we can start injecting errors
-			if( r == 0 )
+			if (r == 0)
 				#pragma omp task in(beta) label(start_injection)
 				start_error_injection();
 		}
@@ -210,7 +210,7 @@ void solve_cg(const Matrix *A, const double *b, double *iterate, double converge
 
 		scalar_product_task(p, Ap, &normA_p_sq);
 
-		if( do_update_gradient > 0 )
+		if (do_update_gradient > 0)
 		{
 			update_iterate(iterate, old_p, &alpha);
 			#if DUE == DUE_ASYNC || DUE == DUE_IN_PATH
@@ -235,20 +235,20 @@ void solve_cg(const Matrix *A, const double *b, double *iterate, double converge
 
 			failures = check_errors_signaled();
 
-			if( r > 0 )
+			if (r > 0)
 				log_convergence(r-1, old_err_sq2, failures);
 
 			log_err(SHOW_TASKINFO, "\n\n");
 
 			total_failures += failures;
 
-			if( old_err_sq <= thres_sq )
+			if (old_err_sq <= thres_sq)
 				break;
 
-			if( do_update_gradient <= 0 )
+			if (do_update_gradient <= 0)
 				do_update_gradient = RECOMPUTE_GRADIENT_FREQ;
 			#if CKPT
-			if( do_checkpoint <= 0 )
+			if (do_checkpoint <= 0)
 				do_checkpoint = get_ckpt_freq();
 			#endif
 		}
@@ -258,13 +258,13 @@ void solve_cg(const Matrix *A, const double *b, double *iterate, double converge
 		#if CKPT // NB. this implies DUE_ROLLBACK
 		// should happen after p, Ap are ready and before (post-alpha) iterate and gradient updates
 		// so just after alpha basically
-		if(failures)
+		if (failures)
 		{
 			do_checkpoint = 0;
 			do_update_gradient = 0;
 			force_rollback(&ckpt_data, iterate, old_p);
 		}
-		else if( --do_checkpoint == 0 )
+		else if (--do_checkpoint == 0)
 		{
 			do_update_gradient = 0;
 			due_checkpoint(&ckpt_data, iterate, old_p);
@@ -279,7 +279,7 @@ void solve_cg(const Matrix *A, const double *b, double *iterate, double converge
 	failures = check_errors_signaled();
 	log_convergence(r-1, old_err_sq2, failures);
 
-	printf("CG method finished iterations:%d with error:%e (failures:%d injected:%d)\n", r, sqrt((err_sq==0.0?old_err_sq:err_sq)/norm_b), total_failures, get_inject_count());
+	printf("CG method finished iterations:%d with error:%e (failures:%d injected:%d)\n", r, sqrt((err_sq == 0.0 ? old_err_sq : err_sq) / norm_b), total_failures, get_inject_count());
 
 	// stop resilience stuff that's still going on
 	unset_resilience(&mp);

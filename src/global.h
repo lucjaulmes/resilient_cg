@@ -75,7 +75,7 @@ static inline void set_block_end(const int b, const int pos)
 
 static inline int get_block_start(const int b)
 {
-	if( b == 0 )
+	if (b == 0)
 		return 0;
 	else
 		return block_ends[b-1];
@@ -97,7 +97,7 @@ static inline void* aligned_calloc(size_t alignment, size_t size)
 {
 	size_t aligned_size = round_up(size, alignment);
 	void *ptr = aligned_alloc(alignment, aligned_size);
-	if( ptr == NULL )
+	if (ptr == NULL)
 	{
 		warn("mmap (aligned alloc) failed");
 		void *caller[2];

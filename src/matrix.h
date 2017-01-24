@@ -38,7 +38,7 @@ static inline double norm(const int n, const double *v)
 	int i;
 	double r = 0;
 
-	for(i=0; i<n; i++)
+	for (i = 0; i < n; i++)
 		r += v[i] * v[i];
 
 	return r;
@@ -49,7 +49,7 @@ static inline double scalar_product(const int n, const double *v, const double *
 	int i;
 	double r = 0;
 
-	for(i=0; i<n; i++)
+	for (i = 0; i < n; i++)
 		r += v[i] * w[i];
 
 	return r;
@@ -58,7 +58,7 @@ static inline double scalar_product(const int n, const double *v, const double *
 static inline void daxpy(const int n, const double a, const double *x, const double *y, double *z)
 {
 	int i;
-	for(i=0; i<n; i++)
+	for (i = 0; i < n; i++)
 		z[i] = a * x[i] + y[i];
 }
 
