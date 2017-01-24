@@ -115,11 +115,9 @@ void setup_resilience(const Matrix *A UNUSED, const int nb, magic_pointers *mp)
 
 	// finally set the handler for signals that will simulate (SIGSEGV) or report real errors (SIGBUS)
 	struct sigaction sigact;
-	sigset_t empty;
-	sigemptyset(&empty);
 	sigact.sa_sigaction = resilience_sighandler;
 	sigact.sa_flags = SA_SIGINFO;
-	sigact.sa_mask = empty;
+	sigemptyset(&sigact.sa_mask);
 
 	if( sigaction(SIGBUS, &sigact, NULL) !=  0)
 		fprintf(stderr, "error setting signal handler for %d (%s)\n", SIGBUS, strsignal(SIGBUS));
