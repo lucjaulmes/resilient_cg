@@ -9,6 +9,7 @@
 #include <sys/mman.h>
 #include <pthread.h>
 #include <limits.h>
+#include <assert.h>
 #include <err.h>
 
 #include "global.h"
@@ -614,21 +615,23 @@ void clear_failed_vect(const double *vect)
 	clear_failed( 1 << get_data_vectptr(vect) );
 }
 
-int get_all_failed_blocks(int mask, int **lost_blocks)
+int get_all_failed_blocks(int mask, int **lost_blocks_ptr)
 {
 	mask &= ~CONSTANT_MASKS;
 	int total_skips = errinfo.skips;
-	if( ! total_skips )
+	if (total_skips == 0)
 		return 0;
 
-	*lost_blocks = (int*) calloc( total_skips, sizeof(int) );
-	if (*lost_blocks == NULL)
+	int *lost_blocks = calloc(total_skips, sizeof(int));
+	if (lost_blocks == NULL)
 		err(1, "Failed to allocate *lost_blocks");
 
 	int i, j = 0;
 	for(i=0; i<errinfo.nb_failblocks && j < total_skips; i++)
 		if( errinfo.skipped_blocks[i] & mask )
-			(*lost_blocks)[ j++ ] = i;
+			lost_blocks[j++] = i;
+
+	*lost_blocks_ptr = lost_blocks;
 
 	return j;
 }
@@ -668,41 +671,51 @@ void get_recovering_blocks_bounds(int *start, int *end, const int *lost, const i
 	}
 }
 
-// function setting the number and set of lost blocks that are errinfo.neighbours with block id
-void get_failed_neighbourset(const int *all_lost, const int nb_lost, const int start_block, int *set, int *num)
+/* function getting the set of lost blocks that are neighbours containing 'all_lost[0]', and returns size of that set */
+int get_failed_neighbourset(const int *all_lost, const int nb_lost, int *set, const int max_set_size)
 {
-	int i, j, k = 0, added[errinfo.nb_failblocks];
+	if (max_set_size < nb_lost)
+		return -1;
 
-	for(i=0; i<errinfo.nb_failblocks; i++)
-		added[i] = 0;
+	/* 'added' checks which blocks are added to the set */
+	char added[errinfo.nb_failblocks];
+	memset(added, 0, sizeof(added));
 
-	*num = 1;
+	/* obviously start by adding start_block to the set */
+	int start_block = all_lost[0], set_size = 1, set_pos = 0;
 	added[start_block] = 1;
-	set[k] = start_block;
+	set[set_pos] = start_block;
 
 	do {
-		// search the neighbours of set_k
-		// if set_k and i are neighbours and i is found in the failed blocks, add i to set
-		for(i=errinfo.neighbours->r[ set[k] ]; i < errinfo.neighbours->r[ set[k] + 1 ]; i++)
-			if( added[ errinfo.neighbours->c[i] ] == 0 )
-			{
-				for(j=0; j<nb_lost; j++)
-					if( all_lost[j] == errinfo.neighbours->c[i] )
-					{
-						added[ errinfo.neighbours->c[i] ] = 1;
-						set[*num] = errinfo.neighbours->c[i];
-						(*num)++;
-					}
-			}
-	}
-	// if a failed block in set has failed errinfo.neighbours, we should add them too
-	while( ++k < *num );
+		/* search the neighbours of the current considered element */
+		int i, j, last_added = set[set_pos];
+		for (i = errinfo.neighbours->r[last_added]; i < errinfo.neighbours->r[last_added + 1]; i++)
+		{
+			/* if a neighbour of last_added is found in the failed blocks, add it to the set (only once) */
+			int neighbour = errinfo.neighbours->c[i];
+			if (added[neighbour])
+				continue;
 
-	// okay now we should really sort the set...
-	// should be mostly a small list, partly sorted already
-	// so kiss and go for an insertion sort
-	int insert;
-	for (i = 1; i < *num; i++)
+			for(j=0; j<nb_lost; j++)
+				if (all_lost[j] == neighbour)
+				{
+					added[neighbour] = 1;
+					set[set_size++] = neighbour;
+				}
+				/* all_lost is sorted with a bunch of -1s in between */
+				else if (all_lost[j] > neighbour)
+					break;
+		}
+	}
+	/* do this until 'current position' has caught up with set size,
+	 * i.e. until we checked all elements in set and no new ones have be added. */
+	while (++set_pos < set_size);
+
+	/* okay now we should really sort the set...
+	 * should be mostly a small list, partly sorted already
+	 * so kiss and go for an insertion sort */
+	int i, j, insert;
+	for (i = 1; i < set_size; i++)
 	{
 		insert = set[i];
 
@@ -711,6 +724,9 @@ void get_failed_neighbourset(const int *all_lost, const int nb_lost, const int s
 
 		set[j] = insert;
 	}
+
+	/* return the number of elements we added in the set */
+	return set_size;
 }
 
 void compute_neighbourhoods(const Matrix *mat, const int bs, Matrix *neighbours)

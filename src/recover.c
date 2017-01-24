@@ -90,65 +90,57 @@ void recover_direct(const Matrix *A, const int sgn, const double *u, const doubl
 
 void recover_inverse(const Matrix *A, const double *b, const double *g, double *x, int *lost_blocks, const int nb_lost)
 {
-	int recovery_sizes[nb_lost], pos, i;
-
-	cluster_neighbour_failures(A, b, x, lost_blocks, nb_lost, recovery_sizes);
-
-	for(i=0, pos=0; pos < nb_lost; pos += recovery_sizes[i], i++)
-		do_interpolation(A, b, g, x, lost_blocks + pos, recovery_sizes[i]);
-}
-
-void cluster_neighbour_failures(const Matrix *A, const double *b, double *x, int *lost_blocks, const int nb_lost, int *recovery_sizes)
-{
-	int strategy = get_strategy();
-	if(nb_lost == 1 || strategy != MULTFAULTS_GLOBAL)
-	{
-		int i;
-		// each block is recovered individually
-		for(i=0; i<nb_lost; i++)
-			recovery_sizes[i] = 1;
-
-		// prepare x if needed
 		if(nb_lost == 1)
-			;
+		do_interpolation(A, b, g, x, lost_blocks, 1);
 
-		else if(strategy == MULTFAULTS_UNCORRELATED)
+	else if(get_strategy() != MULTFAULTS_GLOBAL)
+	{
+		/* strategies from the paper of Langou et al. to recover x blocks independently: prepare x */
+		if(get_strategy() == MULTFAULTS_UNCORRELATED)
 			prepare_x_uncorrelated(x, b, A->n, lost_blocks, nb_lost);
 
 		else
 			prepare_x_decorrelated(x, A->n, lost_blocks, nb_lost);
+
+		/* recover blocks independently */
+		int i;
+		for (i = 0; i < nb_lost; i++)
+			do_interpolation(A, b, g, x, lost_blocks + i, 1);
 	}
 	else // nb_lost > 1 && strategy == MULTFAULTS_GLOBAL
 	{
-		// get list of failed blocks, group by neighbour clusters into set[]
-		int id = 0, i, j, m, c = 0, pos = 0, set[nb_lost];
+		/* cluster failed blocks depending on neighbouring blocks, to recover them jointly */
+		int id, i, j, set[nb_lost];
 
 		for(id=0; id < nb_lost; id++)
 		{
 			if(lost_blocks[id] < 0)
 				continue;
 
-			// put into set the block lost_blocks[id] and all its neighbours
-			get_failed_neighbourset(lost_blocks, nb_lost, lost_blocks[id], &set[pos], &m);
+			/* get in 'set' the block lost_blocks[id] and all its neighbours. */
+			int set_size = get_failed_neighbourset(lost_blocks + id, nb_lost - id, set, nb_lost);
 
-			// remove from lost_blocks all blocks that are in the set that we recover now
-			//(no need to recover them twice)
+			/* Remove from lost_blocks all blocks that are in the neighbour set of lost_blocks[id].
+			 * Remember both lost_blocks and set are sorted, and we've done all lost_blocks with i < id. */
 			lost_blocks[id] = -1;
-			for(i=id+1; i < nb_lost; i++)
-				for(j=0; j<m; j++)
+			for (i = id + 1, j = 0; i < nb_lost; i++)
+			{
+				if (lost_blocks[i] < 0)
+					continue;
+
+				for (; j < set_size; j++)
+				{
 					if(set[j] == lost_blocks[i])
 						lost_blocks[i] = -1;
-
-			// set this recovery in our sets
-			recovery_sizes[c] = m;
-
-			c ++ ;
-			pos += m;
+					else if (set[j] > lost_blocks[i])
+						break;
+				}
 		}
 
-		memcpy(lost_blocks, set, nb_lost * sizeof(int));
+			log_err(SHOW_FAILINFO, "MULTFAULTS_GLOBAL clusetered recovery with %d/%d errors\n", set_size, nb_lost);
 
-		log_err(SHOW_FAILINFO, "MULTFAULTS_GLOBAL recovery with %d errors, computing neighbourhoods formed %d independant recoveries\n", nb_lost, c);
+			do_interpolation(A, b, g, x, set, set_size);
+		}
 	}
 }
 

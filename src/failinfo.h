@@ -249,7 +249,7 @@ void start_error_injection();
 void unset_resilience(magic_pointers *mp);
 void compute_neighbourhoods(const Matrix *mat, const int bs, Matrix *neighbours);
 
-void get_failed_neighbourset(const int *all_lost, const int nb_lost, const int start_block, int *set, int *num);
+int get_failed_neighbourset(const int *all_lost, const int nb_lost, int *set, const int set_size);
 void get_recovering_blocks_bounds(int *start, int *end, const int *lost, const int nb_lost);
 
 
