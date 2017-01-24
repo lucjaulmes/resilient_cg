@@ -12,6 +12,7 @@
 #include <string.h>
 #include <ucontext.h>
 #include <unistd.h>
+#include <err.h>
 
 #include "backtrace.h"
 
@@ -51,8 +52,10 @@ void crit_err_hdlr(int sig_num, siginfo_t * info, void * ucontext)
 
 	free(messages);
 
-	raise(SIGUSR1); // to catch this with gdb when debugging and not stopping on SIGSEGV's
-	_exit(EXIT_FAILURE);
+	struct sigaction sigact = (struct sigaction){.sa_handler = SIG_DFL};
+	if (sigaction(SIGSEGV, &sigact, NULL))
+		err(1, "Failed restoring segfault handler for propagation");
+	raise(SIGSEGV);
 }
 
 void register_sigsegv_handler()
