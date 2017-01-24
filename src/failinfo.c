@@ -92,7 +92,7 @@ void setup_resilience(const Matrix *A UNUSED, const int nb, magic_pointers *mp)
 	if (errinfo.neighbours->r == NULL || errinfo.neighbours->c == NULL)
 		err(1, "Failed to allocate errinfo.neighbours");
 
-	compute_neighbourhoods(A, failblock_size_bytes, errinfo.neighbours);
+	compute_neighbourhoods(A, errinfo.neighbours);
 
 	// now for storing infos about errors
 	errinfo.skipped_blocks = (int*)calloc( nb_failblocks, sizeof(int) );
@@ -733,37 +733,43 @@ int get_failed_neighbourset(const int *all_lost, const int nb_lost, int *set, co
 	return set_size;
 }
 
-void compute_neighbourhoods(const Matrix *mat, const int bs, Matrix *neighbours)
+void compute_neighbourhoods(const Matrix *mat, Matrix *neighbours)
 {
-	int i, ii, bi, k, bj, pos = 0, set_in_block[nb_failblocks];
+	int i_row, i_blk, k, n_blk, pos = 0;
+	char neighbour_blks[nb_failblocks];
+	memset(neighbour_blks, 0, sizeof(neighbour_blks));
 
-	// iterate all lines, i points to the start of the block, ii to the line and bi to the number of the block
-	for(i=0, bi=0; i < mat->n; i += bs, bi++ )
+	// iterate all lines per block, i_row enumerates the lines and i_blk the corresponding block
+	for (i_blk = 0; i_blk < nb_failblocks; i_blk++)
 	{
-		neighbours->r[bi] = pos;
+		// pos is the position in the neighbours matrix, used to mark start/end of rows
+		neighbours->r[i_blk] = pos;
 
-		for(bj=0; bj<nb_failblocks; bj++)
-			set_in_block[bj] = 0;
+		int first_i_row = i_blk * failblock_size_dbl, last_i_row = (i_blk + 1) * failblock_size_dbl;
+		if (last_i_row > mat->n)
+			last_i_row = mat->n;
 
-		for( ii = i; ii < i+bs && ii < mat->n ; ii ++ )
-
-			// iterate all columns, k points to the position in mat, and bj to the number of the block
-			for(k = mat->r[ii] ; k < mat->r[ii+1] ; k++ )
+		// iterate of all rows of the block
+		for (i_row = first_i_row; i_row < last_i_row; i_row++)
+			// iterate all columns of the row, set neighbour blocks
+			for (k = mat->r[i_row]; k < mat->r[i_row+1]; k++)
 			{
-				bj = mat->c[k] / bs;
-				if( mat->v[k] != 0.0 && !set_in_block[bj])
-					set_in_block[bj] = 1;
+				n_blk = mat->c[k] / failblock_size_dbl;
+				neighbour_blks[n_blk] = 1;
 			}
 
-		for(bj=0; bj<nb_failblocks; bj++)
-			if( set_in_block[bj] )
+		// move list of neighbours, stored densely in neighbour_blks, into neighbours matrix, sparsely
+		for (n_blk = 0; n_blk < nb_failblocks; n_blk++)
+			if (neighbour_blks[n_blk])
 			{
-				neighbours->c[pos] = bj;
+				neighbour_blks[n_blk] = 0;
+				neighbours->c[pos] = n_blk;
 				pos++;
 			}
 	}
 
-	neighbours->r[neighbours->n] = neighbours->nnz = pos;
+	neighbours->r[neighbours->n] = pos;
+	neighbours->nnz = pos;
 }
 
 

@@ -233,7 +233,7 @@ void populate_global(const int n, const int fail_size_bytes, const int fault_str
 void setup_resilience(const Matrix *A, const int nb, magic_pointers *mp);
 void start_error_injection();
 void unset_resilience(magic_pointers *mp);
-void compute_neighbourhoods(const Matrix *mat, const int bs, Matrix *neighbours);
+void compute_neighbourhoods(const Matrix *mat, Matrix *neighbours);
 
 int get_failed_neighbourset(const int *all_lost, const int nb_lost, int *set, const int set_size);
 void get_recovering_blocks_bounds(int *start, int *end, const int *lost, const int nb_lost);
