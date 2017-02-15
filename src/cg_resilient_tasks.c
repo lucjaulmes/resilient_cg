@@ -20,7 +20,7 @@ void scalar_product_task(const double *p, const double *Ap, double* r)
 
 			for (j = s, page = s / failblock_size_dbl; j < e; page++, j = k)
 			{
-				int next_j = round_up(j, failblock_size_dbl);
+				int next_j = round_up(j + 1, failblock_size_dbl);
 				if (next_j > e)
 					next_j = e;
 
@@ -81,7 +81,7 @@ void norm_task(const double *v, double* r)
 
 			for (j = s, page = s / failblock_size_dbl; j < e; page++, j = k)
 			{
-				int next_j = round_up(j, failblock_size_dbl);
+				int next_j = round_up(j + 1, failblock_size_dbl);
 				if (next_j > e)
 					next_j = e;
 
@@ -137,7 +137,7 @@ void update_gradient(double *gradient, double *Ap, double *alpha UNUSED)
 
 			for (j = s, page = s / failblock_size_dbl; j < e; page++, j = k)
 			{
-				int next_j = round_up(j, failblock_size_dbl);
+				int next_j = round_up(j + 1, failblock_size_dbl);
 				if (next_j > e)
 					next_j = e;
 
@@ -175,7 +175,7 @@ void recompute_gradient_mvm(const Matrix *A, double *iterate UNUSED UNUSED, doub
 
 			for (j = s, page = s / failblock_size_dbl; j < e; page++, j = l)
 			{
-				int next_j = round_up(j, failblock_size_dbl);
+				int next_j = round_up(j + 1, failblock_size_dbl);
 				if (next_j > e)
 					next_j = e;
 
@@ -230,7 +230,7 @@ void recompute_gradient_update(double *gradient UNUSED, double *Aiterate, const 
 
 			for (j = s, page = s / failblock_size_dbl; j < e; page++, j = k)
 			{
-				int next_j = round_up(j, failblock_size_dbl);
+				int next_j = round_up(j + 1, failblock_size_dbl);
 				if (next_j > e)
 					next_j = e;
 
@@ -269,7 +269,7 @@ void update_p(double *p, double *old_p UNUSED, double *gradient, double *beta)
 
 			for (j = s, page = s / failblock_size_dbl; j < e; page++, j = k)
 			{
-				int next_j = round_up(j, failblock_size_dbl);
+				int next_j = round_up(j + 1, failblock_size_dbl);
 				if (next_j > e)
 					next_j = e;
 
@@ -313,7 +313,7 @@ void compute_Ap(const Matrix *A, double *p UNUSED UNUSED, double *Ap)
 
 			for (j = s, page = s / failblock_size_dbl; j < e; page++, j = l)
 			{
-				int next_j = round_up(j, failblock_size_dbl);
+				int next_j = round_up(j + 1, failblock_size_dbl);
 				if (next_j > e)
 					next_j = e;
 
@@ -359,7 +359,7 @@ void update_iterate(double *iterate UNUSED, double *p, double *alpha)
 
 			for (j = s, page = s / failblock_size_dbl; j < e; page++, j = k)
 			{
-				int next_j = round_up(j, failblock_size_dbl);
+				int next_j = round_up(j + 1, failblock_size_dbl);
 				if (next_j > e)
 					next_j = e;
 

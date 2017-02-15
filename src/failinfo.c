@@ -60,7 +60,7 @@ void populate_global(const int n, const int fail_size_bytes, const int fault_str
 {
 	failblock_size_bytes = fail_size_bytes;
 	failblock_size_dbl = fail_size_bytes / sizeof(double);
-	nb_failblocks = (n + failblock_size_bytes - 1) / failblock_size_bytes;
+	nb_failblocks = (n + failblock_size_dbl - 1) / failblock_size_dbl;
 
 	errinfo = (analyze_err){.fault_strat = fault_strat,
 		#if CKPT
@@ -600,7 +600,7 @@ void clear_failed_blocks(int mask, const int start, const int end)
 {
 	mask &= ~CONSTANT_MASKS;
 	int i;
-	for (i = start / failblock_size_dbl; i < end / failblock_size_dbl; i++)
+	for (i = start / failblock_size_dbl; i < (end + failblock_size_dbl - 1) / failblock_size_dbl; i++)
 		if (errinfo.skipped_blocks[i] & mask)
 			__sync_fetch_and_and(&(errinfo.skipped_blocks[i]), ~mask);
 }
