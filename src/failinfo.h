@@ -103,7 +103,7 @@ typedef struct analyze_err
 	#endif
 
 	// initialized last : data pointers info
-	double **data;
+	struct _dat {size_t size; void *ptr;} *data;
 	int nb_data;
 
 	int in_recovery_errors, errors, skips;

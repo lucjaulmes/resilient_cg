@@ -74,7 +74,7 @@ void populate_global(const int n, const int fail_size_bytes, const int fault_str
 	sim_err = (error_sim_data){ .lambda = lambda, .nerr = nerr, .info = &errinfo };
 }
 
-void setup_resilience(const Matrix *A UNUSED, const int nb, magic_pointers *mp)
+void setup_resilience(const Matrix *A, const int nb, magic_pointers *mp)
 {
 	// various allocations
 
@@ -115,14 +115,22 @@ void setup_resilience(const Matrix *A UNUSED, const int nb, magic_pointers *mp)
 	#endif
 
 	// now using the variable number of args set the pointers in errinfo.data for bit flipping / finding errors
-	errinfo.nb_data = nb;
-	errinfo.data = (double **) calloc(nb, sizeof(double *));
+	errinfo.nb_data = nb + 3;
+	errinfo.data = calloc(nb + 3, sizeof(*errinfo.data));
 	if (errinfo.data == NULL)
 		err(1, "Failed to allocate errinfo.data");
 
-	#define X(constant, name) errinfo.data[constant-1] = mp->name;
+	#define X(constant, name) \
+		errinfo.data[constant - 1].size = nb_failblocks * failblock_size_bytes; \
+		errinfo.data[constant - 1].ptr = mp->name;
 	ASSOC_CONST_MP
 	#undef X
+	errinfo.data[nb + 0].size = round_up((A->n + 1) * sizeof(*A->r), failblock_size_bytes);
+	errinfo.data[nb + 0].ptr = A->r;
+	errinfo.data[nb + 1].size = round_up(A->nnz * sizeof(*A->c), failblock_size_bytes);
+	errinfo.data[nb + 1].ptr = A->c;
+	errinfo.data[nb + 2].size = round_up(A->nnz * sizeof(*A->v), failblock_size_bytes);
+	errinfo.data[nb + 2].ptr = A->v;
 
 	errinfo.in_recovery_errors = 0;
 	errinfo.errors = 0;
@@ -165,9 +173,8 @@ void unset_resilience(magic_pointers *mp UNUSED)
 
 	// undo all potentially undetected but already injected errors in memory from previous runs
 	int i;
-	const intptr_t vect_size = nb_failblocks * failblock_size_bytes;
 	for (i = 0; i < errinfo.nb_data; i++)
-		mprotect(errinfo.data[i], vect_size, PROT_READ | PROT_WRITE);
+		mprotect(errinfo.data[i].ptr, errinfo.data[i].size, PROT_READ | PROT_WRITE);
 
 	// now stop handling errors
 	struct sigaction sigact;
@@ -361,9 +368,9 @@ void* simulate_failures(void* ptr)
 void cause_mpr(error_sim_data *sim_err)
 {
 	int rand_page = (int)(((double)rand() / (double)RAND_MAX) * nb_failblocks);
-	int vect      = (int)(((double)rand() / (double)RAND_MAX) * sim_err->info->nb_data);
+	int vect      = (int)(((double)rand() / (double)RAND_MAX) * (sim_err->info->nb_data - 3));
 
-	double* addr = sim_err->info->data[vect] + rand_page * failblock_size_dbl;
+	double* addr = (double*)sim_err->info->data[vect].ptr + rand_page * failblock_size_dbl;
 
 	log_err(SHOW_DBGINFO, "Error is going to be triggered on page %3d of vector %s (%d) : %p\n", rand_page, vect_name(vect+1), vect+1, (void*)addr);
 
@@ -375,23 +382,23 @@ void cause_mpr(error_sim_data *sim_err)
 
 void flip_a_bit(analyze_err *info)
 {
-	int flip_pos = (int)(((double)rand() / (double)RAND_MAX) * nb_failblocks * failblock_size_dbl);
-	int vect     = (int)(((double)rand() / (double)RAND_MAX) * info->nb_data);
-	int flip_bit = (int)(((double)rand() / (double)RAND_MAX) * sizeof(double) * CHAR_BIT);
+	int vect     = (int)(((double)rand() / (double)RAND_MAX) * (info->nb_data - 3));
+	int flip_bit = (int)(((double)rand() / (double)RAND_MAX) * errinfo.data[vect].size * CHAR_BIT);
+	int flip_pos = flip_bit / CHAR_BIT;
 
-	long long *victim = ((long long*)info->data[vect]) + flip_pos;
+	char *victim = ((char*)info->data[vect].ptr) + flip_pos;
 
 	#if VERBOSE >= SHOW_DBGINFO
-	double before = info->data[vect][flip_pos];
+	double *dbl_victim = (double*)(victim - (flip_pos % sizeof(double))), before = *dbl_victim;
 	#endif
 
-	(*victim) ^= (long long)(1 << flip_bit);
+	(*victim) ^= (char)(1 << (flip_bit % CHAR_BIT));
 
 	sim_err.inj++;
 
-	log_err(SHOW_DBGINFO,"Flipped bit %2d of double %5d (page %2d) in vect %2s :\t% .14e -> % .14e\tdiff = %e\n",
-			flip_bit, flip_pos, flip_pos/failblock_size_bytes, mask_names[vect+1],
-			before, info->data[vect][flip_pos], fabs(before - info->data[vect][flip_pos]));
+	log_err(SHOW_DBGINFO,"Flipped bit %2d of double %5lu (page %2d) in vect %2s :\t% .14e -> % .14e\tdiff = %e\n",
+			flip_bit % CHAR_BIT, flip_pos / sizeof(double), flip_pos / failblock_size_bytes, mask_names[vect+1],
+			before, *dbl_victim, fabs(before - *dbl_victim));
 }
 
 int get_data_blockptr(const void *vect, int *block)
@@ -403,7 +410,7 @@ int get_data_blockptr(const void *vect, int *block)
 
 	for (i = 0; i < errinfo.nb_data; i++)
 	{
-		pos = ptr - (intptr_t)errinfo.data[i];
+		pos = ptr - (intptr_t)errinfo.data[i].ptr;
 
 		if (pos >= 0 && pos < max_vect_size)
 		{
@@ -419,7 +426,7 @@ int get_data_vectptr(const double *vect)
 {
 	int i;
 	for (i = 0; i < errinfo.nb_data; i++)
-		if (errinfo.data[i] == vect)
+		if (errinfo.data[i].ptr == vect)
 			return i+1;
 
 	return -1;
