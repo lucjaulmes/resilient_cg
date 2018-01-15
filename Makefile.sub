@@ -47,7 +47,7 @@ PAPI_HOME=$(shell which papi_avail | sed -r 's@/bin(64)?/papi_avail$$@@')
 #
 # some warning management to be done. Mercurium's code transformation creates some unused variables
 # so pass all this info to native compiler (-Wn,flags)
-CFLAGS = -std=gnu11 -Wall -Wextra -Wpedantic -fdiagnostics-show-option
+CFLAGS = -std=gnu11 -Wall -Wextra -Wpedantic -fdiagnostics-show-option -D_Float128=__float128
 G_CFLAGS = -Wno-unknown-pragmas
 M_CFLAGS = --Wn,-Wno-unused-parameter,-Wno-unused-variable,-Wno-strict-aliasing --keep-all-files
 LDFLAGS = -lm
