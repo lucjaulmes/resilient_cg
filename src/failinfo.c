@@ -540,6 +540,9 @@ void mark_corrected(const int block, int mask)
 
 int aggregate_skips()
 {
+	if (!errinfo.skips)
+		return 0;
+
 	int i, r = 0;
 	for (i = 0; i < nb_failblocks; i++)
 		r |= errinfo.skipped_blocks[i];
@@ -549,6 +552,9 @@ int aggregate_skips()
 
 int has_skipped_blocks(int mask)
 {
+	if (!errinfo.skips)
+		return 0;
+
 	mask &= ~CONSTANT_MASKS;
 	int i, r = 0;
 	for (i = 0; i < nb_failblocks; i++)
@@ -599,19 +605,27 @@ int overlapping_faults(int mask_v, int mask_w)
 void clear_failed_blocks(int mask, const int start, const int end)
 {
 	mask &= ~CONSTANT_MASKS;
-	int i;
+	int i, before;
 	for (i = start / failblock_size_dbl; i < (end + failblock_size_dbl - 1) / failblock_size_dbl; i++)
 		if (errinfo.skipped_blocks[i] & mask)
-			__sync_fetch_and_and(&(errinfo.skipped_blocks[i]), ~mask);
+		{
+			before = __sync_fetch_and_and(&(errinfo.skipped_blocks[i]), ~mask);
+			if (before != 0 && (before & ~mask) == 0)
+				__sync_fetch_and_sub(&errinfo.skips, 1);
+		}
 }
 
 void clear_failed(int mask)
 {
 	mask &= ~CONSTANT_MASKS;
-	int i;
+	int i, before;
 	for (i = 0; i < nb_failblocks; i++)
 		if (errinfo.skipped_blocks[i] & mask)
-			__sync_fetch_and_and(&(errinfo.skipped_blocks[i]), ~mask);
+		{
+			before = __sync_fetch_and_and(&(errinfo.skipped_blocks[i]), ~mask);
+			if (before != 0 && (before & ~mask) == 0)
+				__sync_fetch_and_sub(&errinfo.skips, 1);
+		}
 }
 
 void clear_failed_vect(const double *vect)
