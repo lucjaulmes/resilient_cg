@@ -270,7 +270,7 @@ void recover_rectify_x_g(const int n UNUSED, magic_pointers *mp, double *x, doub
 	}
 }
 
-void recover_rectify_p_Ap(const int n UNUSED, magic_pointers *mp, double *p, double *old_p, double *Ap, double *normA_p_sq UNUSED UNUSED)
+void recover_rectify_p_Ap(const int n UNUSED, magic_pointers *mp, double *p, double *old_p, double *Ap, double *normA_p_sq UNUSED)
 {
 	// both old_p and g used for recoveries (and maybe themselves repaired) -- thus requiring x
 #if DUE == DUE_IN_PATH

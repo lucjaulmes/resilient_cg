@@ -64,7 +64,7 @@ void update_gradient(double *gradient, double *Ap, double *alpha UNUSED)
 	}
 }
 
-void recompute_gradient_mvm(const Matrix *A, double *iterate UNUSED UNUSED, double *Aiterate)
+void recompute_gradient_mvm(const Matrix *A, double *iterate UNUSED, double *Aiterate)
 {
 	int i;
 	for (i = 0; i < nb_blocks; i++)
@@ -126,7 +126,7 @@ void update_p(double *p, double *old_p UNUSED, double *gradient, double *beta)
 	}
 }
 
-void compute_Ap(const Matrix *A, double *p UNUSED UNUSED, double *Ap)
+void compute_Ap(const Matrix *A, double *p UNUSED, double *Ap)
 {
 	int i;
 	for (i = 0; i < nb_blocks; i++)
