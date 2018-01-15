@@ -101,7 +101,7 @@ ompssinstr : M_CFLAGS += --output-dir=.objs/ompssinstr --instrumentation
 # -DVERBOSE=x make it talk, x from 1 to 4 (see debug.h for values)
 
 #both debug builds
-%debug : CFLAGS += -rdynamic -g -O2 -DVERBOSE=3 $(USE_TIMEOFDAY)
+%debug : CFLAGS += -rdynamic -g -O2 -DVERBOSE=1 $(USE_TIMEOFDAY)
 %debug : LDFLAGS +=
 #both instr builds
 %instr : CFLAGS += -rdynamic -O2 -DPERFORMANCE $(USE_EXTRAE)
