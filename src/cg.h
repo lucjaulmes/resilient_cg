@@ -28,6 +28,7 @@ typedef struct magic_pointers
 	#if CKPT
 	checkpoint_data *ckpt_data;
 	#endif
+	int n;
 } magic_pointers;
 
 // define a X-macro to associate the name of a variable in magic_pointers to its constant
@@ -71,8 +72,8 @@ void compute_Ap(const Matrix *A, double *p, double *Ap);
 void scalar_product_task(const double *p, const double *Ap, double* r);
 void norm_task(const double *v, double* r);
 
-void compute_beta(const double *err_sq, const double *old_err_sq, double *beta, int recomputed);
-void compute_alpha(double *err_sq, double *normA_p_sq, double *old_err_sq, double *old_err_sq2, double *alpha);
+void compute_beta(double *err_sq, const double *old_err_sq, double *beta, double *old_p, int recomputed);
+void compute_alpha(double *err_sq, double *normA_p_sq, double *old_err_sq, double *old_err_sq2, double *alpha, double *p, double *old_p);
 
 void force_rollback(checkpoint_data *ckpt_data, double *iterate, double *p);
 void force_checkpoint(checkpoint_data *ckpt_data, double *iterate, double *p);

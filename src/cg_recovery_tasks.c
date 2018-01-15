@@ -33,11 +33,6 @@ void recover_rectify_xk(const int n UNUSED, magic_pointers *mp, double *x UNUSED
 	// g used for recovery, also waiting for all its blocks makes sure it's not updating
 	// normA_p_sq is used artificially to force recovery in the critical path
 	// alpha is used to force recovery before next compute_alpha (as well as after g and x)
-#if DUE == DUE_IN_PATH
-	PRAGMA_TASK(inout(ALL_BLOCKS(x), mp->normA_p_sq) in(ALL_BLOCKS(mp->g)), recover_xk, 20)
-#else
-	PRAGMA_TASK(inout(ALL_BLOCKS(x), mp->alpha) in(ALL_BLOCKS(mp->g)), recover_xk, 20)
-#endif
 	{
 		int faults = get_nb_failed_blocks();
 		if (!faults)
@@ -69,11 +64,6 @@ void recover_rectify_g(const int n UNUSED, magic_pointers *mp, const double *p, 
 {
 	// p and x may be used for recovering
 	// Also, using inout(p) forces update_it(in:p inout:x) to wait, so we get consistent recoveries
-#if DUE == DUE_IN_PATH
-	PRAGMA_TASK(inout(*err_sq, ALL_BLOCKS(gradient), ALL_BLOCKS(Ap), ALL_BLOCKS(p)) in([n]mp->x), recover_g, 0)
-#else
-	PRAGMA_TASK(concurrent(*err_sq, ALL_BLOCKS(gradient)) inout(ALL_BLOCKS(Ap), ALL_BLOCKS(p)) in([n]mp->x), recover_g, 5)
-#endif
 	{
 		int faults = get_nb_failed_blocks();
 		if (!faults)
@@ -169,11 +159,6 @@ void recover_rectify_g(const int n UNUSED, magic_pointers *mp, const double *p, 
 
 void recover_rectify_x_g(const int n UNUSED, magic_pointers *mp, double *x, double *gradient, double *err_sq UNUSED)
 {
-#if DUE == DUE_IN_PATH
-	PRAGMA_TASK(inout(*err_sq, ALL_BLOCKS(gradient), [n]x) in([n]mp->Ap), recover_xk_g, 0)
-#else
-	PRAGMA_TASK(concurrent(*err_sq, ALL_BLOCKS(gradient)) inout([n]x) in([n]mp->Ap), recover_xk_g, 5)
-#endif
 	{
 		int faults = get_nb_failed_blocks();
 		if (!faults)
@@ -273,11 +258,6 @@ void recover_rectify_x_g(const int n UNUSED, magic_pointers *mp, double *x, doub
 void recover_rectify_p_Ap(const int n UNUSED, magic_pointers *mp, double *p, double *old_p, double *Ap, double *normA_p_sq UNUSED)
 {
 	// both old_p and g used for recoveries (and maybe themselves repaired) -- thus requiring x
-#if DUE == DUE_IN_PATH
-	PRAGMA_TASK(inout(*normA_p_sq, ALL_BLOCKS(p), ALL_BLOCKS(Ap), [n]old_p, ALL_BLOCKS(mp->g)) in(ALL_BLOCKS(mp->x)), recover_p_Ap, 0)
-#else
-	PRAGMA_TASK(concurrent(*normA_p_sq, ALL_BLOCKS(p), ALL_BLOCKS(Ap)) inout([n]old_p, ALL_BLOCKS(mp->g)) in(ALL_BLOCKS(mp->x)), recover_p_Ap, 5)
-#endif
 	{
 		int faults = get_nb_failed_blocks();
 		if (!faults)

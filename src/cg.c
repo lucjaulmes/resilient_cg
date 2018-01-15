@@ -13,7 +13,7 @@
 magic_pointers mp;
 
 // too much work to repeat this, especially ALL_BLOCKS(...)
-#define ALL_BLOCKS(__vector__) {__vector__[get_block_start(b):get_block_end(b)-1], b=0:nb_blocks-1}
+#define ALL_BLOCKS(__vector__) {__vector__[get_block_start(_blk):get_block_end(_blk)-1], _blk=0:nb_blocks-1}
 #define PRAGMA(__str__) _Pragma(#__str__)
 #define PRAGMA_TASK(__deps__, __lab__, __prio__) PRAGMA(omp task __deps__ label(__lab__) priority(__prio__) no_copy_deps)
 
@@ -30,21 +30,32 @@ magic_pointers mp;
 #endif
 
 PRAGMA_TASK(in(*err_sq, *old_err_sq) out(*beta), compute_beta, 50)
-void compute_beta(const double *err_sq, const double *old_err_sq, double *beta, int recomputed UNUSED)
+void compute_beta(double *err_sq, const double *old_err_sq, double *beta, double *old_p UNUSED, int recomputed UNUSED)
 {
 	// on first iterations of a (re)start, old_err_sq should be INFINITY so that beta = 0
 	*beta = *err_sq / *old_err_sq;
 
 	#if DUE == DUE_ASYNC || DUE == DUE_IN_PATH
 	int state = aggregate_skips();
-	if (state & (MASK_GRADIENT | MASK_NORM_G | MASK_RECOVERY | (recomputed ? MASK_ITERATE : 0)))
+	const int check_masks = MASK_GRADIENT | MASK_NORM_G | MASK_RECOVERY | (recomputed ? MASK_ITERATE : 0);
+	if (state & check_masks)
+	{
+		if (recomputed)
+			recover_rectify_g(mp.n, &mp, old_p, mp.Ap, mp.g, err_sq);
+		else
+			recover_rectify_x_g(mp.n, &mp, mp.x, mp.g, err_sq);
+
+		state = aggregate_skips();
+	}
+
+	if (state & check_masks)
 	{
 		if (state & MASK_RECOVERY)
 			fprintf(stderr, "Error discovered during recovery\n");
 		else
 			fprintf(stderr, "Error remaining or discovered post recovery\n");
 
-		clear_failed(MASK_GRADIENT | MASK_NORM_G | MASK_RECOVERY | (recomputed ? MASK_ITERATE : 0));
+		clear_failed(check_masks);
 		log_err(SHOW_DBGINFO, "ERROR SUBSISTED PAST RECOVERY restart needed. At beta, g:%d, ||g||:%d\n", (state & MASK_GRADIENT) > 0, (state & MASK_NORM_G) > 0);
 	}
 
@@ -55,7 +66,7 @@ void compute_beta(const double *err_sq, const double *old_err_sq, double *beta, 
 }
 
 PRAGMA_TASK(inout(*normA_p_sq, *err_sq) out(*alpha, *old_err_sq, *old_err_sq2), compute_alpha, 50)
-void compute_alpha(double *err_sq, double *normA_p_sq, double *old_err_sq, double *old_err_sq2, double *alpha)
+void compute_alpha(double *err_sq, double *normA_p_sq, double *old_err_sq, double *old_err_sq2, double *alpha, double *p UNUSED, double *old_p UNUSED)
 {
 	*alpha = *err_sq / *normA_p_sq ;
 	*old_err_sq = *err_sq;
@@ -73,20 +84,35 @@ void compute_alpha(double *err_sq, double *normA_p_sq, double *old_err_sq, doubl
 		state = aggregate_skips() > 0 ? (aggregate_skips() | MASK_RECOVERY) : 0;
 	}
 	#endif
-	if (state & (MASK_ITERATE | MASK_P | MASK_OLD_P | MASK_A_P | MASK_NORM_A_P | MASK_RECOVERY))
+	const int check_masks = MASK_ITERATE | MASK_P | MASK_OLD_P | MASK_A_P | MASK_NORM_A_P | MASK_RECOVERY;
+
+	#if DUE == DUE_ASYNC || DUE == DUE_IN_PATH
+	if (state & check_masks)
+	{
+		// Errors not corrected (after async task if it exists)
+		if (state &	MASK_ITERATE)
+			recover_rectify_xk(mp.n, &mp, mp.x);
+		if (state & (MASK_P | MASK_OLD_P | MASK_A_P | MASK_NORM_A_P))
+			recover_rectify_p_Ap(mp.n, &mp, p, old_p, mp.Ap, normA_p_sq);
+
+		// Now verify all has been corrected
+		state = aggregate_skips();
+	}
+
+	memset(mp.shared_page_reductions, 0, 2 * nb_blocks * sizeof(*mp.shared_page_reductions));
+	#endif
+
+	if (state & check_masks)
 	{
 		if (state & MASK_RECOVERY)
 			fprintf(stderr, "Error discovered during recovery\n");
 		else
 			fprintf(stderr, "Error remaining or discovered post recovery\n");
 
-		clear_failed(MASK_ITERATE | MASK_P | MASK_OLD_P | MASK_A_P | MASK_NORM_A_P | MASK_RECOVERY);
+		clear_failed(check_masks);
 		log_err(SHOW_DBGINFO, "ERROR SUBSISTED PAST RECOVERY restart needed. At alpha, x:%d, p:%d, p':%d, Ap:%d, <p,Ap>:%d\n", (state & MASK_ITERATE) > 0, (state & MASK_P) > 0, (state & MASK_OLD_P) > 0, (state & MASK_A_P) > 0, (state & MASK_NORM_A_P) > 0);
 	}
 
-	#if DUE == DUE_ASYNC || DUE == DUE_IN_PATH
-	memset(mp.shared_page_reductions, 0, 2 * nb_blocks * sizeof(*mp.shared_page_reductions));
-	#endif
 	#endif
 
 	log_err(SHOW_TASKINFO, "Computing alpha finished : normA_p_sq = %+e ; err_sq = %e ; alpha = %e\n", *normA_p_sq, *err_sq, *alpha);
@@ -135,7 +161,7 @@ void solve_cg(const Matrix *A, const double *b, double *iterate, double converge
 	thres_sq = convergence_thres * convergence_thres * norm_b;
 	log_out("Error shown is ||Ax-b||^2, you should plot ||Ax-b||/||b||. (||b||^2 = %e)\n", norm_b);
 
-	mp = (magic_pointers){.A = A, .b = b, .x = iterate, .p = p, .old_p = old_p, .g = gradient, .Ap = Ap, .Ax = Aiterate,
+	mp = (magic_pointers){.A = A, .b = b, .x = iterate, .p = p, .old_p = old_p, .g = gradient, .Ap = Ap, .Ax = Aiterate, .n = n,
 		.alpha = &alpha, .beta = &beta, .err_sq = &err_sq, .old_err_sq = &old_err_sq, .old_err_sq2 = &old_err_sq2, .normA_p_sq = &normA_p_sq};
 	#if CKPT
 	checkpoint_data ckpt_data = (checkpoint_data) {
@@ -167,11 +193,12 @@ void solve_cg(const Matrix *A, const double *b, double *iterate, double converge
 			norm_task(gradient, &err_sq);
 
 			// at this point, Ap = A * old_p
-			#if DUE == DUE_ASYNC || DUE == DUE_IN_PATH
+			#if DUE == DUE_ASYNC
+			PRAGMA_TASK(concurrent(err_sq, ALL_BLOCKS(gradient)) inout(ALL_BLOCKS(Ap), ALL_BLOCKS(p)) in([n]iterate), recover_g, 5)
 			recover_rectify_g(n, &mp, old_p, Ap, gradient, &err_sq);
 			#endif
 
-			compute_beta(&err_sq, &old_err_sq, &beta, 0);
+			compute_beta(&err_sq, &old_err_sq, &beta, old_p, 0);
 
 			// in the algorithm, update_iterate is here, but we can delay it (for performance)
 		}
@@ -191,11 +218,12 @@ void solve_cg(const Matrix *A, const double *b, double *iterate, double converge
 				force_checkpoint(&ckpt_data, iterate, old_p);
 			#endif
 
-			#if DUE == DUE_ASYNC || DUE == DUE_IN_PATH
+			#if DUE == DUE_ASYNC
+			PRAGMA_TASK(concurrent(err_sq, ALL_BLOCKS(gradient)) inout([n]iterate) in([n]Ap), recover_xk_g, 5)
 			recover_rectify_x_g(n, &mp, iterate, gradient, &err_sq);
 			#endif
 
-			compute_beta(&err_sq, &old_err_sq, &beta, 1);
+			compute_beta(&err_sq, &old_err_sq, &beta, old_p, 1);
 
 			// after first beta, we are sure to have the first x, g, and checkpoint
 			// so we can start injecting errors
@@ -213,12 +241,14 @@ void solve_cg(const Matrix *A, const double *b, double *iterate, double converge
 		if (do_update_gradient > 0)
 		{
 			update_iterate(iterate, old_p, &alpha);
-			#if DUE == DUE_ASYNC || DUE == DUE_IN_PATH
+			#if DUE == DUE_ASYNC
+			PRAGMA_TASK(inout(ALL_BLOCKS(iterate), alpha) in(ALL_BLOCKS(gradient)), recover_xk, 20)
 			recover_rectify_xk(n, &mp, iterate);
 			#endif
 		}
 
-		#if DUE == DUE_ASYNC || DUE == DUE_IN_PATH
+		#if DUE == DUE_ASYNC
+		PRAGMA_TASK(concurrent(normA_p_sq, ALL_BLOCKS(p), ALL_BLOCKS(Ap)) inout([n]old_p, ALL_BLOCKS(gradient)) in(ALL_BLOCKS(iterate)), recover_p_Ap, 5)
 		recover_rectify_p_Ap(n, &mp, p, old_p, Ap, &normA_p_sq);
 		#endif
 
@@ -253,7 +283,7 @@ void solve_cg(const Matrix *A, const double *b, double *iterate, double converge
 			#endif
 		}
 
-		compute_alpha(&err_sq, &normA_p_sq, &old_err_sq, &old_err_sq2, &alpha);
+		compute_alpha(&err_sq, &normA_p_sq, &old_err_sq, &old_err_sq2, &alpha, old_p, p);
 
 		#if CKPT // NB. this implies DUE_ROLLBACK
 		// should happen after p, Ap are ready and before (post-alpha) iterate and gradient updates
