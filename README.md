@@ -8,6 +8,9 @@ and to have installed
 - extrae
 - papi
 
+See [BSC’s OmpSs Download page](https://pm.bsc.es/ompss-downloads) if you are unsure how to get the
+programming model’s software.
+
 Adjust variables if they don't comply to the following defaults:
 ```Makefile
 CC  = gcc-4.9                            # C11 compiler
