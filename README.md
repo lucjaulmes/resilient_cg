@@ -1,6 +1,4 @@
-######################################
-#             COMPILING              #
-######################################
+# Compiling
 
 To compile, be sure to have in your path
 - a C11 able compiler (e.g. gcc-4.9)
@@ -10,15 +8,18 @@ and to have installed
 - extrae
 - papi
 
-Adjust variables if they don't comply to the following defaults :
+Adjust variables if they don't comply to the following defaults:
+```Makefile
 CC  = gcc-4.9                            # C11 compiler
 MCC = mcc                                # mercurium compiler
 NANOS_HOME = /apps/PM/ompss/2014-04-10
 PAPI_HOME = /apps/PAPI/5.0.1
 EXTRAE_HOME = /apps/CEPBATOOLS/extrae/latest/default/64
-
+```
 e.g. :
-$ make NANOS_HOME=/usr/local
+```bash
+make NANOS_HOME=/usr/local
+```
 
 Each different configuration will be compiled in a subdirectory, with 6 targets
 
@@ -31,40 +32,39 @@ Each different configuration will be compiled in a subdirectory, with 6 targets
 - cg_conv, parallel version that writes convergence and resilience values to a trace (perf)
 - cg_seq_conv, sequential : same as above ignoring pragmas (entirely compiled with $(CC))
 
-######################################
-#             RESILIENCE             #
-######################################
+
+# Resilience
 
 The default make target will be a non-resilient textbook Conjugate Gradient.
 You may then choose resilience strategies for Detected Uncorrected Errors (DUE).
 
 Options are :
-DUE: none async path lossy rollback
+- DUE: none async path lossy rollback
 
-If using the rollback DUE strategy, you will need to choose a (not "none") checkpointing
-method as well.
-CKPT: none disk mem
+  If using the rollback DUE strategy, you will need to choose a (not "none") checkpointing
+  method as well.
+- CKPT: none disk mem
 
 The name of each configuration's directory is then DUE_CKPT
+
 Some valid examples :
 
-    configuration               directory          name in paper
+| configuration           | directory      | name in paper                      |
+|-------------------------|----------------|------------------------------------|
+| DUE=none                | none_none      | baseline, trivial                  |
+| DUE=async               | async_none     | AFEIR  (recover asynchronously)    |
+| DUE=path                | path_none      | FEIR   (recover in critical path)  |
+| DUE=lossy               | lossy_none     | Lossy                              |
+| DUE=rollback CKPT=disk  | rollblack_disk | ckpt                               |
+| DUE=rollback CKPT=mem   | rollblack_mem  | N/A                                |
 
-    DUE=none                    none_none          baseline, trivial
-    DUE=async                   async_none         AFEIR  (recover asynchronously)
-    DUE=path                    path_none          FEIR   (recover in critical path)
-    DUE=lossy                   lossy_none         Lossy
-    DUE=rollback CKPT=disk      rollblack_disk     ckpt
-    DUE=rollback CKPT=mem       rollblack_mem      N/A
 
-######################################
-#              RUNNING               #
-######################################
+# Running
 
-You have to supply a file containing a spd matrix in Matrix Market format.
-All other parameters are optional and described below. Some are only available for
-some flavours of the resilient CG.
+You have to supply a file containing a spd matrix in [Matrix Market](https://math.nist.gov/MatrixMarket/) format.
+All other parameters are optional and described below. Some are only available for some flavours of the resilient CG.
 
+```
 Usage: ./$directory/cg [options] <matrix-market-filename> [, ...]
 Possible options are :
  ===  fault injection  ===
@@ -90,16 +90,16 @@ Possible options are :
   -path  /path/dir  Path to a directory on local disk for checkpointing (default $TMPDIR).
   -prefix           Prefix of the name of checkpoint files.
 All options apply to every following input file. You may re-specify them for each file.
-
+```
 
 e.g. the following command will run CG once with a MTBE of 1e8 us, and once without error
 injection (without reloading the matrix from file) :
 
-$ ./cg -l 1e8 <file>.mtx -nf <file>.mtx
+```
+./cg -l 1e8 <file>.mtx -nf <file>.mtx
+```
 
-######################################
-#              VIEWING               #
-######################################
+# Viewing
 
 In the subdirectory utils/ you will find paraver configuration files that allow to view
 symbols outputted to traces that are specific to this application.
